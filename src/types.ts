@@ -1,0 +1,71 @@
+export type DeckId = 'A' | 'B'
+
+export interface Track {
+  id: string
+  name: string
+  /** relative path inside the chosen library folder */
+  path: string
+  kind: string
+  /** lazily-resolved file handle from the File System Access API */
+  handle: FileSystemFileHandle
+  bpm?: number
+  durationSec?: number
+}
+
+export interface HotCue {
+  index: number
+  positionSec: number
+  label: string
+  color: string
+}
+
+export interface DeckState {
+  id: DeckId
+  track: Track | null
+  loading: boolean
+  playing: boolean
+  /** playhead position in seconds */
+  positionSec: number
+  durationSec: number
+  /** detected / edited bpm of the loaded track */
+  bpm: number | null
+  /** tempo fader value, -1..1 mapped to +/- range (see TEMPO_RANGE) */
+  tempo: number
+  /** normalised waveform peaks for rendering (min/max interleaved) */
+  peaks: Float32Array | null
+  hotCues: HotCue[]
+  /** temp cue point set with the CUE button */
+  cuePointSec: number
+  loopActive: boolean
+  loopBeats: number
+  cueMonitor: boolean
+}
+
+export interface ChannelState {
+  /** 0..1 line fader */
+  volume: number
+  /** -1..1 -> -26dB..+26dB per band */
+  eqLow: number
+  eqMid: number
+  eqHigh: number
+  /** -1..1 color/filter knob, 0 = bypass */
+  filter: number
+}
+
+export interface MixerState {
+  /** -1 (full A) .. +1 (full B) */
+  crossfader: number
+  masterVolume: number
+  /** headphone cue: 0 = cue only, 1 = master only */
+  cueMix: number
+  cueVolume: number
+  channels: Record<DeckId, ChannelState>
+}
+
+export type MidiStatus = 'unsupported' | 'idle' | 'requesting' | 'ready' | 'denied'
+
+export interface MidiDeviceInfo {
+  id: string
+  name: string
+  manufacturer: string
+}

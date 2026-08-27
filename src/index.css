@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+
+  --color-grid-bg: #0a0b0f;
+  --color-grid-panel: #14161c;
+  --color-grid-panel-2: #1c1f27;
+  --color-grid-border: #2a2e3a;
+  --color-grid-text: #e7e9ee;
+  --color-grid-muted: #8b909c;
+  --color-deck-a: #29c5ff;
+  --color-deck-b: #ff8f29;
+  --color-accent: #b14bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-grid-bg);
+  color: var(--color-grid-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Range inputs styled as faders */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  background: #000;
+  border: 1px solid var(--color-grid-border);
+  border-radius: 3px;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e7e9ee;
+  border-radius: 3px;
+}
