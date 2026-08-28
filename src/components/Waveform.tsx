@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DeckId, HotCue } from '../types'
 
 interface Props {
@@ -31,6 +31,15 @@ export function Waveform({
   onSeek,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [size, setSize] = useState(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ro = new ResizeObserver(() => setSize((n) => n + 1))
+    ro.observe(canvas)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -170,7 +179,7 @@ export function Waveform({
     ctx.closePath()
     ctx.fillStyle = '#fff'
     ctx.fill()
-  }, [peaks, positionSec, durationSec, bpm, hotCues, color, loading])
+  }, [peaks, positionSec, durationSec, bpm, hotCues, color, loading, size])
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
@@ -181,11 +190,11 @@ export function Waveform({
   }
 
   return (
-    <div className="relative overflow-hidden rounded-[var(--radius-md)] shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+    <div className="relative min-h-[104px] flex-1 overflow-hidden rounded-[var(--radius-md)] shadow-[inset_0_0_0_1px_var(--color-hairline)]">
       <canvas
         ref={canvasRef}
         onClick={handleClick}
-        className="block h-24 w-full cursor-crosshair"
+        className="block h-full w-full cursor-crosshair"
         data-deck={deckId}
       />
       {!peaks && durationSec === 0 && !loading && (

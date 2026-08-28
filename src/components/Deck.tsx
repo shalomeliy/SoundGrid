@@ -90,8 +90,11 @@ export function Deck({ deckId }: { deckId: DeckId }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="tnum text-2xl font-semibold leading-none" style={{ color }}>
-            {effectiveBpm ? effectiveBpm.toFixed(1) : '––.–'}
+          <div
+            className="tnum text-2xl font-semibold leading-none"
+            style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
+          >
+            {effectiveBpm ? effectiveBpm.toFixed(1) : '—'}
           </div>
           <div className="tnum mt-1 text-2xs text-grid-muted">
             BPM
@@ -192,26 +195,26 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         </div>
 
         {/* right: platter + tempo ------------------------------------- */}
-        <div className="flex w-[92px] flex-col items-center gap-2">
+        <div className="flex w-[88px] shrink-0 flex-col items-center gap-2.5">
           <Platter
             positionSec={deck.positionSec}
             durationSec={deck.durationSec}
             playing={deck.playing}
             color={color}
           />
-          <div className="flex flex-1 flex-col items-center gap-1 pt-1">
-            <span className="label">Tempo</span>
-            <Fader
-              value={deck.tempo}
-              min={-1}
-              max={1}
-              onChange={(v) => ctl.setTempo(deckId, v)}
-              color={color}
-              length={132}
-              detent
-              format={(v) => `${(v * TEMPO_RANGE * 100 > 0 ? '+' : '') + (v * TEMPO_RANGE * 100).toFixed(1)}%`}
-            />
-          </div>
+          <Fader
+            label="Tempo"
+            value={deck.tempo}
+            min={-1}
+            max={1}
+            onChange={(v) => ctl.setTempo(deckId, v)}
+            color={color}
+            length={118}
+            detent
+            format={(v) =>
+              `${v * TEMPO_RANGE * 100 > 0 ? '+' : ''}${(v * TEMPO_RANGE * 100).toFixed(1)}%`
+            }
+          />
         </div>
       </div>
     </section>

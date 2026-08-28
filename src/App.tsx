@@ -52,12 +52,12 @@ export default function App() {
   return (
     <div className="flex h-full flex-col">
       <TopBar />
-      <main className="grid min-h-0 flex-1 grid-cols-[1fr_auto_1fr] gap-3 p-3">
+      <main className="grid min-h-0 flex-[5] grid-cols-[1fr_auto_1fr] gap-3 p-3">
         <Deck deckId="A" />
         <Mixer />
         <Deck deckId="B" />
       </main>
-      <div className="h-[38%] min-h-0 px-3 pb-3">
+      <div className="min-h-0 flex-[3] px-3 pb-3">
         <Library />
       </div>
     </div>
