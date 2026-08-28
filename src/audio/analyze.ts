@@ -1,58 +1,52 @@
-/**
- * Downsample an AudioBuffer to interleaved [min, max] pairs, `buckets` long.
- *
- * Normalised to the track's own loudest point so the display fills the panel
- * whatever the file was mastered at — a quiet rip shouldn't render as a thin
- * line you can't read. This is display gain only; nothing touches the audio.
- */
-export function computePeaks(buffer: AudioBuffer, buckets = 2000): Float32Array {
-  const chan = buffer.numberOfChannels > 1
-    ? mixToMono(buffer)
-    : buffer.getChannelData(0)
-  const out = new Float32Array(buckets * 2)
-  const step = chan.length / buckets
-  let loudest = 0
-  for (let i = 0; i < buckets; i++) {
-    const start = Math.floor(i * step)
-    const end = Math.min(chan.length, Math.floor((i + 1) * step))
-    let min = 0
-    let max = 0
-    for (let j = start; j < end; j++) {
-      const v = chan[j]
-      if (v < min) min = v
-      if (v > max) max = v
-    }
-    out[i * 2] = min
-    out[i * 2 + 1] = max
-    if (-min > loudest) loudest = -min
-    if (max > loudest) loudest = max
-  }
-  if (loudest > 0.001 && loudest < 0.999) {
-    const gain = 1 / loudest
-    for (let i = 0; i < out.length; i++) out[i] *= gain
-  }
-  return out
+/** Rare path: files with more than two channels. */
+function mixAt(chans: Float32Array[], i: number, invCh: number): number {
+  let v = 0
+  for (let c = 0; c < chans.length; c++) v += chans[c][i]
+  return v * invCh
+}
+
+export interface WaveformAnalysis {
+  /** interleaved [min, max] per bucket — the envelope */
+  peaks: Float32Array
+  /** low/mid/high RMS per bucket — the colour */
+  bands: Float32Array
 }
 
 /**
- * Per-bucket energy in three frequency bands — what gives the waveform its
- * colour, the way Serato's does: you can see the bass drop out or the vocal
- * come in without listening to it.
+ * Everything the waveform needs, in a single pass over the samples.
  *
- * Returns `buckets * 3` values (low, mid, high RMS). Two one-pole low-passes
- * split the signal: everything under ~200Hz is low, 200Hz–4kHz is mid, the rest
- * is high. Cheap filters are fine here — this drives a colour, not a crossover,
- * and a steeper split wouldn't change what you see.
+ * Peaks and bands used to be two functions, each starting by flattening the
+ * track to mono into its own full-length Float32Array. On a 6-minute stereo
+ * track that is a 63MB allocation apiece, and with detectBpm doing the same it
+ * put ~190MB on the heap to draw one waveform. Here the channels are averaged
+ * inline, so nothing track-sized is allocated at all and the samples are walked
+ * once instead of twice.
+ *
+ * The envelope is normalised to the track's own loudest point so the display
+ * fills the panel whatever the file was mastered at — a quiet rip shouldn't
+ * draw a thin line. Display gain only; the audio path never sees it.
+ *
+ * Bands come from two one-pole low-passes splitting at ~200Hz and ~4kHz. Cheap
+ * filters are right here: this drives a colour, not a crossover.
  */
-export function computeBands(buffer: AudioBuffer, buckets = 2000): Float32Array {
-  const chan = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0)
-  const sr = buffer.sampleRate
-  const out = new Float32Array(buckets * 3)
-  const step = chan.length / buckets
+export function analyzeWaveform(buffer: AudioBuffer, buckets = 2000): WaveformAnalysis {
+  const nch = buffer.numberOfChannels
+  const chans: Float32Array[] = []
+  for (let c = 0; c < nch; c++) chans.push(buffer.getChannelData(c))
+  const len = buffer.length
+  const invCh = 1 / nch
+  const ch0 = chans[0]
+  const ch1 = nch > 1 ? chans[1] : ch0
+  const stereo = nch === 2
+  const multi = nch > 2
+
+  const peaks = new Float32Array(buckets * 2)
+  const bands = new Float32Array(buckets * 3)
+  const step = len / buckets
 
   const coeff = (hz: number) => {
     const rc = 1 / (2 * Math.PI * hz)
-    const dt = 1 / sr
+    const dt = 1 / buffer.sampleRate
     return dt / (rc + dt)
   }
   const aLow = coeff(200)
@@ -61,48 +55,62 @@ export function computeBands(buffer: AudioBuffer, buckets = 2000): Float32Array 
   let lpLow = 0
   let lpHigh = 0
   let bucket = 0
+  let min = 0
+  let max = 0
   let sumLow = 0
   let sumMid = 0
   let sumHigh = 0
   let n = 0
-  let end = Math.min(chan.length, Math.floor(step))
+  let loudest = 0
+  let end = Math.max(1, Math.min(len, Math.floor(step)))
 
-  for (let i = 0; i < chan.length; i++) {
-    const x = chan[i]
-    lpLow += aLow * (x - lpLow)
-    lpHigh += aHigh * (x - lpHigh)
+  for (let i = 0; i < len; i++) {
+    // mono and stereo are hoisted out of the indirection: reading chans[c][i]
+    // through the array-of-arrays inside the loop is ~40% slower than holding
+    // the channel refs directly, and no real file has more than two channels
+    const v = multi ? mixAt(chans, i, invCh) : stereo ? (ch0[i] + ch1[i]) * 0.5 : ch0[i]
+
+    if (v < min) min = v
+    if (v > max) max = v
+
+    lpLow += aLow * (v - lpLow)
+    lpHigh += aHigh * (v - lpHigh)
     const mid = lpHigh - lpLow
-    const high = x - lpHigh
+    const high = v - lpHigh
     sumLow += lpLow * lpLow
     sumMid += mid * mid
     sumHigh += high * high
     n++
 
     if (i + 1 >= end && bucket < buckets) {
-      const inv = n > 0 ? 1 / n : 0
-      out[bucket * 3] = Math.sqrt(sumLow * inv)
-      out[bucket * 3 + 1] = Math.sqrt(sumMid * inv)
-      out[bucket * 3 + 2] = Math.sqrt(sumHigh * inv)
+      peaks[bucket * 2] = min
+      peaks[bucket * 2 + 1] = max
+      if (-min > loudest) loudest = -min
+      if (max > loudest) loudest = max
+
+      const inv = 1 / n
+      bands[bucket * 3] = Math.sqrt(sumLow * inv)
+      bands[bucket * 3 + 1] = Math.sqrt(sumMid * inv)
+      bands[bucket * 3 + 2] = Math.sqrt(sumHigh * inv)
+
       bucket++
+      min = 0
+      max = 0
       sumLow = sumMid = sumHigh = 0
       n = 0
-      end = bucket < buckets ? Math.min(chan.length, Math.floor((bucket + 1) * step)) : chan.length
+      end =
+        bucket < buckets ? Math.max(i + 2, Math.min(len, Math.floor((bucket + 1) * step))) : len
     }
   }
-  return out
+
+  if (loudest > 0.001 && loudest < 0.999) {
+    const gain = 1 / loudest
+    for (let i = 0; i < peaks.length; i++) peaks[i] *= gain
+  }
+  return { peaks, bands }
 }
 
-function mixToMono(buffer: AudioBuffer): Float32Array {
-  const len = buffer.length
-  const out = new Float32Array(len)
-  for (let c = 0; c < buffer.numberOfChannels; c++) {
-    const data = buffer.getChannelData(c)
-    for (let i = 0; i < len; i++) out[i] += data[i]
-  }
-  const inv = 1 / buffer.numberOfChannels
-  for (let i = 0; i < len; i++) out[i] *= inv
-  return out
-}
+
 
 /**
  * Rough BPM estimate. Filters to the low end, builds an onset envelope, then
@@ -111,7 +119,17 @@ function mixToMono(buffer: AudioBuffer): Float32Array {
  */
 export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | null {
   const sr = buffer.sampleRate
-  const mono = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0)
+  // channels averaged inline: flattening to a full-length mono copy first cost
+  // 63MB on a 6-minute stereo track, for an envelope we throw away immediately
+  const nch = buffer.numberOfChannels
+  const chans: Float32Array[] = []
+  for (let c = 0; c < nch; c++) chans.push(buffer.getChannelData(c))
+  const invCh = 1 / nch
+  const len = buffer.length
+  const ch0 = chans[0]
+  const ch1 = nch > 1 ? chans[1] : ch0
+  const stereo = nch === 2
+  const multi = nch > 2
 
   // one-pole low-pass ~200Hz to isolate kick energy
   const dt = 1 / sr
@@ -122,8 +140,9 @@ export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | nu
   const frame = Math.floor(sr / 200) // 5ms envelope frames
   let acc = 0
   let n = 0
-  for (let i = 0; i < mono.length; i++) {
-    lp += alpha * (mono[i] - lp)
+  for (let i = 0; i < len; i++) {
+    const v = multi ? mixAt(chans, i, invCh) : stereo ? (ch0[i] + ch1[i]) * 0.5 : ch0[i]
+    lp += alpha * (v - lp)
     acc += lp * lp
     if (++n === frame) {
       env.push(Math.sqrt(acc / frame))

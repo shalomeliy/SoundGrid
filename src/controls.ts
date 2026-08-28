@@ -1,4 +1,4 @@
-import { detectBpm, computeBands, computePeaks } from './audio/analyze'
+import { analyzeWaveform, detectBpm } from './audio/analyze'
 import { engine } from './audio/engine'
 import { HOT_CUE_COLORS } from './audio/constants'
 import { readTrackData } from './library/library'
@@ -39,8 +39,7 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
     // waveform came out as blocks — the old path fill hid it by interpolating.
     const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(buffer.duration * 200)))
-    const peaks = computePeaks(buffer, buckets)
-    const bands = computeBands(buffer, buckets)
+    const { peaks, bands } = analyzeWaveform(buffer, buckets)
     // A tag written by Serato beats our own estimate: detectBpm is a crude
     // energy autocorrelation (see ROADMAP v0.3) and was overriding a good value
     // with a worse one — a tagged 124 became a detected 123.5, which SYNC then
