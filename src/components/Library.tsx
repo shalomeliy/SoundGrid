@@ -16,6 +16,40 @@ import { Button } from './controls'
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
+type KeyMode = 'musical' | 'camelot'
+const KEY_MODE_STORAGE = 'soundgrid:keyMode'
+
+function loadKeyMode(): KeyMode {
+  try {
+    return localStorage.getItem(KEY_MODE_STORAGE) === 'camelot' ? 'camelot' : 'musical'
+  } catch {
+    return 'musical'
+  }
+}
+
+/** Camelot when asked for and known, musical otherwise — never an empty cell. */
+function keyLabel(track: Track, mode: KeyMode): string | undefined {
+  return mode === 'camelot' ? (track.camelot ?? track.key) : track.key
+}
+
+/**
+ * Colour the key by its position on the Camelot wheel.
+ *
+ * Serato colours keys too, but its palette is arbitrary — the colour is just a
+ * second name for the label. Deriving hue from the wheel makes it carry the
+ * thing you actually care about: neighbouring numbers mix, so compatible keys
+ * land on neighbouring hues and a clash is visibly far away. OKLCH keeps every
+ * hue at the same perceived lightness, so no key is harder to read than another
+ * (plain HSL would make the blues muddy and the yellows glare).
+ */
+function keyColor(camelot: string | undefined): string | null {
+  const m = camelot ? /^(\d{1,2})([AB])$/.exec(camelot) : null
+  if (!m) return null
+  const hue = (Number(m[1]) - 1) * 30
+  // minor keys sit deeper and more saturated than their relative majors
+  return m[2] === 'A' ? `oklch(0.78 0.15 ${hue})` : `oklch(0.85 0.11 ${hue})`
+}
+
 function fmtTime(sec?: number) {
   if (!sec || !isFinite(sec)) return '–'
   const m = Math.floor(sec / 60)
@@ -27,6 +61,9 @@ export function Library() {
   const library = useStore((s) => s.library)
   const setLibrary = useStore((s) => s.setLibrary)
   const [mixOnly, setMixOnly] = useState(false)
+  // Which key notation to show. DJs are split between musical and Camelot and
+  // nobody wants to relearn theirs, so it's a preference that sticks.
+  const [keyMode, setKeyMode] = useState<KeyMode>(loadKeyMode)
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
 
@@ -200,16 +237,44 @@ export function Library() {
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full border-collapse text-xs">
+          {/*
+            Sized against Serato on the same 14" panel: it fits ~31px rows with
+            ~16px type, i.e. denser *and* far more legible than a tall row full
+            of small text. Rows are 36px with 14px type — you see more tracks
+            than before and read them at a glance.
+          */}
+          <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-surface-1">
               <tr className="border-b border-hairline">
-                <Th className="w-[42%] pl-3 text-left">Title</Th>
-                <Th className="w-[24%] text-left">Artist</Th>
-                <Th className="text-left">Type</Th>
-                <Th className="text-right tnum">BPM</Th>
-                <Th className="text-right">Key</Th>
-                <Th className="text-right tnum">Time</Th>
-                <Th className="pr-3 text-right">Load</Th>
+                {/* explicit widths: the title/artist cells use max-w-0 to truncate,
+                    which collapses them to nothing without a column width to size against */}
+                <Th className="w-[46%] pl-3 text-left">Title</Th>
+                <Th className="w-[18%] text-left">Artist</Th>
+                <Th className="w-14 text-left">Type</Th>
+                <Th className="w-16 text-right tnum">BPM</Th>
+                <Th className="w-20 text-right">
+                  <button
+                    onClick={() => {
+                      const next = keyMode === 'musical' ? 'camelot' : 'musical'
+                      setKeyMode(next)
+                      try {
+                        localStorage.setItem(KEY_MODE_STORAGE, next)
+                      } catch {
+                        // private mode — the preference just won't outlive the session
+                      }
+                    }}
+                    title={
+                      keyMode === 'musical'
+                        ? 'Showing musical keys — click for Camelot'
+                        : 'Showing Camelot codes — click for musical keys'
+                    }
+                    className="label -mr-1 rounded-[var(--radius-xs)] px-1 py-0.5 transition-colors hover:bg-surface-2 hover:text-grid-text"
+                  >
+                    {keyMode === 'musical' ? 'Key' : 'Camelot'}
+                  </button>
+                </Th>
+                <Th className="w-16 text-right tnum">Time</Th>
+                <Th className="w-24 pr-3 text-right">Load</Th>
               </tr>
             </thead>
             <tbody>
@@ -219,6 +284,7 @@ export function Library() {
                   track={t}
                   selected={t.id === library.selectedId}
                   match={recs.get(t.id)}
+                  keyMode={keyMode}
                   onSelect={() => setLibrary({ selectedId: t.id })}
                 />
               ))}
@@ -238,13 +304,17 @@ function Row({
   track,
   selected,
   match,
+  keyMode,
   onSelect,
 }: {
   track: Track
   selected: boolean
   match?: MixMatch
+  keyMode: KeyMode
   onSelect: () => void
 }) {
+  const key = keyLabel(track, keyMode)
+  const tone = keyColor(track.camelot)
   return (
     <tr
       draggable
@@ -255,47 +325,55 @@ function Row({
       onClick={onSelect}
       onDoubleClick={() => void ctl.loadTrackToDeck('A', track)}
       aria-selected={selected}
-      className={`h-11 cursor-grab border-b border-hairline/50 transition-colors active:cursor-grabbing ${
+      className={`h-9 cursor-grab border-b border-hairline/50 transition-colors active:cursor-grabbing ${
         selected ? 'bg-accent/15' : 'hover:bg-surface-2'
       }`}
     >
       <td
-        className={`relative max-w-0 truncate py-1.5 pl-3 pr-2 ${
+        className={`relative max-w-0 py-1.5 pl-3 pr-2 leading-tight ${
           match?.strong ? 'font-bold text-grid-text' : 'font-medium'
         }`}
       >
         {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
-        {match && (
-          <span
-            className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full align-middle"
-            style={{ background: DECK_COLOR[match.deck], opacity: match.strong ? 1 : 0.5 }}
-            title={
-              `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
-              (match.keyMatch === undefined
-                ? ''
-                : match.keyMatch
-                  ? ' · key compatible'
-                  : ' · key clashes')
-            }
-          />
-        )}
-        {track.title ?? track.name}
+        <span className="flex items-center gap-1.5">
+          {match && (
+            <span
+              className="h-1.5 w-1.5 shrink-0 rounded-full"
+              style={{ background: DECK_COLOR[match.deck], opacity: match.strong ? 1 : 0.5 }}
+              title={
+                `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
+                (match.keyMatch === undefined
+                  ? ''
+                  : match.keyMatch
+                    ? ' · key compatible'
+                    : ' · key clashes')
+              }
+            />
+          )}
+          <span className="truncate">{track.title ?? track.name}</span>
+        </span>
       </td>
-      <td className="max-w-0 truncate py-1.5 pr-2 text-grid-muted">{track.artist ?? '–'}</td>
-      <td className="py-1.5 pr-2 uppercase text-grid-dim">{track.kind}</td>
-      <td className="tnum py-1.5 pr-2 text-right text-grid-muted">
-        {track.bpm ? track.bpm.toFixed(0) : '–'}
+      <td className="max-w-0 truncate py-1.5 pr-2 text-grid-muted">{track.artist}</td>
+      <td className="py-1.5 pr-2 text-2xs uppercase text-grid-dim">{track.kind}</td>
+      {/* BPM is a primary mixing datum, not metadata — it reads at full brightness */}
+      <td className="tnum py-1.5 pr-2 text-right font-medium text-grid-text">
+        {track.bpm ? track.bpm.toFixed(0) : <span className="font-normal text-grid-dim">–</span>}
       </td>
       <td className="py-1.5 pr-2 text-right">
-        {track.key ? (
+        {key ? (
           <span
-            className="tnum rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
-            title={track.camelot ? `${track.key} · Camelot ${track.camelot}` : track.key}
+            className="tnum rounded-[var(--radius-xs)] px-1.5 py-0.5 font-semibold"
+            style={
+              tone
+                ? { color: tone, background: `color-mix(in oklab, ${tone}, transparent 88%)` }
+                : { color: 'var(--color-grid-muted)', background: 'var(--color-surface-2)' }
+            }
+            title={track.camelot && track.key ? `${track.key} · Camelot ${track.camelot}` : key}
           >
-            {track.key}
+            {key}
           </span>
         ) : (
-          <span className="text-grid-muted">–</span>
+          <span className="text-grid-dim">–</span>
         )}
       </td>
       <td className="tnum py-1.5 pr-2 text-right text-grid-muted">{fmtTime(track.durationSec)}</td>

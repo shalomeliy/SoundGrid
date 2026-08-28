@@ -37,12 +37,20 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  --text-2xs: 0.625rem; /* 10 */
+  /*
+   * Sized for the target machine, not for a spec sheet: a 14" 1920×1080 panel
+   * at 125% Windows scale is 126 CSS px per inch against a 96 px/inch
+   * reference, so everything lands ~24% physically smaller than its number
+   * suggests. At the old 10/11px these labels measured ~7.6/8.4px equivalent —
+   * too small to read at a glance mid-mix. One notch up costs no vertical
+   * space: the dense rows have fixed heights with room to spare.
+   */
+  --text-2xs: 0.6875rem; /* 11 */
   --text-2xs--line-height: 0.875rem;
-  --text-xs: 0.6875rem; /* 11 */
+  --text-xs: 0.75rem; /* 12 */
   --text-xs--line-height: 1rem;
-  --text-sm: 0.8125rem; /* 13 */
-  --text-sm--line-height: 1.15rem;
+  --text-sm: 0.875rem; /* 14 — the library row size; see the note above */
+  --text-sm--line-height: 1.25rem;
   --text-base: 0.9375rem; /* 15 */
   --text-lg: 1.125rem; /* 18 */
   --text-xl: 1.5rem; /* 24 */
