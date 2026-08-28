@@ -63,7 +63,7 @@ export function Library() {
   const list = ctl.filteredTracks()
 
   return (
-    <section className="panel flex min-h-0 flex-col">
+    <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-hairline p-2">
         <Button
           variant="toggle"
