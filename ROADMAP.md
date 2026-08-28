@@ -19,7 +19,8 @@
 | --- | --- | --- |
 | v0.1.0 | MVP — דקים, מיקסר, ספרייה, waveform, MIDI, פריסט FLX4 | ✅ הושלם |
 | v0.1.5 | **Design overhaul** — שפת עיצוב חדשה, יפה מסראטו/רקורדבוקס | 🔧 בעבודה — קוד הושלם, ממתין לבדיקה ויזואלית |
-| v0.1.6 | **Seams** — ports/interfaces לפני שהקוד גדל (audio, transport, clock, caps) | ⬜ ← הבא אחרי v0.1.5 |
+| v0.1.6 | **Seams** — ports/interfaces לפני שהקוד גדל (audio, transport, clock, caps) | ⬜ |
+| v0.1.7 | **Tag read** — קריאת BPM/key/duration/artist מתגיות הקבצים בזמן סריקה | ⬜ |
 | v0.2.0 | Jog wheels & scratching | ⬜ |
 | v0.3.0 | Beatgrid & phase‑sync | ⬜ |
 | v0.4.0 | ניתוח מתמשך + מטא‑דאטה קבועה | ⬜ |
@@ -83,6 +84,21 @@
 - `dependency-cruiser` ב‑CI: `core/**` אסור לייבא `react`/`react-dom`/`*.tsx`
 - **הושלם כאשר:** אין import של `AudioContext`/DOM/React ב‑`core/`; build + lint ירוקים;
   אפס שינוי התנהגות למשתמש.
+
+## v0.1.7 — Tag read
+**מטרה:** הנתונים כבר קיימים בקבצים (הספרייה מתויגת ע"י Serato — BPM ל‑410 טראקים,
+key ל‑397). לקרוא, לא לנתח — כך עמודות ה‑BPM/Key/Time מתמלאות מיד לכל הספרייה,
+בלי תלות במנוע הניתוח (v0.3/v0.4).
+- קריאת תגיות בזמן `scanLibrary` (בלי decode של האודיו):
+  - **ID3v2** (MP3): `TBPM`, `TKEY`/`TKE`, `TLEN`, `TPE1` (artist), `TIT2` (title), `TALB`
+  - **MP4/M4A** atoms: `tmpo`, `----:com.apple.iTunes:initialkey`, `©ART`, `©nam`
+  - **FLAC/OGG** Vorbis comments: `BPM`, `KEY`/`INITIALKEY`, `ARTIST`, `TITLE`
+  - fallback ל‑GEOB של Serato (`Serato Autotags` → BPM+gain; ראה `docs/reference/serato-formats.md`)
+- הוספת `key?`, `artist?`, `title?` ל‑`Track` (`types.ts`)
+- הצגה בעמודות הספרייה; `mixRecommendations` משתמש ב‑key כשקיים (Camelot ±1)
+- קריאה בלבד — לא כותבים חזרה לקבצים. ניתוח (v0.3/v0.4) גובר על ערך תגית אם קיים
+- **הושלם כאשר:** סריקת הספרייה של המשתמש ממלאת BPM ו‑Key ל‑>90% מהטראקים בלי
+  לטעון אף אחד לדק; אין האטה מורגשת בסריקה.
 
 ## v0.2.0 — Jog Wheels & Scratching
 **מטרה:** לגעת בג'וג של ה‑FLX4 ולנגן איתו — scratch, pitch‑bend, עצירה.

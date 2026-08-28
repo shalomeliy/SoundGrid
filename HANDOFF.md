@@ -7,47 +7,73 @@
 ## סטטוס נוכחי
 
 - **גרסה אחרונה שהושלמה:** `v0.1.0` (MVP)
-- **גרסה בעבודה:** `v0.1.5 — Design Overhaul` — כל הקוד נכתב, build + lint ירוקים.
-  **חסר:** בדיקה ויזואלית מול Serato/rekordbox (קריטריון "הושלם"), וסבב ליטוש
-  אחרי שרואים את זה רץ. ה‑Browser pane לא הצליח לרנדר בשיחה שבה נכתב — צריך
-  לפתוח אותו / להריץ `npm run dev` ידנית ולצלם.
-- **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** לא (3 commits מקומיים של v0.1.5)
-- **דגל CLEAR:** —
+- **גרסה בעבודה:** `v0.1.5 — Design Overhaul` — כל הקוד נכתב, build + lint ירוקים,
+  הפריסה מכוילת למסך של המשתמש (Latitude 7440, 1920×1080 @ 125% = viewport אפקטיבי
+  1536×864, לדף נשאר ~1536×710). לפי מדידות DOM: TopBar 53 + decks/mixer ~385 +
+  ספרייה ~272 — נכנס.
+  **חסר:** אישור ויזואלי סופי מהמשתמש + סבב ליטוש קטן. הבדיקה מול Serato/rekordbox
+  (קריטריון "הושלם") עדיין לא נעשתה.
+- **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** ❌ לא — **13 commits מקומיים**
+- **דגל CLEAR:** 🟢 שיחה חדשה נפתחת אחרי העדכון הזה
 
-### מה נעשה ב‑v0.1.5 (commits מקומיים)
-1. `design tokens, pro knob/fader/button, deck + platter + waveform` — `src/index.css`
-   שוכתב: surface tokens שכבתיים, Inter Variable (`@fontsource-variable/inter`),
-   type/radius/motion scale, elevation shadows, utilities `.tnum/.label/.panel`.
-   `controls.tsx` שוכתב לגמרי: `Button` (transport/toggle/ghost), `Knob` (SVG arc
-   + readout on hover + מקלדת), `Fader` (מסילה חרוצה, ticks, detent, cap עם אחיזה).
-   `Deck` — היררכיה שם→זמן→BPM, readouts ב‑tabular, disabled בלי טראק.
-   `Platter.tsx` חדש — טבעת מיקום + סמן מסתובב (בסיס לג'וג של v0.2).
-   `Waveform` — גוף מלא עם gradient, spine, beat grid, cue flags, playhead עם glow,
-   מצבי loading/empty. `PadGrid` — עומק + a11y.
-2. `mixer, topbar, library redesign + designed states` — `Mixer` מיושר לגריד הדקים,
-   EQ ב‑well שקוע. `TopBar` — status pills עם נקודה. `Library` — כותרת טבלה דביקה,
-   עמודות BPM/Time, בורר accent, שורות 44px, מצבי empty/scanning/unsupported אמיתיים.
-3. token contrast fix (grid-muted/dim ל‑WCAG AA).
-4. fix: רשימת הספרייה לא נגללה עם הרבה טראקים (הפאנל לא היה מוגבל בגובה) —
-   `h-full + overflow-hidden` על ה‑section.
-5. feat: גרירת טראק מהספרייה אל דק (DnD) + overlay "Drop to load deck X".
-6. docs: `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate
-   TLV, GEOB tags: Markers2/BeatGrid/Autotags/Overview) מ‑reverse engineering
-   של ההתקנה המקומית. בסיס ל‑import של v0.16 ולקליינט דסקטופ post‑1.0.
-   **המשתמש רוצה גרסאות דסקטופ ל‑Windows+Mac לקראת סוף הפרויקט** (ROADMAP v1.0/Tauri).
-7. docs: `docs/architecture/directions.md` — עקרון "core/ בלי פלטפורמה", רשימת
-   ה‑ports להגדרה ב‑v0.1.6, חוזה שכבת ה‑AI, בידול מול Serato/rekordbox, יעדי חומרה.
-   ROADMAP עודכן עם גרסאות `.5`: v0.1.6 (seams), v0.4.5 (next-song), v0.5.5 (NL
-   control), v0.8.5 (semantic search), v0.9.5 (coaching), v0.11.5 (plugin API),
-   v0.13.5 (live co-pilot).
-8. feat: `recommend.ts` — `mixRecommendations()` מדגיש בספרייה טראקים תואמי‑BPM
-   לדק המנגן (bold + נקודה בצבע הדק, טוגל "N mixable"). `loadTrackToDeck` כותב
-   bpm/duration חזרה ל‑library entry. גרסה בסיסית של v0.4.5.
+### מה נעשה ב‑v0.1.5 (13 commits מקומיים, ראה `git log`)
+1. **design tokens + Inter** — `index.css` שוכתב: surface tokens שכבתיים,
+   `@fontsource-variable/inter`, type/radius/motion scale, elevation shadows,
+   utilities `.tnum/.label/.panel`, `prefers-reduced-motion`.
+2. **`controls.tsx` שוכתב** — `Button` (transport/toggle/ghost, idle→armed→active),
+   `Knob` (SVG arc + readout on‑hover + מקלדת), `Fader` (מסילה חרוצה, ticks, detent, cap).
+3. **`Deck`** — היררכיה שם→זמן→BPM, readouts tabular, אזהרת 30ש' אחרונות, disabled בלי טראק.
+4. **`Platter.tsx`** חדש — טבעת מיקום + סמן מסתובב (בסיס לג'וג v0.2), `size` prop.
+5. **`Waveform`** — גוף מלא gradient, spine, beat grid, cue flags, playhead glow,
+   loading/empty. **הקנבס `position:absolute`** כדי שהגודל האינטרינזי שלו לא יזין
+   feedback loop שמנפח את גובה הדק (באג שתוקן — אל תחזיר ל‑`block`).
+6. **`Mixer`** — EQ+Filter ב‑well **אופקי**, master/cue knobs בשורה, crossfader נעוץ
+   בתחתית (`mt-auto`). קומפקטי (~360px) בכוונה, אחרת הספרייה נחנקת ב‑1536×710.
+7. **`TopBar`** — status pills עם נקודת חיווי. **`Library`** — כותרת טבלה דביקה,
+   עמודות BPM/Time, בורר accent, שורות 44px, מצבי empty/scanning/unsupported/no‑match.
+8. token contrast → WCAG AA.
+9. **fix גלילת ספרייה** — `h-full + overflow-hidden` על ה‑section.
+10. **feat DnD** — גרירת טראק מהספרייה לדק + overlay "Drop to load deck X".
+11. **feat `recommend.ts`** — `mixRecommendations()` מדגיש טראקים תואמי‑BPM לדק המנגן
+    (bold + נקודה בצבע הדק, טוגל "N mixable"). `loadTrackToDeck` כותב bpm/duration
+    חזרה ל‑library entry. גרסה בסיסית של v0.4.5. subscription צר עם `useShallow`.
+12. **fix פריסה אנכית** — `App`: main `shrink-0` (גובה טבעי), library `flex-1 min-h`.
+    `Deck` `min-h-0`, waveform `flex-1`, ResizeObserver. Platter 54, tempo fader 92.
+13. **docs** — ראה למטה.
 
-### לשיחה הבאה
-- לפתוח Browser pane / `npm run dev`, לצלם, להשוות מול Serato/rekordbox.
-- לכוונן: זום/צבע ה‑waveform, גודל ה‑Platter, ריווח פאנלים, גובה ברירת מחדל של Library.
-- אם תקין: לסמן v0.1.5 ✅ ב‑ROADMAP, `git push`.
+### לשיחה הבאה — לסיים v0.1.5
+1. **לרנדר ולצלם** — Browser pane של Claude לא הצליח לצלם בשיחות האלו (המשתמש
+   מסתכל ב‑Chrome האמיתי שלו). דרך שעבדה: `mcp__Claude_Browser__javascript_tool`
+   על tabId `seed` למדידת גדלים ב‑DOM.
+2. **ליטוש** לפי מה שהמשתמש יגיד: זום/צבע waveform, גודל Platter, ריווח, גובה waveform
+   (כרגע ברצפה של `min-h-[96px]`).
+3. **בדיקה מול Serato/rekordbox** — צילום מסך זה‑לצד‑זה (קריטריון "הושלם" של v0.1.5).
+4. אם תקין: `ui-ux-review` + `drop-generic-design` סבב "אחרי", לסמן v0.1.5 ✅, **`git push`**.
+
+### v0.1.7 — אושר ע"י המשתמש (2026-08-28)
+המשתמש אישר להוסיף `v0.1.7 — Tag read`: קריאת BPM/key/duration/artist מתגיות הקבצים
+(ID3 `TBPM`/`TKEY`/`TLEN`/`TPE1`, MP4 atoms, Vorbis) בזמן `scanLibrary`, בלי decode.
+הספרייה של המשתמש כבר מתויגת ע"י Serato (BPM ל‑410, key ל‑397). פרטים ב‑`ROADMAP.md#v017`.
+צריך להוסיף `key?/artist?/title?` ל‑`Track`.
+
+### docs שנוספו ב‑v0.1.5
+- `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate TLV,
+  GEOB: Markers2/BeatGrid/Autotags/Overview) מ‑reverse engineering של ההתקנה המקומית
+  (`C:\Users\Shalom\Music\_Serato_`). בסיס ל‑v0.1.7, v0.16, וקליינט דסקטופ.
+- `docs/architecture/directions.md` — עקרון "`core/` בלי פלטפורמה", רשימת ה‑ports
+  ל‑v0.1.6, חוזה שכבת AI (אופציונלי/model‑agnostic/דרך `controls.ts`), בידול מול
+  Serato/rekordbox, יעדי חומרה. **המשתמש רוצה גרסאות דסקטופ Windows+Mac לקראת סוף
+  הפרויקט** (Tauri, v1.0).
+- ROADMAP קיבל גרסאות `.5`/`.6`/`.7`: v0.1.6 seams, v0.1.7 tag‑read, v0.4.5 next‑song,
+  v0.5.5 NL control, v0.8.5 semantic search, v0.9.5 coaching, v0.11.5 plugin API,
+  v0.13.5 live co‑pilot.
+
+### סביבת המשתמש
+- לפטופ **Dell Latitude 7440**, מסך 1920×1080 @ **125% scale** → viewport CSS 1536×864,
+  ואחרי סרגלי דפדפן ~**1536×710** לדף. **לתכנן פריסה לגובה ~710px.**
+- מסתכל ב‑Chrome האמיתי (לא ב‑Browser pane של Claude). `npm run dev` → localhost:5173.
+- הספרייה של המשתמש: `C:\Users\Shalom\Music\Tracks` (תת‑תיקיות HipHop/House/Techno/
+  Trance/Mizrahi/Final). folderName שנשמר = "Tracks".
 
 ### הקשר ל‑v0.1.5 (מהמשתמש)
 העיצוב הנוכחי "מגושם מדי". הצבעים יפים ונשארים (טורקיז deck A, כתום deck B, סגול accent).
@@ -55,12 +81,9 @@
 להשתמש בסקילים `ui-ux-review` ו‑`drop-generic-design`. פרטים מלאים ב‑`ROADMAP.md#v015`.
 
 ### codegraph
-המשתמש התקין את הכלי `@colbymchenry/codegraph` גלובלית (`codegraph` ב‑PATH), והרצנו
-`codegraph init` בפרויקט (`.codegraph/codegraph.db` נבנה, 278 nodes). **עדיין לא רשום
-כ‑MCP server ב‑Claude Code.** המשתמש צריך להריץ `codegraph install -t claude -l global -y`
-ואז לפתוח שיחה חדשה כדי שכלי ה‑MCP (`codegraph_explore`, `codegraph_node` וכו') ייטענו.
-לאחר מכן: להשתמש בהם לניווט בקוד במקום קריאה גורפת של קבצים. להריץ `codegraph sync` אחרי
-שינויים גדולים.
+ה‑MCP של codegraph **פעיל** — `codegraph_explore` זמין וגם הזרקת הקשר אוטומטית ב‑prompt.
+להשתמש בו לניווט בקוד במקום קריאה גורפת. להריץ `codegraph sync` אחרי שינויים גדולים
+(v0.1.5 הוסיף `recommend.ts`, `Platter.tsx` — שווה sync בתחילת השיחה הבאה).
 
 ---
 
@@ -107,7 +130,9 @@ src/
     mapping.ts          טיפוסים + parseMessage + relativeDelta
     manager.ts          ★ MidiManager singleton — Web MIDI, dispatch לפי mapping, Learn
     mappings/flx4.ts     פריסט DDJ-FLX4 (note/CC — best-effort, לתקן דרך Learn)
-  components/           TopBar, Deck, Mixer, Library, Waveform, PadGrid, controls (Knob/Fader)
+  components/           TopBar, Deck, Mixer, Library, Waveform, Platter, PadGrid,
+                        controls (Button/Knob/Fader)
+  recommend.ts          mixRecommendations() — טראקים תואמי‑BPM לדק המנגן (בסיס v0.4.5)
 ```
 
 **כללי זהב:**
@@ -120,18 +145,23 @@ src/
 
 ## החלטות פתוחות / להחליט מול המשתמש
 
-- key‑lock (master tempo): phase‑vocoder ב‑`AudioWorklet` — לבנות עצמאית או WASM? (רלוונטי v0.9)
-- ייבוא תגיות Serato/rekordbox — פורמט קדימות? (v0.16)
+- `AIProvider` — מודל מקומי (WebGPU/WASM) מול BYO‑key מול self‑hosted? איזה מודל מקומי? (v0.5.5)
+- key‑lock (master tempo): phase‑vocoder ב‑`AudioWorklet` — לבנות עצמאית או WASM? (v0.9)
+- ייבוא תגיות Serato/rekordbox — פורמט קדימות? (v0.16). לתגיות פשוטות (BPM/key) — v0.1.7.
 - Ableton Link — WASM port מול שרת גשר מקומי (v0.19)
 - stems — מודל on-device: איזה? רישוי? (v0.20)
 
 ## חובות טכניים ידועים
 
-- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי.
+- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי. v0.1.7
+  יקרא BPM מתגיות במקום לנתח כשאפשר.
+- ל‑`Track` אין `key` — נוסף ב‑v0.1.7.
+- הפריסה של v0.1.5 מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`) — אם
+  המשתמש על מסך גדול יותר יש מקום להגדיל, אבל אין כרגע לוגיקת breakpoint.
 - אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
 - `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
-- Waveform מרונדר ב‑canvas רגיל ב‑main thread (v0.12).
+- Waveform מרונדר ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 
 ---
 
@@ -143,3 +173,4 @@ src/
 | 2026-08-28 | — | ROADMAP.md (20 גרסאות), HANDOFF.md, נוהל שיחה | — |
 | 2026-08-28 | — | codegraph init בפרויקט; הוספת v0.1.5 (design overhaul) לרודמפ | 🟢 שיחה חדשה לפני v0.1.5 |
 | 2026-08-28 | v0.1.5 | שכתוב שפת עיצוב: tokens+Inter, Button/Knob/Fader, Deck+Platter, Waveform, Mixer, TopBar, Library + מצבים. build+lint ירוק. ממתין לבדיקה ויזואלית | אחרי ליטוש |
+| 2026-08-28 | v0.1.5 | +DnD, +recommend.ts (mix highlight), תיקון גלילה, תיקון feedback loop של הקנבס, כיול פריסה ל‑1536×710. docs: serato-formats + architecture/directions. ROADMAP: גרסאות .5/.6/.7. 13 commits מקומיים, לא נדחף | 🟢 שיחה חדשה — לסיים ליטוש + push |
