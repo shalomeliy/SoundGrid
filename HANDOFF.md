@@ -7,9 +7,22 @@
 ## סטטוס נוכחי
 
 - **גרסה אחרונה שהושלמה:** `v0.1.0` (MVP)
-- **גרסה בעבודה:** אין — הבאה בתור: `v0.2.0 — Jog Wheels & Scratching`
+- **גרסה בעבודה:** אין — הבאה בתור: `v0.1.5 — Design Overhaul`
 - **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** כן
-- **דגל CLEAR:** 🟢 מומלץ `/clear` לפני תחילת `v0.2.0`
+- **דגל CLEAR:** 🟢 שיחה חדשה לפני `v0.1.5` (גם כדי לטעון את codegraph MCP)
+
+### הקשר ל‑v0.1.5 (מהמשתמש)
+העיצוב הנוכחי "מגושם מדי". הצבעים יפים ונשארים (טורקיז deck A, כתום deck B, סגול accent).
+היעד: **יפה יותר מ‑Serato ומ‑rekordbox**. הבעיה במבנה/ריווח/טיפוגרפיה/פקדים, לא בפלטה.
+להשתמש בסקילים `ui-ux-review` ו‑`drop-generic-design`. פרטים מלאים ב‑`ROADMAP.md#v015`.
+
+### codegraph
+המשתמש התקין את הכלי `@colbymchenry/codegraph` גלובלית (`codegraph` ב‑PATH), והרצנו
+`codegraph init` בפרויקט (`.codegraph/codegraph.db` נבנה, 278 nodes). **עדיין לא רשום
+כ‑MCP server ב‑Claude Code.** המשתמש צריך להריץ `codegraph install -t claude -l global -y`
+ואז לפתוח שיחה חדשה כדי שכלי ה‑MCP (`codegraph_explore`, `codegraph_node` וכו') ייטענו.
+לאחר מכן: להשתמש בהם לניווט בקוד במקום קריאה גורפת של קבצים. להריץ `codegraph sync` אחרי
+שינויים גדולים.
 
 ---
 
@@ -89,4 +102,5 @@ src/
 | תאריך | גרסה | מה נעשה | CLEAR אחרי? |
 | --- | --- | --- | --- |
 | 2026-08-27 | v0.1.0 | scaffold, מנוע אודיו, decks, mixer, waveform, library, MIDI + FLX4, ריפו ציבורי בגיטהאב | — |
-| 2026-08-28 | — | ROADMAP.md (20 גרסאות), HANDOFF.md, נוהל שיחה | 🟢 כן, לפני v0.2.0 |
+| 2026-08-28 | — | ROADMAP.md (20 גרסאות), HANDOFF.md, נוהל שיחה | — |
+| 2026-08-28 | — | codegraph init בפרויקט; הוספת v0.1.5 (design overhaul) לרודמפ | 🟢 שיחה חדשה לפני v0.1.5 |

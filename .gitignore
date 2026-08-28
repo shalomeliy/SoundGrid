@@ -22,3 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# CodeGraph (index db is git-ignored inside .codegraph/)

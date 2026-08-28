@@ -14,6 +14,7 @@
 | גרסה | נושא | סטטוס |
 | --- | --- | --- |
 | v0.1.0 | MVP — דקים, מיקסר, ספרייה, waveform, MIDI, פריסט FLX4 | ✅ הושלם |
+| v0.1.5 | **Design overhaul** — שפת עיצוב חדשה, יפה מסראטו/רקורדבוקס | ⬜ ← הבא |
 | v0.2.0 | Jog wheels & scratching | ⬜ |
 | v0.3.0 | Beatgrid & phase‑sync | ⬜ |
 | v0.4.0 | ניתוח מתמשך + מטא‑דאטה קבועה | ⬜ |
@@ -36,6 +37,25 @@
 | v1.0.0 | יציבות, PWA, onboarding, טסטים, אריזה | ⬜ |
 
 ---
+
+## v0.1.5 — Design Overhaul
+**מטרה:** להחליף את ה‑UI ה"מגושם" בשפת עיצוב מוקפדת שנראית טוב יותר מ‑Serato ומ‑rekordbox.
+הצבעים הנוכחיים (טורקיז/כתום לדקים, סגול accent) נשארים — הבעיה היא במבנה, בריווח, בטיפוגרפיה ובפקדים.
+- **Design system:** קובץ tokens אחד (spacing scale, radii, elevation, type scale, motion),
+  מעבר מ‑Tailwind ad-hoc לקומפוננטות עם וריאנטים עקביים
+- **פקדים מקצועיים:** knobs עם arc/indicator אמיתי + ערך on-hover, faders עם פס אחיזה
+  ו‑cap ריאליסטי, כפתורי transport עם משוב מצב ברור (idle/armed/active), טבעות סביב הג'וג
+- **פריסה:** גריד מדויק, יישור אנכי של המיקסר לדקים, hierarchy ברור (שם טראק → זמן → BPM),
+  צמצום borders/מסגרות כפולות, שימוש ב‑elevation במקום קווים
+- **טיפוגרפיה:** פונט אחד איכותי (למשל Inter/Geist למספרים — tabular-nums), גדלים עקביים,
+  labels בצורה אחידה (uppercase tracking בשליטה)
+- **Waveform:** שדרוג צבע/עובי/רקע כך שייראה premium (מקדימה ל‑v0.12 המלא)
+- **מצבים:** loading, empty, error — מעוצבים ולא טקסט חשוף
+- **מיקרו‑אנימציות:** transitions על מצב כפתורים, פידבק לחיצה, ללא ג'אנק (60fps)
+- **מצב כהה בלבד** (כמו עכשיו) אבל עם עומק — לא שטוח לגמרי
+- שימוש בסקילים `ui-ux-review` + `drop-generic-design` לפני ואחרי
+- **הושלם כאשר:** צילום מסך של SoundGrid ליד Serato/rekordbox — SoundGrid נראה נקי ומודרני יותר,
+  וכל פקד קריא במבט חטוף. build + lint ירוקים, אין regression בפונקציונליות.
 
 ## v0.2.0 — Jog Wheels & Scratching
 **מטרה:** לגעת בג'וג של ה‑FLX4 ולנגן איתו — scratch, pitch‑bend, עצירה.
