@@ -1,5 +1,6 @@
 import { get, set } from 'idb-keyval'
 import type { Track } from '../types'
+import { readTags } from './tags'
 
 const HANDLE_KEY = 'soundgrid:libraryDir'
 
@@ -86,4 +87,70 @@ export async function scanLibrary(
 export async function readTrackData(track: Track): Promise<ArrayBuffer> {
   const file = await track.handle.getFile()
   return await file.arrayBuffer()
+}
+
+export interface TagProgress {
+  /** tracks whose tags have been read so far */
+  done: number
+  total: number
+  /** how many of them actually carried a BPM */
+  tagged: number
+}
+
+/**
+ * Second scan pass: read BPM/key/artist from the file headers (v0.1.7).
+ *
+ * Runs after `scanLibrary` so the list appears immediately and fills in — the
+ * reads are byte ranges, not decodes, but a few hundred files still take a
+ * moment. Results arrive in batches so the table isn't rebuilt per file.
+ * Existing values win: anything the analysis engine wrote stays.
+ */
+export async function readLibraryTags(
+  tracks: Track[],
+  onBatch: (patch: Map<string, Partial<Track>>, progress: TagProgress) => void,
+  opts: { concurrency?: number; signal?: { cancelled: boolean } } = {},
+): Promise<void> {
+  const concurrency = opts.concurrency ?? 8
+  const total = tracks.length
+  let next = 0
+  let done = 0
+  let tagged = 0
+  let batch = new Map<string, Partial<Track>>()
+  let lastFlush = performance.now()
+
+  const flush = () => {
+    if (batch.size === 0) return
+    onBatch(batch, { done, total, tagged })
+    batch = new Map()
+    lastFlush = performance.now()
+  }
+
+  async function worker() {
+    while (next < total) {
+      if (opts.signal?.cancelled) return
+      const track = tracks[next++]
+      try {
+        const file = await track.handle.getFile()
+        const tags = await readTags(file)
+        if (tags.bpm != null) tagged++
+        const patch: Partial<Track> = {}
+        if (tags.bpm != null) patch.bpm = tags.bpm
+        if (tags.durationSec != null) patch.durationSec = tags.durationSec
+        if (tags.key) patch.key = tags.key
+        if (tags.camelot) patch.camelot = tags.camelot
+        if (tags.artist) patch.artist = tags.artist
+        if (tags.title) patch.title = tags.title
+        if (tags.album) patch.album = tags.album
+        if (Object.keys(patch).length > 0) batch.set(track.id, patch)
+      } catch {
+        // permission revoked or file vanished mid-scan — skip it
+      }
+      done++
+      if (batch.size >= 50 || performance.now() - lastFlush > 400) flush()
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker))
+  flush()
+  if (!opts.signal?.cancelled) onBatch(new Map(), { done, total, tagged })
 }

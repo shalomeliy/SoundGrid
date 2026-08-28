@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as ctl from '../controls'
 import {
   ensureReadPermission,
   fileSystemAccessSupported,
   pickLibraryFolder,
+  readLibraryTags,
   restoreLibraryFolder,
   scanLibrary,
 } from '../library/library'
@@ -26,27 +27,31 @@ export function Library() {
   const library = useStore((s) => s.library)
   const setLibrary = useStore((s) => s.setLibrary)
   const [mixOnly, setMixOnly] = useState(false)
+  // lets a new scan abandon the tag pass of the one it replaced
+  const tagScan = useRef({ cancelled: false })
 
   // Narrow subscription to primitives only: the playhead moves every frame, but
   // recommendations depend just on play state / bpm / tempo / loaded track, so
   // the whole library list doesn't re-render 60×/s. useShallow compares each
   // element, so this must stay a flat array of primitives.
-  const [aP, aB, aT, aId, bP, bB, bT, bId] = useStore(
+  const [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK] = useStore(
     useShallow((s) => [
       s.decks.A.playing, s.decks.A.bpm, s.decks.A.tempo, s.decks.A.track?.id ?? null,
+      s.decks.A.track?.camelot ?? null,
       s.decks.B.playing, s.decks.B.bpm, s.decks.B.tempo, s.decks.B.track?.id ?? null,
+      s.decks.B.track?.camelot ?? null,
     ]),
   )
   const recs = useMemo(
     () =>
       mixRecommendations(
         [
-          { id: 'A', playing: aP, bpm: aB, tempo: aT, trackId: aId },
-          { id: 'B', playing: bP, bpm: bB, tempo: bT, trackId: bId },
+          { id: 'A', playing: aP, bpm: aB, tempo: aT, trackId: aId, camelot: aK },
+          { id: 'B', playing: bP, bpm: bB, tempo: bT, trackId: bId, camelot: bK },
         ],
         library.tracks,
       ),
-    [aP, aB, aT, aId, bP, bB, bT, bId, library.tracks],
+    [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks],
   )
 
   useEffect(() => {
@@ -75,6 +80,10 @@ export function Library() {
   }
 
   async function runScan(handle: FileSystemDirectoryHandle, name: string) {
+    tagScan.current.cancelled = true // a previous tag pass must not write into this list
+    const scan = { cancelled: false }
+    tagScan.current = scan
+
     setLibrary({ scanning: true, folderName: name, scanMsg: 'Scanning…' })
     const tracks = await scanLibrary(handle, (p) =>
       setLibrary({ scanMsg: `${p.found} tracks · ${p.currentDir}` }),
@@ -82,9 +91,34 @@ export function Library() {
     setLibrary({
       tracks,
       scanning: false,
-      scanMsg: `${tracks.length} tracks`,
+      scanMsg: `${tracks.length} tracks · reading tags…`,
       selectedId: tracks[0]?.id ?? null,
     })
+
+    // second pass: BPM/key/artist straight out of the file headers (v0.1.7)
+    await readLibraryTags(
+      tracks,
+      (patch, progress) => {
+        if (scan.cancelled) return
+        const store = useStore.getState()
+        if (patch.size > 0) {
+          store.setLibrary({
+            tracks: store.library.tracks.map((t) => {
+              const p = patch.get(t.id)
+              // never clobber values analysis already produced
+              return p ? { ...p, ...t, bpm: t.bpm ?? p.bpm } : t
+            }),
+          })
+        }
+        store.setLibrary({
+          scanMsg:
+            progress.done < progress.total
+              ? `${progress.total} tracks · tags ${progress.done}/${progress.total}`
+              : `${progress.total} tracks · ${progress.tagged} with BPM`,
+        })
+      },
+      { signal: scan },
+    )
   }
 
   const list = mixOnly
@@ -169,9 +203,11 @@ export function Library() {
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-surface-1">
               <tr className="border-b border-hairline">
-                <Th className="pl-3 text-left">Title</Th>
+                <Th className="w-[42%] pl-3 text-left">Title</Th>
+                <Th className="w-[24%] text-left">Artist</Th>
                 <Th className="text-left">Type</Th>
                 <Th className="text-right tnum">BPM</Th>
+                <Th className="text-right">Key</Th>
                 <Th className="text-right tnum">Time</Th>
                 <Th className="pr-3 text-right">Load</Th>
               </tr>
@@ -233,14 +269,34 @@ function Row({
           <span
             className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full align-middle"
             style={{ background: DECK_COLOR[match.deck], opacity: match.strong ? 1 : 0.5 }}
-            title={`Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}`}
+            title={
+              `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
+              (match.keyMatch === undefined
+                ? ''
+                : match.keyMatch
+                  ? ' · key compatible'
+                  : ' · key clashes')
+            }
           />
         )}
-        {track.name}
+        {track.title ?? track.name}
       </td>
+      <td className="max-w-0 truncate py-1.5 pr-2 text-grid-muted">{track.artist ?? '–'}</td>
       <td className="py-1.5 pr-2 uppercase text-grid-dim">{track.kind}</td>
       <td className="tnum py-1.5 pr-2 text-right text-grid-muted">
         {track.bpm ? track.bpm.toFixed(0) : '–'}
+      </td>
+      <td className="py-1.5 pr-2 text-right">
+        {track.key ? (
+          <span
+            className="tnum rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
+            title={track.camelot ? `${track.key} · Camelot ${track.camelot}` : track.key}
+          >
+            {track.key}
+          </span>
+        ) : (
+          <span className="text-grid-muted">–</span>
+        )}
       </td>
       <td className="tnum py-1.5 pr-2 text-right text-grid-muted">{fmtTime(track.durationSec)}</td>
       <td className="whitespace-nowrap py-1.5 pl-2 pr-3 text-right">

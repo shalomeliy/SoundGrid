@@ -10,6 +10,14 @@ export interface Track {
   handle: FileSystemFileHandle
   bpm?: number
   durationSec?: number
+  /** from the file's tags (v0.1.7) — analysis overrides these when it runs */
+  artist?: string
+  title?: string
+  album?: string
+  /** display spelling of the musical key, e.g. `Am` */
+  key?: string
+  /** Camelot code for the key, e.g. `8A` — what harmonic matching compares */
+  camelot?: string
 }
 
 export interface HotCue {

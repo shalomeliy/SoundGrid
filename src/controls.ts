@@ -268,5 +268,10 @@ export function filteredTracks(): Track[] {
   const { library } = useStore.getState()
   const q = library.query.trim().toLowerCase()
   if (!q) return library.tracks
-  return library.tracks.filter((t) => t.path.toLowerCase().includes(q))
+  return library.tracks.filter(
+    (t) =>
+      t.path.toLowerCase().includes(q) ||
+      t.artist?.toLowerCase().includes(q) ||
+      t.title?.toLowerCase().includes(q),
+  )
 }
