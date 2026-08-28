@@ -1,16 +1,127 @@
-import { useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
+
+/* ------------------------------------------------------------------ *
+ * Button — transport / toggle / ghost with explicit idle→active state *
+ * ------------------------------------------------------------------ */
+
+type ButtonVariant = 'transport' | 'toggle' | 'ghost'
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant
+  /** toggle/transport: drives fill + a11y pressed state */
+  active?: boolean
+  /** cocked-but-not-firing look (e.g. CUE held) */
+  armed?: boolean
+  /** accent colour for the active fill */
+  tone?: string
+  size?: 'sm' | 'md'
+}
+
+export function Button({
+  variant = 'ghost',
+  active = false,
+  armed = false,
+  tone = 'var(--color-accent)',
+  size = 'md',
+  className = '',
+  style,
+  children,
+  ...rest
+}: ButtonProps) {
+  const base =
+    'relative inline-flex select-none items-center justify-center rounded-[var(--radius-sm)] ' +
+    'font-semibold uppercase tracking-wide transition-[background,box-shadow,transform,color] ' +
+    'duration-150 ease-[var(--ease-out)] active:translate-y-px ' +
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] ' +
+    'disabled:cursor-not-allowed disabled:opacity-40'
+  const sizing = size === 'sm' ? 'px-2 py-1 text-2xs' : 'px-3 py-2 text-xs'
+
+  let look = ''
+  if (variant === 'transport') {
+    look = active
+      ? 'text-black shadow-[var(--shadow-control)]'
+      : 'text-grid-text bg-surface-3 shadow-[var(--shadow-control)] hover:bg-[color-mix(in_srgb,var(--color-surface-3),white_6%)]'
+  } else if (variant === 'toggle') {
+    look = active
+      ? 'text-black shadow-[var(--shadow-control)]'
+      : armed
+        ? 'text-grid-text bg-surface-3 ring-1 ring-inset'
+        : 'text-grid-muted bg-surface-2 hover:text-grid-text hover:bg-surface-3'
+  } else {
+    look =
+      'text-grid-text bg-surface-2 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset] ' +
+      'hover:bg-surface-3'
+  }
+
+  const activeStyle: React.CSSProperties =
+    (variant === 'transport' || variant === 'toggle') && active
+      ? { background: tone, boxShadow: `0 0 0 1px ${tone}, 0 0 16px -4px ${tone}` }
+      : armed && variant === 'toggle'
+        ? { boxShadow: `inset 0 0 0 1px ${tone}` }
+        : {}
+
+  return (
+    <button
+      {...rest}
+      aria-pressed={variant === 'toggle' ? active : undefined}
+      className={`${base} ${sizing} ${look} ${className}`}
+      style={{ ...activeStyle, ...style }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * useDrag — shared vertical/scalar pointer drag with capture          *
+ * ------------------------------------------------------------------ */
+
+function useDrag(value: number, onChange: (v: number) => void, apply: (dx: number, dy: number, start: number) => number) {
+  const start = useRef({ x: 0, y: 0, v: 0 })
+  const [dragging, setDragging] = useState(false)
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+      start.current = { x: e.clientX, y: e.clientY, v: value }
+      setDragging(true)
+    },
+    [value],
+  )
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!(e.buttons & 1)) return
+      onChange(apply(e.clientX - start.current.x, e.clientY - start.current.y, start.current.v))
+    },
+    [apply, onChange],
+  )
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+    setDragging(false)
+  }, [])
+
+  return { dragging, onPointerDown, onPointerMove, onPointerUp }
+}
+
+/* ------------------------------------------------------------------ *
+ * Knob — SVG arc, value indicator, hover/drag readout                 *
+ * ------------------------------------------------------------------ */
 
 interface KnobProps {
   label: string
-  value: number // -1..1 or 0..1
+  value: number
   min?: number
   max?: number
   onChange: (v: number) => void
   onReset?: () => void
   size?: number
+  tone?: string
+  format?: (v: number) => string
 }
 
-/** Vertical-drag rotary knob. Double-click resets. */
+const ARC = 270
+const START = -135
+
 export function Knob({
   label,
   value,
@@ -18,59 +129,115 @@ export function Knob({
   max = 1,
   onChange,
   onReset,
-  size = 44,
+  size = 42,
+  tone = 'var(--color-grid-text)',
+  format,
 }: KnobProps) {
-  const startY = useRef(0)
-  const startVal = useRef(0)
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    startY.current = e.clientY
-    startVal.current = value
-  }
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!(e.buttons & 1)) return
-    const dy = startY.current - e.clientY
-    const range = max - min
-    const next = clamp(startVal.current + (dy / 120) * range, min, max)
-    onChange(next)
-  }
-
+  const [hover, setHover] = useState(false)
+  const bipolar = min < 0 && max > 0
   const norm = (value - min) / (max - min)
-  const angle = -135 + norm * 270
+  const clamp = (v: number) => (v < min ? min : v > max ? max : v)
+
+  const drag = useDrag(value, onChange, (_dx, dy, sv) =>
+    clamp(sv - (dy / 130) * (max - min)),
+  )
+
+  const angle = START + norm * ARC
+  const r = size / 2
+  const cx = r
+  const cy = r
+  const rr = r - 3
+  const polar = (deg: number) => {
+    const rad = ((deg - 90) * Math.PI) / 180
+    return [cx + rr * Math.cos(rad), cy + rr * Math.sin(rad)]
+  }
+  const arcPath = (a0: number, a1: number) => {
+    const [x0, y0] = polar(a0)
+    const [x1, y1] = polar(a1)
+    const large = Math.abs(a1 - a0) > 180 ? 1 : 0
+    const sweep = a1 > a0 ? 1 : 0
+    return `M ${x0} ${y0} A ${rr} ${rr} 0 ${large} ${sweep} ${x1} ${y1}`
+  }
+  const valueFrom = bipolar ? START + ARC / 2 : START
+  const readout = format ? format(value) : bipolar ? value.toFixed(2) : Math.round(norm * 100) + '%'
 
   return (
-    <div className="flex flex-col items-center gap-1">
-      <div
+    <div
+      className="relative flex flex-col items-center gap-1"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      {(hover || drag.dragging) && (
+        <span className="tnum pointer-events-none absolute -top-4 rounded-[var(--radius-xs)] bg-surface-3 px-1 py-px text-2xs text-grid-text shadow-[var(--shadow-pop)]">
+          {readout}
+        </span>
+      )}
+      <svg
         role="slider"
         aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
         aria-valuenow={Math.round(value * 100) / 100}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onDoubleClick={() => (onReset ? onReset() : onChange((min + max) / 2))}
-        className="relative cursor-ns-resize rounded-full border border-grid-border bg-grid-panel-2"
-        style={{ width: size, height: size }}
+        tabIndex={0}
+        width={size}
+        height={size}
+        onPointerDown={drag.onPointerDown}
+        onPointerMove={drag.onPointerMove}
+        onPointerUp={drag.onPointerUp}
+        onDoubleClick={() => (onReset ? onReset() : onChange(bipolar ? 0 : min))}
+        onKeyDown={(e) => {
+          const step = (max - min) / 40
+          if (e.key === 'ArrowUp' || e.key === 'ArrowRight') onChange(clamp(value + step))
+          else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') onChange(clamp(value - step))
+        }}
+        className="cursor-ns-resize touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.5))' }}
       >
-        <div
-          className="absolute left-1/2 top-1/2 h-1/2 w-0.5 -translate-x-1/2 origin-bottom bg-grid-text"
-          style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
+        <circle cx={cx} cy={cy} r={r - 1} fill="var(--color-surface-3)" stroke="var(--color-hairline-strong)" />
+        <circle cx={cx} cy={cy} r={r - 5} fill="var(--color-surface-2)" />
+        <path d={arcPath(START, START + ARC)} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth={2.5} strokeLinecap="round" />
+        {Math.abs(norm - (bipolar ? 0.5 : 0)) > 0.001 && (
+          <path
+            d={arcPath(valueFrom, angle)}
+            fill="none"
+            stroke={tone}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+          />
+        )}
+        <line
+          x1={cx}
+          y1={cy}
+          x2={polar(angle)[0]}
+          y2={polar(angle)[1]}
+          stroke={tone}
+          strokeWidth={2}
+          strokeLinecap="round"
         />
-      </div>
-      <span className="text-[10px] uppercase tracking-wide text-grid-muted">{label}</span>
+        <circle cx={cx} cy={cy} r={2} fill={tone} />
+      </svg>
+      <span className="label">{label}</span>
     </div>
   )
 }
+
+/* ------------------------------------------------------------------ *
+ * Fader — grooved track, tick marks, centre detent, grip cap          *
+ * ------------------------------------------------------------------ */
 
 interface FaderProps {
   label?: string
   value: number
   min?: number
   max?: number
-  step?: number
   vertical?: boolean
   onChange: (v: number) => void
   color?: string
+  /** track length in px */
   length?: number
+  /** draw a centre notch + snap toward it */
+  detent?: boolean
+  format?: (v: number) => string
 }
 
 export function Fader({
@@ -78,36 +245,152 @@ export function Fader({
   value,
   min = 0,
   max = 1,
-  step = 0.001,
   vertical = true,
   onChange,
-  color = '#e7e9ee',
-  length = 120,
+  color = 'var(--color-grid-text)',
+  length = 130,
+  detent = false,
+  format,
 }: FaderProps) {
+  const [hover, setHover] = useState(false)
+  const range = max - min
+  const clamp = (v: number) => (v < min ? min : v > max ? max : v)
+  const snap = (v: number) => {
+    if (!detent) return v
+    const mid = (min + max) / 2
+    return Math.abs(v - mid) < range * 0.03 ? mid : v
+  }
+
+  const drag = useDrag(value, onChange, (dx, dy, sv) => {
+    const travel = vertical ? -dy : dx
+    return snap(clamp(sv + (travel / length) * range))
+  })
+
+  const norm = (value - min) / range
+  const thickness = 26
+  const capLen = 22
+  const trackW = 6
+
+  // cap offset along the track (0 = start end)
+  const pos = vertical ? (1 - norm) * (length - capLen) : norm * (length - capLen)
+  const readout = format ? format(value) : (norm * 100).toFixed(0)
+
+  const ticks = Array.from({ length: 9 }, (_, i) => i / 8)
+
   return (
-    <div className="flex flex-col items-center gap-1">
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+    <div
+      className="flex flex-col items-center gap-1.5"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div
+        role="slider"
         aria-label={label}
-        className={vertical ? 'fader-v' : ''}
-        style={
-          vertical
-            ? { writingMode: 'vertical-lr', direction: 'rtl', width: 24, height: length, accentColor: color }
-            : { width: length, accentColor: color }
-        }
-      />
-      {label && (
-        <span className="text-[10px] uppercase tracking-wide text-grid-muted">{label}</span>
-      )}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={Math.round(value * 1000) / 1000}
+        tabIndex={0}
+        onPointerDown={drag.onPointerDown}
+        onPointerMove={drag.onPointerMove}
+        onPointerUp={drag.onPointerUp}
+        onKeyDown={(e) => {
+          const step = range / 50
+          const up = vertical ? 'ArrowUp' : 'ArrowRight'
+          const down = vertical ? 'ArrowDown' : 'ArrowLeft'
+          if (e.key === up) onChange(clamp(value + step))
+          else if (e.key === down) onChange(clamp(value - step))
+        }}
+        className="relative touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        style={{
+          width: vertical ? thickness : length,
+          height: vertical ? length : thickness,
+          cursor: vertical ? 'ns-resize' : 'ew-resize',
+        }}
+      >
+        {/* groove */}
+        <div
+          className="absolute rounded-full bg-surface-0"
+          style={{
+            boxShadow: 'inset 0 0 0 1px var(--color-hairline), inset 0 2px 4px rgba(0,0,0,0.7)',
+            ...(vertical
+              ? { left: '50%', top: 0, width: trackW, height: length, transform: 'translateX(-50%)' }
+              : { top: '50%', left: 0, height: trackW, width: length, transform: 'translateY(-50%)' }),
+          }}
+        />
+        {/* filled portion */}
+        <div
+          className="absolute rounded-full"
+          style={{
+            background: `linear-gradient(${vertical ? 0 : 90}deg, ${color}, color-mix(in srgb, ${color}, black 35%))`,
+            opacity: 0.9,
+            ...(vertical
+              ? {
+                  left: '50%',
+                  bottom: 0,
+                  width: trackW,
+                  height: `${norm * 100}%`,
+                  transform: 'translateX(-50%)',
+                }
+              : {
+                  top: '50%',
+                  left: 0,
+                  height: trackW,
+                  width: `${norm * 100}%`,
+                  transform: 'translateY(-50%)',
+                }),
+          }}
+        />
+        {/* tick marks */}
+        {ticks.map((t) => (
+          <div
+            key={t}
+            className="absolute bg-hairline"
+            style={
+              vertical
+                ? { right: 1, top: `${t * (length - 1)}px`, width: 5, height: 1 }
+                : { top: 1, left: `${t * (length - 1)}px`, height: 5, width: 1 }
+            }
+          />
+        ))}
+        {detent && (
+          <div
+            className="absolute bg-grid-muted"
+            style={
+              vertical
+                ? { left: '50%', top: '50%', width: 12, height: 2, transform: 'translate(-50%,-50%)' }
+                : { top: '50%', left: '50%', height: 12, width: 2, transform: 'translate(-50%,-50%)' }
+            }
+          />
+        )}
+        {/* cap */}
+        <div
+          className="absolute rounded-[3px]"
+          style={{
+            background: 'linear-gradient(180deg, #3a3f4c, #1a1d25)',
+            boxShadow: 'var(--shadow-control)',
+            ...(vertical
+              ? { left: '50%', top: pos, width: thickness, height: capLen, transform: 'translateX(-50%)' }
+              : { top: '50%', left: pos, height: thickness, width: capLen, transform: 'translateY(-50%)' }),
+          }}
+        >
+          {/* grip line + accent */}
+          <div
+            className="absolute rounded-full"
+            style={{
+              background: color,
+              ...(vertical
+                ? { left: 3, right: 3, top: '50%', height: 2, transform: 'translateY(-50%)' }
+                : { top: 3, bottom: 3, left: '50%', width: 2, transform: 'translateX(-50%)' }),
+            }}
+          />
+        </div>
+        {(hover || drag.dragging) && label && (
+          <span className="tnum pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 rounded-[var(--radius-xs)] bg-surface-3 px-1 py-px text-2xs shadow-[var(--shadow-pop)]">
+            {readout}
+          </span>
+        )}
+      </div>
+      {label && <span className="label">{label}</span>}
     </div>
   )
-}
-
-function clamp(v: number, lo: number, hi: number) {
-  return v < lo ? lo : v > hi ? hi : v
 }

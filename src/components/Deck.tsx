@@ -2,14 +2,15 @@ import * as ctl from '../controls'
 import { TEMPO_RANGE } from '../audio/constants'
 import { useStore } from '../state/store'
 import type { DeckId } from '../types'
-import { Fader } from './controls'
+import { Button, Fader } from './controls'
 import { PadGrid } from './PadGrid'
+import { Platter } from './Platter'
 import { Waveform } from './Waveform'
 
-const DECK_COLOR: Record<DeckId, string> = { A: '#29c5ff', B: '#ff8f29' }
+const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
 
 function fmt(sec: number): string {
-  if (!isFinite(sec)) return '0:00'
+  if (!isFinite(sec) || sec < 0) return '0:00'
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
@@ -18,28 +19,57 @@ function fmt(sec: number): string {
 export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
   const color = DECK_COLOR[deckId]
+  const loaded = !!deck.track
   const effectiveBpm =
     deck.bpm != null ? deck.bpm * (1 + deck.tempo * TEMPO_RANGE) : null
+  const deltaPct = deck.tempo * TEMPO_RANGE * 100
+  const remain = deck.durationSec - deck.positionSec
 
   return (
-    <section
-      className="flex flex-col gap-3 rounded-lg border border-grid-border bg-grid-panel p-3"
-      style={{ borderTopColor: color, borderTopWidth: 2 }}
-    >
-      <header className="flex items-baseline justify-between">
-        <div className="flex items-center gap-2">
-          <span
-            className="rounded px-1.5 py-0.5 text-xs font-bold text-black"
-            style={{ background: color }}
+    <section className="panel flex flex-col gap-3 p-3">
+      {/* identity + primary readouts ------------------------------------ */}
+      <header className="flex items-start gap-3">
+        <span
+          className="mt-0.5 grid h-6 w-6 place-items-center rounded-[var(--radius-sm)] text-sm font-bold text-black"
+          style={{ background: color }}
+        >
+          {deckId}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div
+            className={`truncate text-base font-semibold leading-tight ${
+              loaded ? '' : 'text-grid-dim'
+            }`}
           >
-            {deckId}
-          </span>
-          <span className="max-w-[16rem] truncate text-sm font-medium">
-            {deck.loading ? 'Loading…' : (deck.track?.name ?? 'No track loaded')}
-          </span>
+            {deck.loading ? 'Loading track…' : (deck.track?.name ?? 'No track loaded')}
+          </div>
+          <div className="tnum mt-0.5 flex items-center gap-2 text-xs text-grid-muted">
+            <span className="uppercase tracking-wide">{deck.track?.kind ?? '—'}</span>
+            {loaded && (
+              <>
+                <span aria-hidden>·</span>
+                <span>{fmt(deck.positionSec)}</span>
+                <span className="text-grid-dim">/ {fmt(deck.durationSec)}</span>
+                <span className={remain <= 30 && remain > 0 ? 'text-warn' : 'text-grid-dim'}>
+                  −{fmt(remain)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="font-mono text-xs text-grid-muted">
-          {fmt(deck.positionSec)} / {fmt(deck.durationSec)}
+        <div className="shrink-0 text-right">
+          <div className="tnum text-2xl font-semibold leading-none" style={{ color }}>
+            {effectiveBpm ? effectiveBpm.toFixed(1) : '––.–'}
+          </div>
+          <div className="tnum mt-1 text-2xs text-grid-muted">
+            BPM
+            {deltaPct !== 0 && (
+              <span className="ml-1 text-grid-dim">
+                {deltaPct > 0 ? '+' : ''}
+                {deltaPct.toFixed(1)}%
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -51,95 +81,104 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         bpm={deck.bpm}
         hotCues={deck.hotCues}
         color={color}
+        loading={deck.loading}
         onSeek={(s) => ctl.seekDeck(deckId, s)}
       />
 
       <div className="flex gap-3">
+        {/* left: transport + pads ------------------------------------- */}
         <div className="flex flex-1 flex-col gap-2">
-          <div className="flex gap-2">
-            <button
-              onMouseDown={() => {
+          <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2">
+            <Button
+              variant="transport"
+              onPointerDown={() => {
                 const release = ctl.cuePlayPreview(deckId)
                 const up = () => {
                   release()
-                  window.removeEventListener('mouseup', up)
+                  window.removeEventListener('pointerup', up)
                 }
-                if (!deck.playing) window.addEventListener('mouseup', up)
+                if (!deck.playing) window.addEventListener('pointerup', up)
                 else ctl.cue(deckId)
               }}
-              className="flex-1 rounded bg-grid-panel-2 py-2 text-sm font-semibold hover:bg-grid-border"
+              disabled={!loaded}
             >
-              CUE
-            </button>
-            <button
+              Cue
+            </Button>
+            <Button
+              variant="transport"
+              active={deck.playing}
+              tone={color}
               onClick={() => ctl.togglePlay(deckId)}
-              className="flex-1 rounded py-2 text-sm font-bold text-black"
-              style={{ background: deck.playing ? color : '#4b5563' }}
+              disabled={!loaded}
             >
-              {deck.playing ? 'PAUSE' : 'PLAY'}
-            </button>
-            <button
-              onClick={() => ctl.syncDeck(deckId)}
-              className="rounded bg-grid-panel-2 px-3 py-2 text-sm font-semibold hover:bg-grid-border"
-            >
-              SYNC
-            </button>
+              {deck.playing ? 'Pause' : 'Play'}
+            </Button>
+            <Button variant="transport" onClick={() => ctl.syncDeck(deckId)} disabled={!loaded}>
+              Sync
+            </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="toggle"
+              active={deck.loopActive}
+              tone={color}
               onClick={() => ctl.toggleLoop(deckId)}
-              className="rounded px-2 py-1 text-xs font-semibold"
-              style={{
-                background: deck.loopActive ? color : 'var(--color-grid-panel-2)',
-                color: deck.loopActive ? '#000' : 'inherit',
-              }}
+              disabled={!loaded}
             >
-              LOOP
-            </button>
-            <button
+              Loop
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => ctl.setLoopBeats(deckId, deck.loopBeats / 2)}
-              className="rounded bg-grid-panel-2 px-2 py-1 text-xs"
+              disabled={!loaded}
             >
               ÷2
-            </button>
-            <span className="w-10 text-center font-mono text-xs">{deck.loopBeats}b</span>
-            <button
+            </Button>
+            <span className="tnum w-9 text-center text-xs text-grid-muted">{deck.loopBeats}b</span>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => ctl.setLoopBeats(deckId, deck.loopBeats * 2)}
-              className="rounded bg-grid-panel-2 px-2 py-1 text-xs"
+              disabled={!loaded}
             >
               ×2
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="toggle"
+              active={deck.cueMonitor}
+              tone="var(--color-live)"
+              className="ml-auto"
               onClick={() => ctl.toggleCueMonitor(deckId)}
-              className="ml-auto rounded px-2 py-1 text-xs font-semibold"
-              style={{
-                background: deck.cueMonitor ? '#3bff88' : 'var(--color-grid-panel-2)',
-                color: deck.cueMonitor ? '#000' : 'inherit',
-              }}
             >
               PFL
-            </button>
+            </Button>
           </div>
 
           <PadGrid deckId={deckId} hotCues={deck.hotCues} />
         </div>
 
-        <div className="flex flex-col items-center gap-1">
-          <div className="font-mono text-sm font-bold" style={{ color }}>
-            {effectiveBpm ? effectiveBpm.toFixed(1) : '—'}
-          </div>
-          <div className="text-[10px] text-grid-muted">BPM</div>
-          <Fader
-            value={deck.tempo}
-            min={-1}
-            max={1}
-            onChange={(v) => ctl.setTempo(deckId, v)}
+        {/* right: platter + tempo ------------------------------------- */}
+        <div className="flex w-[92px] flex-col items-center gap-2">
+          <Platter
+            positionSec={deck.positionSec}
+            durationSec={deck.durationSec}
+            playing={deck.playing}
             color={color}
-            length={150}
           />
-          <div className="font-mono text-[10px] text-grid-muted">
-            {(deck.tempo * TEMPO_RANGE * 100).toFixed(1)}%
+          <div className="flex flex-1 flex-col items-center gap-1 pt-1">
+            <span className="label">Tempo</span>
+            <Fader
+              value={deck.tempo}
+              min={-1}
+              max={1}
+              onChange={(v) => ctl.setTempo(deckId, v)}
+              color={color}
+              length={132}
+              detent
+              format={(v) => `${(v * TEMPO_RANGE * 100 > 0 ? '+' : '') + (v * TEMPO_RANGE * 100).toFixed(1)}%`}
+            />
           </div>
         </div>
       </div>

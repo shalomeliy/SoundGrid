@@ -1,18 +1,62 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
 
 @theme {
-  --font-sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  --font-sans: 'Inter Variable', 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'Inter Variable', ui-monospace, 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
-  --color-grid-bg: #0a0b0f;
-  --color-grid-panel: #14161c;
-  --color-grid-panel-2: #1c1f27;
-  --color-grid-border: #2a2e3a;
-  --color-grid-text: #e7e9ee;
-  --color-grid-muted: #8b909c;
-  --color-deck-a: #29c5ff;
-  --color-deck-b: #ff8f29;
-  --color-accent: #b14bff;
+  /* Surfaces — layered, not flat. 0 = app floor, 3 = lifted control. */
+  --color-surface-0: #08090d;
+  --color-surface-1: #101218;
+  --color-surface-2: #171a22;
+  --color-surface-3: #1f232d;
+  --color-hairline: rgba(255, 255, 255, 0.07);
+  --color-hairline-strong: rgba(255, 255, 255, 0.12);
+
+  /* Legacy aliases kept so existing className usages don't break mid-refactor */
+  --color-grid-bg: #08090d;
+  --color-grid-panel: #101218;
+  --color-grid-panel-2: #171a22;
+  --color-grid-border: rgba(255, 255, 255, 0.07);
+
+  --color-grid-text: #eef0f5;
+  --color-grid-muted: #7f8593;
+  --color-grid-dim: #565b68;
+
+  --color-deck-a: #2ac7ff;
+  --color-deck-b: #ff8f2e;
+  --color-accent: #b559ff;
+  --color-live: #34e39b;
+  --color-warn: #ffcb47;
+  --color-danger: #ff4d6d;
+
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --text-2xs: 0.625rem; /* 10 */
+  --text-2xs--line-height: 0.875rem;
+  --text-xs: 0.6875rem; /* 11 */
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem; /* 13 */
+  --text-sm--line-height: 1.15rem;
+  --text-base: 0.9375rem; /* 15 */
+  --text-lg: 1.125rem; /* 18 */
+  --text-xl: 1.5rem; /* 24 */
+  --text-2xl: 2rem; /* 32 */
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Elevation: shadow + a hair of top light so panels read as raised, not drawn. */
+  --shadow-panel: 0 1px 0 0 rgba(255, 255, 255, 0.04) inset, 0 8px 24px -12px rgba(0, 0, 0, 0.7);
+  --shadow-control:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset, 0 1px 2px 0 rgba(0, 0, 0, 0.5),
+    0 4px 10px -4px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 6px 20px -6px rgba(0, 0, 0, 0.8);
 }
 
 * {
@@ -27,29 +71,44 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-grid-bg);
   color: var(--color-grid-text);
   font-family: var(--font-sans);
+  font-feature-settings: 'cv05' 1, 'ss03' 1;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
+  /* Depth: a cool floor with a soft overhead glow rather than one dead value. */
+  background:
+    radial-gradient(120% 80% at 50% -10%, #12151d 0%, var(--color-surface-0) 60%),
+    var(--color-surface-0);
 }
 
-/* Range inputs styled as faders */
-input[type='range'] {
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'cv05' 1;
+  }
+  .label {
+    font-size: var(--text-2xs);
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-grid-muted);
+    font-weight: 600;
+  }
+  .panel {
+    background: linear-gradient(180deg, var(--color-surface-1), var(--color-surface-0));
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-panel);
+  }
 }
-input[type='range']::-webkit-slider-runnable-track {
-  background: #000;
-  border: 1px solid var(--color-grid-border);
-  border-radius: 3px;
-}
-input[type='range']::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  background: #e7e9ee;
-  border-radius: 3px;
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

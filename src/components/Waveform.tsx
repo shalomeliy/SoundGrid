@@ -9,12 +9,15 @@ interface Props {
   bpm: number | null
   hotCues: HotCue[]
   color: string
+  loading?: boolean
   onSeek: (sec: number) => void
 }
 
+const PX_PER_SEC = 150
+
 /**
- * Scrolling waveform: the playhead stays centred and the audio moves under it,
- * with a beat grid and hot-cue markers overlaid.
+ * Scrolling waveform: playhead stays centred, audio moves under it.
+ * Filled mirrored body with a depth gradient, beat grid, cue flags, glow playhead.
  */
 export function Waveform({
   deckId,
@@ -24,6 +27,7 @@ export function Waveform({
   bpm,
   hotCues,
   color,
+  loading = false,
   onSeek,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -41,89 +45,154 @@ export function Waveform({
     ctx.scale(dpr, dpr)
     ctx.clearRect(0, 0, w, h)
 
-    ctx.fillStyle = '#0a0b0f'
+    const mid = h / 2
+
+    // background — faint vertical depth
+    const bg = ctx.createLinearGradient(0, 0, 0, h)
+    bg.addColorStop(0, '#0d0f15')
+    bg.addColorStop(0.5, '#090a0e')
+    bg.addColorStop(1, '#0d0f15')
+    ctx.fillStyle = bg
     ctx.fillRect(0, 0, w, h)
 
+    const resolve = (hex: string) =>
+      hex.startsWith('var(')
+        ? getComputedStyle(canvas).getPropertyValue(hex.slice(4, -1)).trim() || '#29c5ff'
+        : hex
+    const c = resolve(color)
+
     if (!peaks || durationSec === 0) {
-      ctx.fillStyle = '#2a2e3a'
-      ctx.fillRect(0, h / 2 - 1, w, 2)
+      // idle rail
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(0, mid)
+      ctx.lineTo(w, mid)
+      ctx.stroke()
+      if (loading) {
+        const t = (Date.now() % 1200) / 1200
+        const gx = t * w
+        const g = ctx.createLinearGradient(gx - 80, 0, gx + 80, 0)
+        g.addColorStop(0, 'transparent')
+        g.addColorStop(0.5, c + '55')
+        g.addColorStop(1, 'transparent')
+        ctx.fillStyle = g
+        ctx.fillRect(0, mid - 1, w, 2)
+      }
       return
     }
 
-    const pxPerSec = 140 // zoom
-    const mid = h / 2
     const buckets = peaks.length / 2
     const bucketsPerSec = buckets / durationSec
     const centerBucket = positionSec * bucketsPerSec
-    const bucketsPerPx = bucketsPerSec / pxPerSec
+    const bucketsPerPx = bucketsPerSec / PX_PER_SEC
 
     // beat grid
     if (bpm && bpm > 0) {
       const beatSec = 60 / bpm
-      const firstBeat = Math.floor((positionSec - w / 2 / pxPerSec) / beatSec)
-      const lastBeat = Math.ceil((positionSec + w / 2 / pxPerSec) / beatSec)
+      const halfSpanSec = w / 2 / PX_PER_SEC
+      const firstBeat = Math.floor((positionSec - halfSpanSec) / beatSec)
+      const lastBeat = Math.ceil((positionSec + halfSpanSec) / beatSec)
       for (let b = firstBeat; b <= lastBeat; b++) {
         if (b < 0) continue
-        const x = w / 2 + (b * beatSec - positionSec) * pxPerSec
-        ctx.fillStyle = b % 4 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.07)'
-        ctx.fillRect(x, 0, 1, h)
+        const x = w / 2 + (b * beatSec - positionSec) * PX_PER_SEC
+        const bar = b % 4 === 0
+        ctx.fillStyle = bar ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.05)'
+        ctx.fillRect(x, bar ? 0 : h * 0.12, 1, bar ? h : h * 0.76)
       }
     }
 
-    // waveform
+    // waveform body — mirrored fill with depth gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, h)
+    grad.addColorStop(0, c + 'cc')
+    grad.addColorStop(0.5, c + '66')
+    grad.addColorStop(1, c + 'cc')
+    const played = ctx.createLinearGradient(0, 0, 0, h)
+    played.addColorStop(0, c)
+    played.addColorStop(0.5, c + 'aa')
+    played.addColorStop(1, c)
+
+    ctx.beginPath()
+    ctx.moveTo(0, mid)
     for (let x = 0; x < w; x++) {
-      const bucket = centerBucket + (x - w / 2) * bucketsPerPx
-      const bi = Math.floor(bucket)
-      if (bi < 0 || bi >= buckets) continue
-      const min = peaks[bi * 2]
-      const max = peaks[bi * 2 + 1]
-      const y1 = mid + min * mid * 0.95
-      const y2 = mid + max * mid * 0.95
-      const played = x <= w / 2
-      ctx.fillStyle = played ? color : dim(color)
-      ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1))
+      const bi = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
+      if (bi < 0 || bi >= buckets) {
+        ctx.lineTo(x, mid)
+        continue
+      }
+      ctx.lineTo(x, mid + peaks[bi * 2 + 1] * mid * 0.96)
     }
+    for (let x = w - 1; x >= 0; x--) {
+      const bi = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
+      ctx.lineTo(x, bi < 0 || bi >= buckets ? mid : mid + peaks[bi * 2] * mid * 0.96)
+    }
+    ctx.closePath()
+    ctx.fillStyle = grad
+    ctx.fill()
+    // played half brighter
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, w / 2, h)
+    ctx.clip()
+    ctx.fillStyle = played
+    ctx.fill()
+    ctx.restore()
 
-    // hot cues
-    for (const c of hotCues) {
-      const x = w / 2 + (c.positionSec - positionSec) * pxPerSec
-      if (x < 0 || x > w) continue
-      ctx.fillStyle = c.color
-      ctx.fillRect(x - 1, 0, 2, h)
-      ctx.fillRect(x - 1, 0, 12, 12)
+    // centre spine
+    ctx.fillStyle = 'rgba(255,255,255,0.14)'
+    ctx.fillRect(0, mid - 0.5, w, 1)
+
+    // hot cue flags
+    for (const cue of hotCues) {
+      const x = w / 2 + (cue.positionSec - positionSec) * PX_PER_SEC
+      if (x < -8 || x > w + 8) continue
+      ctx.fillStyle = cue.color
+      ctx.fillRect(x - 0.5, 0, 1.5, h)
+      ctx.beginPath()
+      ctx.roundRect(x - 0.5, 0, 14, 12, [0, 3, 3, 0])
+      ctx.fill()
       ctx.fillStyle = '#000'
-      ctx.font = '9px ui-monospace, monospace'
-      ctx.fillText(c.label, x + 1, 9)
+      ctx.font = '700 9px Inter Variable, sans-serif'
+      ctx.fillText(cue.label.slice(0, 2), x + 2, 9)
     }
 
-    // playhead
+    // playhead + glow
+    ctx.save()
+    ctx.shadowColor = '#fff'
+    ctx.shadowBlur = 8
     ctx.fillStyle = '#fff'
     ctx.fillRect(w / 2 - 1, 0, 2, h)
-  }, [peaks, positionSec, durationSec, bpm, hotCues, color])
+    ctx.restore()
+    ctx.beginPath()
+    ctx.moveTo(w / 2 - 4, 0)
+    ctx.lineTo(w / 2 + 4, 0)
+    ctx.lineTo(w / 2, 5)
+    ctx.closePath()
+    ctx.fillStyle = '#fff'
+    ctx.fill()
+  }, [peaks, positionSec, durationSec, bpm, hotCues, color, loading])
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas || durationSec === 0) return
     const rect = canvas.getBoundingClientRect()
     const dx = e.clientX - rect.left - rect.width / 2
-    const pxPerSec = 140
-    onSeek(Math.max(0, Math.min(durationSec, positionSec + dx / pxPerSec)))
+    onSeek(Math.max(0, Math.min(durationSec, positionSec + dx / PX_PER_SEC)))
   }
 
   return (
-    <canvas
-      ref={canvasRef}
-      onClick={handleClick}
-      className="h-24 w-full cursor-crosshair rounded"
-      data-deck={deckId}
-    />
+    <div className="relative overflow-hidden rounded-[var(--radius-md)] shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        className="block h-24 w-full cursor-crosshair"
+        data-deck={deckId}
+      />
+      {!peaks && durationSec === 0 && !loading && (
+        <span className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-grid-dim">
+          Load a track to see its waveform
+        </span>
+      )}
+    </div>
   )
-}
-
-function dim(hex: string): string {
-  const n = parseInt(hex.slice(1), 16)
-  const r = (n >> 16) & 255
-  const g = (n >> 8) & 255
-  const b = n & 255
-  return `rgba(${r},${g},${b},0.4)`
 }
