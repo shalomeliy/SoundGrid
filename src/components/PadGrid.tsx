@@ -15,7 +15,7 @@ export function PadGrid({ deckId, hotCues }: Props) {
         <span className="label">Hot Cues</span>
         <span className="text-2xs text-grid-dim">shift-click to clear</span>
       </div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-1">
         {Array.from({ length: 8 }, (_, i) => {
           const cue = hotCues.find((c) => c.index === i)
           const color = cue?.color ?? HOT_CUE_COLORS[i]

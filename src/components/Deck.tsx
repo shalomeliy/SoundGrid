@@ -38,7 +38,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
 
   return (
     <section
-      className="panel relative flex min-h-0 min-w-0 flex-col gap-2.5 p-3 transition-shadow"
+      className="panel relative flex min-h-0 min-w-0 flex-col gap-2 p-2.5 transition-shadow"
       style={dropActive ? { boxShadow: `0 0 0 2px ${color}, var(--shadow-panel)` } : undefined}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes(TRACK_MIME)) {
@@ -91,12 +91,12 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         </div>
         <div className="shrink-0 text-right">
           <div
-            className="tnum text-2xl font-semibold leading-none"
+            className="tnum text-xl font-semibold leading-none"
             style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
           >
             {effectiveBpm ? effectiveBpm.toFixed(1) : '—'}
           </div>
-          <div className="tnum mt-1 text-2xs text-grid-muted">
+          <div className="tnum mt-0.5 text-2xs text-grid-muted">
             BPM
             {deltaPct !== 0 && (
               <span className="ml-1 text-grid-dim">
@@ -122,7 +122,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
 
       <div className="flex gap-3">
         {/* left: transport + pads ------------------------------------- */}
-        <div className="flex flex-1 flex-col gap-2">
+        <div className="flex flex-1 flex-col gap-1.5">
           <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2">
             <Button
               variant="transport"
@@ -195,12 +195,13 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         </div>
 
         {/* right: platter + tempo ------------------------------------- */}
-        <div className="flex w-[88px] shrink-0 flex-col items-center gap-2.5">
+        <div className="flex w-[76px] shrink-0 flex-col items-center gap-2">
           <Platter
             positionSec={deck.positionSec}
             durationSec={deck.durationSec}
             playing={deck.playing}
             color={color}
+            size={54}
           />
           <Fader
             label="Tempo"
@@ -209,7 +210,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             max={1}
             onChange={(v) => ctl.setTempo(deckId, v)}
             color={color}
-            length={118}
+            length={92}
             detent
             format={(v) =>
               `${v * TEMPO_RANGE * 100 > 0 ? '+' : ''}${(v * TEMPO_RANGE * 100).toFixed(1)}%`

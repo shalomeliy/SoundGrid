@@ -190,11 +190,11 @@ export function Waveform({
   }
 
   return (
-    <div className="relative min-h-[104px] flex-1 overflow-hidden rounded-[var(--radius-md)] shadow-[inset_0_0_0_1px_var(--color-hairline)]">
+    <div className="relative h-full min-h-[96px] flex-1 overflow-hidden rounded-[var(--radius-md)] shadow-[inset_0_0_0_1px_var(--color-hairline)]">
       <canvas
         ref={canvasRef}
         onClick={handleClick}
-        className="block h-full w-full cursor-crosshair"
+        className="absolute inset-0 h-full w-full cursor-crosshair"
         data-deck={deckId}
       />
       {!peaks && durationSec === 0 && !loading && (

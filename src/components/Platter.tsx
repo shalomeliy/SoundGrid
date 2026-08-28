@@ -3,14 +3,14 @@ interface Props {
   durationSec: number
   playing: boolean
   color: string
+  size?: number
 }
 
 /**
  * Circular platter: a progress ring for track position plus a spinning
  * marker so playback state reads at a glance. Groundwork for the v0.2 jog.
  */
-export function Platter({ positionSec, durationSec, playing, color }: Props) {
-  const size = 84
+export function Platter({ positionSec, durationSec, playing, color, size = 60 }: Props) {
   const r = size / 2
   const ring = r - 4
   const progress = durationSec > 0 ? Math.min(1, positionSec / durationSec) : 0
