@@ -22,14 +22,15 @@ const PX_PER_SEC = 150
  * vocal or synth lead reads green, hats and air read blue. It is how you spot
  * the breakdown, the drop and the intro without listening through the track.
  *
- * Red/green/blue for low/mid/high is Serato's convention and DJs already read
- * it fluently, so this keeps it — but muted off the pure primaries, which glare
- * against the dark panels.
+ * Red/green/blue for low/mid/high is Serato's convention and DJs read it
+ * fluently, so this keeps it — and keeps it saturated. An earlier pass muted
+ * these off the primaries to avoid glare and the whole waveform went to mush:
+ * against a near-black panel there is no glare to avoid, only contrast to win.
  */
 const BAND_COLORS = [
-  [244, 96, 76], // low
-  [96, 212, 128], // mid
-  [126, 158, 255], // high
+  [255, 64, 52], // low
+  [58, 226, 124], // mid
+  [82, 152, 255], // high
 ] as const
 
 /** Silence has no meaningful band ratio — colouring it would be noise. */
@@ -140,14 +141,34 @@ export function Waveform({
     // keeps its shape.
     let curStyle = ''
     for (let x = 0; x < w; x++) {
-      const bi = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
-      if (bi < 0 || bi >= buckets) continue
+      // Aggregate every bucket that falls under this pixel rather than sampling
+      // one of them: at >1 bucket per pixel, plain sampling drops transients and
+      // the envelope visibly shimmers as the waveform scrolls.
+      const bStart = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
+      const bEnd = Math.max(bStart + 1, Math.floor(centerBucket + (x + 1 - w / 2) * bucketsPerPx))
+      const from = Math.max(0, bStart)
+      const to = Math.min(buckets, bEnd)
+      if (to <= from) continue
+
+      let mn = 0
+      let mx = 0
+      let lo = 0
+      let md = 0
+      let hi = 0
+      for (let b = from; b < to; b++) {
+        const p0 = peaks[b * 2]
+        const p1 = peaks[b * 2 + 1]
+        if (p0 < mn) mn = p0
+        if (p1 > mx) mx = p1
+        if (bands) {
+          lo += bands[b * 3]
+          md += bands[b * 3 + 1]
+          hi += bands[b * 3 + 2]
+        }
+      }
 
       let style: string
       if (bands) {
-        const lo = bands[bi * 3]
-        const md = bands[bi * 3 + 1]
-        const hi = bands[bi * 3 + 2]
         const total = lo + md + hi
         if (total < QUIET) {
           style = 'rgba(150,160,180,0.3)'
@@ -163,19 +184,21 @@ export function Waveform({
           const r = (BAND_COLORS[0][0] * wl + BAND_COLORS[1][0] * wm + BAND_COLORS[2][0] * wh) / 20
           const g = (BAND_COLORS[0][1] * wl + BAND_COLORS[1][1] * wm + BAND_COLORS[2][1] * wh) / 20
           const b = (BAND_COLORS[0][2] * wl + BAND_COLORS[1][2] * wm + BAND_COLORS[2][2] * wh) / 20
-          // played side at full strength, what's still ahead held back
-          style = `rgba(${r | 0},${g | 0},${b | 0},${x < w / 2 ? 1 : 0.5})`
+          // What's still ahead is only slightly held back. At 0.5 the whole
+          // right half read as dead space; the playhead already says where you
+          // are, the colour doesn't have to shout it.
+          style = `rgba(${r | 0},${g | 0},${b | 0},${x < w / 2 ? 1 : 0.82})`
         }
       } else {
-        style = x < w / 2 ? c : c + '80'
+        style = x < w / 2 ? c : c + 'd0'
       }
 
       if (style !== curStyle) {
         ctx.fillStyle = style
         curStyle = style
       }
-      const top = mid + peaks[bi * 2] * mid * 0.96
-      const bot = mid + peaks[bi * 2 + 1] * mid * 0.96
+      const top = mid + mn * mid * 0.96
+      const bot = mid + mx * mid * 0.96
       ctx.fillRect(x, top, 1, Math.max(1, bot - top))
     }
 

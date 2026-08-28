@@ -1,15 +1,22 @@
-/** Downsample an AudioBuffer to interleaved [min, max] pairs, `buckets` long. */
+/**
+ * Downsample an AudioBuffer to interleaved [min, max] pairs, `buckets` long.
+ *
+ * Normalised to the track's own loudest point so the display fills the panel
+ * whatever the file was mastered at — a quiet rip shouldn't render as a thin
+ * line you can't read. This is display gain only; nothing touches the audio.
+ */
 export function computePeaks(buffer: AudioBuffer, buckets = 2000): Float32Array {
   const chan = buffer.numberOfChannels > 1
     ? mixToMono(buffer)
     : buffer.getChannelData(0)
   const out = new Float32Array(buckets * 2)
   const step = chan.length / buckets
+  let loudest = 0
   for (let i = 0; i < buckets; i++) {
     const start = Math.floor(i * step)
     const end = Math.min(chan.length, Math.floor((i + 1) * step))
-    let min = 1
-    let max = -1
+    let min = 0
+    let max = 0
     for (let j = start; j < end; j++) {
       const v = chan[j]
       if (v < min) min = v
@@ -17,6 +24,12 @@ export function computePeaks(buffer: AudioBuffer, buckets = 2000): Float32Array 
     }
     out[i * 2] = min
     out[i * 2 + 1] = max
+    if (-min > loudest) loudest = -min
+    if (max > loudest) loudest = max
+  }
+  if (loudest > 0.001 && loudest < 0.999) {
+    const gain = 1 / loudest
+    for (let i = 0; i < out.length; i++) out[i] *= gain
   }
   return out
 }

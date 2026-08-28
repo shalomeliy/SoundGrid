@@ -35,9 +35,17 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     const data = await readTrackData(track)
     const buffer = await engine.decode(data)
     engine.decks[deckId].load(buffer)
-    const peaks = computePeaks(buffer, 2400)
-    const bands = computeBands(buffer, 2400)
-    const bpm = detectBpm(buffer)
+    // One analysis bucket per ~1.3 rendered pixels. A fixed 2400 buckets meant
+    // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
+    // waveform came out as blocks — the old path fill hid it by interpolating.
+    const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(buffer.duration * 200)))
+    const peaks = computePeaks(buffer, buckets)
+    const bands = computeBands(buffer, buckets)
+    // A tag written by Serato beats our own estimate: detectBpm is a crude
+    // energy autocorrelation (see ROADMAP v0.3) and was overriding a good value
+    // with a worse one — a tagged 124 became a detected 123.5, which SYNC then
+    // drifts on. Once the real beatgrid lands this precedence flips back.
+    const bpm = track.bpm ?? detectBpm(buffer)
     // write analysis back into the library entry so its BPM/Time columns
     // populate and mix recommendations have data to work with
     const { library, setLibrary } = useStore.getState()
