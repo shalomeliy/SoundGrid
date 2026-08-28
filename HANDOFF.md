@@ -6,15 +6,45 @@
 
 ## סטטוס נוכחי
 
-- **גרסה אחרונה שהושלמה:** `v0.1.0` (MVP)
-- **גרסה בעבודה:** `v0.1.5 — Design Overhaul` — כל הקוד נכתב, build + lint ירוקים,
-  הפריסה מכוילת למסך של המשתמש (Latitude 7440, 1920×1080 @ 125% = viewport אפקטיבי
-  1536×864, לדף נשאר ~1536×710). לפי מדידות DOM: TopBar 53 + decks/mixer ~385 +
-  ספרייה ~272 — נכנס.
-  **חסר:** אישור ויזואלי סופי מהמשתמש + סבב ליטוש קטן. הבדיקה מול Serato/rekordbox
-  (קריטריון "הושלם") עדיין לא נעשתה.
-- **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** ❌ לא — **13 commits מקומיים**
-- **דגל CLEAR:** 🟢 שיחה חדשה נפתחת אחרי העדכון הזה
+- **גרסה אחרונה שהושלמה:** `v0.1.7 — Tag read` ✅ (2026-08-28)
+- **גרסה פתוחה:** `v0.1.5 — Design Overhaul` — כל הקוד נכתב, build + lint ירוקים,
+  הפריסה נמדדה ב‑1536×710: TopBar 53 + main 384 → לספרייה 273, `scrollHeight`=710
+  בדיוק, אין גלישה. **חסר רק מה שדורש את העיניים של המשתמש:** אישור ויזואלי,
+  סבב ליטוש, והשוואת צילומי מסך מול Serato/rekordbox (קריטריון "הושלם").
+- **branch:** `main` · **build + lint:** ירוקים · **דחוף ל‑origin:** ❌ לא —
+  **15 commits מקומיים**
+- **דגל CLEAR:** 🟢 מומלץ `/clear` — v0.1.7 נסגרה
+
+### מה נעשה ב‑v0.1.7 (commit `be3c783`)
+`src/library/tags.ts` חדש — קריאת מטא‑דאטה מכותרות הקבצים, **בלי decode**, הכל
+byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק שלם לזיכרון). קריאה בלבד,
+לא כותבים חזרה לקבצי המשתמש.
+- **פורמטים:** ID3v2.2/2.3/2.4 (כולל TXXX, ו‑fallback ל‑GEOB `Serato Autotags`),
+  MP4/M4A atoms (`tmpo`, `©ART`, `©nam`, freeform `----`), FLAC/OGG Vorbis
+  comments, ו‑RIFF/AIFF chunks.
+- **duration אמיתי לכל פורמט:** Xing/VBRI או bitrate (MP3), `mvhd` (MP4),
+  `STREAMINFO` (FLAC), `fmt`+`data` (WAV), `COMM` (AIFF). TLEN כמעט לא קיים בפועל.
+- **⚠️ WAV:** Serato כותב את ה‑ID3 בצ'אנק `ID3 ` **אחרי** צ'אנק ה‑`data`. לכן
+  `readChunked` עושה seek לפי offset של כל צ'אנק ולא קורא חלון מתחילת הקובץ —
+  בלי זה 40 קבצי ה‑WAV של המשתמש נשארו ריקים. **אל תחזיר לקריאת חלון.**
+- **`parseKey`** מנרמל כתיב מוזיקלי (`Am`/`F#m`/`A minor`), Camelot (`8A`) ו‑Open
+  Key (`1m`) לקוד Camelot אחד + כתיב תצוגה אחיד (`Gbm` → `F#m`).
+  `Track` קיבל `key`, `camelot`, `artist`, `title`, `album`.
+- **`readLibraryTags`** ב‑`library.ts` — פאס שני אחרי `scanLibrary` (pool של 8,
+  batching כל 50 קבצים / 400ms) כדי שהרשימה תופיע מיד ותתמלא. ערך קיים תמיד גובר,
+  כך שניתוח (v0.3/v0.4) לא נדרס.
+- **`mixRecommendations`** משתמש בסולם כששני הצדדים מתויגים: התנגשות Camelot
+  מורידה התאמת‑טמפו הדוקה ל‑loose, **אף פעם לא מסננת החוצה**.
+- **ספרייה:** עמודות Artist ו‑Key (badge עם tooltip Camelot); הפילטר מחפש גם
+  באמן/כותרת.
+
+**נמדד על הספרייה האמיתית** (360 קבצים — 281 mp3, 40 wav, 39 m4a):
+**BPM 96.9% · Key 97.2% · Duration 100% · 0.6 שנייה** לכל הסריקה.
+ה‑11 שנשארו הם m4a שפשוט לא מתויגים (ריפים, לא באג).
+26 מקרי בדיקה ל‑`parseKey`/`keysCompatible` עברו.
+> הרצת האימות נעשתה ב‑Node ישירות מול `C:\Users\Shalom\Music\Tracks` עם shim
+> קטן ל‑`File` (רק `size` + `slice().arrayBuffer()`) — דרך טובה לבדוק פרסרים
+> בלי לעבור דרך ה‑file picker של הדפדפן.
 
 ### מה נעשה ב‑v0.1.5 (13 commits מקומיים, ראה `git log`)
 1. **design tokens + Inter** — `index.css` שוכתב: surface tokens שכבתיים,
@@ -41,20 +71,24 @@
     `Deck` `min-h-0`, waveform `flex-1`, ResizeObserver. Platter 54, tempo fader 92.
 13. **docs** — ראה למטה.
 
-### לשיחה הבאה — לסיים v0.1.5
-1. **לרנדר ולצלם** — Browser pane של Claude לא הצליח לצלם בשיחות האלו (המשתמש
-   מסתכל ב‑Chrome האמיתי שלו). דרך שעבדה: `mcp__Claude_Browser__javascript_tool`
-   על tabId `seed` למדידת גדלים ב‑DOM.
-2. **ליטוש** לפי מה שהמשתמש יגיד: זום/צבע waveform, גודל Platter, ריווח, גובה waveform
-   (כרגע ברצפה של `min-h-[96px]`).
-3. **בדיקה מול Serato/rekordbox** — צילום מסך זה‑לצד‑זה (קריטריון "הושלם" של v0.1.5).
-4. אם תקין: `ui-ux-review` + `drop-generic-design` סבב "אחרי", לסמן v0.1.5 ✅, **`git push`**.
+### לשיחה הבאה
+1. **לאמת את v0.1.7 מול העין** — לבחור תיקיית מוזיקה ולוודא שעמודות Artist/BPM/Key/Time
+   מתמלאות ושהפריסה של הטבלה עם 7 העמודות סבירה (רוחב Title 42% / Artist 24%).
+   זה הדבר היחיד ב‑v0.1.7 שלא נבדק — הפרסר עצמו נבדק מול 360 הקבצים האמיתיים.
+2. **לסיים v0.1.5** — הכל תלוי במשתמש:
+   - **ליטוש** לפי מה שיגיד: זום/צבע waveform, גודל Platter, ריווח, גובה waveform
+     (כרגע ברצפה של `min-h-[96px]`).
+   - **בדיקה מול Serato/rekordbox** — צילום מסך זה‑לצד‑זה (קריטריון "הושלם").
+   - אם תקין: `ui-ux-review` + `drop-generic-design` סבב "אחרי", לסמן v0.1.5 ✅.
+3. **`git push`** — 15 commits מקומיים ממתינים.
+4. אחר כך: v0.1.6 (seams/ports) או v0.2.0 (jog wheels).
 
-### v0.1.7 — אושר ע"י המשתמש (2026-08-28)
-המשתמש אישר להוסיף `v0.1.7 — Tag read`: קריאת BPM/key/duration/artist מתגיות הקבצים
-(ID3 `TBPM`/`TKEY`/`TLEN`/`TPE1`, MP4 atoms, Vorbis) בזמן `scanLibrary`, בלי decode.
-הספרייה של המשתמש כבר מתויגת ע"י Serato (BPM ל‑410, key ל‑397). פרטים ב‑`ROADMAP.md#v017`.
-צריך להוסיף `key?/artist?/title?` ל‑`Track`.
+**צילום מסך מה‑Browser pane לא עובד** בסביבה הזו ("pane is not displayed") —
+המשתמש מסתכל ב‑Chrome האמיתי שלו. מה שכן עובד: `mcp__Claude_Browser__javascript_tool`
+על tabId `seed` למדידת DOM, ו‑`read_console_messages` לשגיאות.
+שרת ה‑dev על 5173 שייך לשיחה אחרת — `preview_start` עם `name` ייכשל על התנגשות
+פורט; להשתמש ב‑`preview_start` עם `url: http://localhost:5173` (אותה תיקייה, HMR
+מרים את השינויים).
 
 ### docs שנוספו ב‑v0.1.5
 - `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate TLV,
@@ -125,7 +159,10 @@ src/
     constants.ts        TEMPO_RANGE, EQ, צבעי hot cue
   state/store.ts        zustand — כל ה‑UI state. patchDeck/patchChannel/patchMixer/set*
   hooks/useRenderLoop.ts  rAF יחיד שמושך position מהמנוע ל‑store
-  library/library.ts    File System Access — pick/scan/restore, idb-keyval לזכירת התיקייה
+  library/library.ts    File System Access — pick/scan/restore, idb-keyval לזכירת התיקייה,
+                        readLibraryTags (פאס תגיות שני, batched)
+  library/tags.ts       ★ readTags — ID3v2/MP4/Vorbis/RIFF/AIFF, parseKey → Camelot.
+                        byte-range reads בלבד, אף פעם לא decode ולא כתיבה לקבצים
   midi/
     mapping.ts          טיפוסים + parseMessage + relativeDelta
     manager.ts          ★ MidiManager singleton — Web MIDI, dispatch לפי mapping, Learn
@@ -153,9 +190,14 @@ src/
 
 ## חובות טכניים ידועים
 
-- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי. v0.1.7
-  יקרא BPM מתגיות במקום לנתח כשאפשר.
-- ל‑`Track` אין `key` — נוסף ב‑v0.1.7.
+- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי.
+  **שים לב:** מאז v0.1.7 יש BPM מתגיות ל‑97% מהספרייה, ו‑`loadTrackToDeck` נותן
+  ל‑`detectBpm` לדרוס אותו. אם הזיהוי הגרוע דורס ערך תגית טוב — זו כנראה הבעיה.
+- תוצאות התגיות לא נשמרות בין טעינות — נסרק מחדש בכל בחירת תיקייה (0.6 שנייה
+  ל‑360 קבצים, אז לא דחוף). מטמון קבוע ב‑IndexedDB מגיע ב‑v0.4.
+- `readTags` על WAV/AIFF לא מוצא ID3 אם הוא יושב אחרי הצ'אנק ה‑64 (cap של הלולאה).
+- OGG נקרא best-effort (חיפוש ה‑comment header ב‑256KB הראשונים, בלי הרכבת
+  Ogg packets) — אין קבצי OGG בספרייה של המשתמש, אז זה לא נבדק על אמת.
 - הפריסה של v0.1.5 מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`) — אם
   המשתמש על מסך גדול יותר יש מקום להגדיל, אבל אין כרגע לוגיקת breakpoint.
 - אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
@@ -174,3 +216,4 @@ src/
 | 2026-08-28 | — | codegraph init בפרויקט; הוספת v0.1.5 (design overhaul) לרודמפ | 🟢 שיחה חדשה לפני v0.1.5 |
 | 2026-08-28 | v0.1.5 | שכתוב שפת עיצוב: tokens+Inter, Button/Knob/Fader, Deck+Platter, Waveform, Mixer, TopBar, Library + מצבים. build+lint ירוק. ממתין לבדיקה ויזואלית | אחרי ליטוש |
 | 2026-08-28 | v0.1.5 | +DnD, +recommend.ts (mix highlight), תיקון גלילה, תיקון feedback loop של הקנבס, כיול פריסה ל‑1536×710. docs: serato-formats + architecture/directions. ROADMAP: גרסאות .5/.6/.7. 13 commits מקומיים, לא נדחף | 🟢 שיחה חדשה — לסיים ליטוש + push |
+| 2026-08-28 | v0.1.7 ✅ | `library/tags.ts` — ID3v2/MP4/Vorbis/RIFF/AIFF + parseKey→Camelot; `readLibraryTags` פאס שני batched; עמודות Artist/Key; `mixRecommendations` עם התאמת סולם. נמדד: BPM 96.9%, Key 97.2%, Duration 100%, 0.6ש' על 360 קבצים | 🟢 מומלץ `/clear` |
