@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import * as ctl from '../controls'
 import { TEMPO_RANGE } from '../audio/constants'
 import { useStore } from '../state/store'
@@ -20,13 +21,44 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
+  const [dropActive, setDropActive] = useState(false)
+
+  const TRACK_MIME = 'application/x-soundgrid-track'
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDropActive(false)
+    const id = e.dataTransfer.getData(TRACK_MIME)
+    const track = useStore.getState().library.tracks.find((t) => t.id === id)
+    if (track) void ctl.loadTrackToDeck(deckId, track)
+  }
   const effectiveBpm =
     deck.bpm != null ? deck.bpm * (1 + deck.tempo * TEMPO_RANGE) : null
   const deltaPct = deck.tempo * TEMPO_RANGE * 100
   const remain = deck.durationSec - deck.positionSec
 
   return (
-    <section className="panel flex flex-col gap-3 p-3">
+    <section
+      className="panel relative flex flex-col gap-3 p-3 transition-shadow"
+      style={dropActive ? { boxShadow: `0 0 0 2px ${color}, var(--shadow-panel)` } : undefined}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes(TRACK_MIME)) {
+          e.preventDefault()
+          setDropActive(true)
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropActive(false)
+      }}
+      onDrop={onDrop}
+    >
+      {dropActive && (
+        <div
+          className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-[var(--radius-lg)] text-sm font-semibold"
+          style={{ background: 'color-mix(in srgb, var(--color-surface-0), transparent 25%)', color }}
+        >
+          Drop to load deck {deckId}
+        </div>
+      )}
       {/* identity + primary readouts ------------------------------------ */}
       <header className="flex items-start gap-3">
         <span

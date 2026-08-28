@@ -165,10 +165,15 @@ function Row({
 }) {
   return (
     <tr
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('application/x-soundgrid-track', track.id)
+        e.dataTransfer.effectAllowed = 'copy'
+      }}
       onClick={onSelect}
       onDoubleClick={() => void ctl.loadTrackToDeck('A', track)}
       aria-selected={selected}
-      className={`h-11 cursor-pointer border-b border-hairline/50 transition-colors ${
+      className={`h-11 cursor-grab border-b border-hairline/50 transition-colors active:cursor-grabbing ${
         selected ? 'bg-accent/15' : 'hover:bg-surface-2'
       }`}
     >
