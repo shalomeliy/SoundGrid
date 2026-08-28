@@ -1,4 +1,4 @@
-import { detectBpm, computePeaks } from './audio/analyze'
+import { detectBpm, computeBands, computePeaks } from './audio/analyze'
 import { engine } from './audio/engine'
 import { HOT_CUE_COLORS } from './audio/constants'
 import { readTrackData } from './library/library'
@@ -36,6 +36,7 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     const buffer = await engine.decode(data)
     engine.decks[deckId].load(buffer)
     const peaks = computePeaks(buffer, 2400)
+    const bands = computeBands(buffer, 2400)
     const bpm = detectBpm(buffer)
     // write analysis back into the library entry so its BPM/Time columns
     // populate and mix recommendations have data to work with
@@ -55,6 +56,7 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       durationSec: buffer.duration,
       bpm,
       peaks,
+      bands,
       hotCues: [],
       cuePointSec: 0,
       loopActive: false,

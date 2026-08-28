@@ -111,6 +111,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
       <Waveform
         deckId={deckId}
         peaks={deck.peaks}
+        bands={deck.bands}
         positionSec={deck.positionSec}
         durationSec={deck.durationSec}
         bpm={deck.bpm}

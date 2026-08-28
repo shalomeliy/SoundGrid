@@ -21,6 +21,64 @@ export function computePeaks(buffer: AudioBuffer, buckets = 2000): Float32Array 
   return out
 }
 
+/**
+ * Per-bucket energy in three frequency bands — what gives the waveform its
+ * colour, the way Serato's does: you can see the bass drop out or the vocal
+ * come in without listening to it.
+ *
+ * Returns `buckets * 3` values (low, mid, high RMS). Two one-pole low-passes
+ * split the signal: everything under ~200Hz is low, 200Hz–4kHz is mid, the rest
+ * is high. Cheap filters are fine here — this drives a colour, not a crossover,
+ * and a steeper split wouldn't change what you see.
+ */
+export function computeBands(buffer: AudioBuffer, buckets = 2000): Float32Array {
+  const chan = buffer.numberOfChannels > 1 ? mixToMono(buffer) : buffer.getChannelData(0)
+  const sr = buffer.sampleRate
+  const out = new Float32Array(buckets * 3)
+  const step = chan.length / buckets
+
+  const coeff = (hz: number) => {
+    const rc = 1 / (2 * Math.PI * hz)
+    const dt = 1 / sr
+    return dt / (rc + dt)
+  }
+  const aLow = coeff(200)
+  const aHigh = coeff(4000)
+
+  let lpLow = 0
+  let lpHigh = 0
+  let bucket = 0
+  let sumLow = 0
+  let sumMid = 0
+  let sumHigh = 0
+  let n = 0
+  let end = Math.min(chan.length, Math.floor(step))
+
+  for (let i = 0; i < chan.length; i++) {
+    const x = chan[i]
+    lpLow += aLow * (x - lpLow)
+    lpHigh += aHigh * (x - lpHigh)
+    const mid = lpHigh - lpLow
+    const high = x - lpHigh
+    sumLow += lpLow * lpLow
+    sumMid += mid * mid
+    sumHigh += high * high
+    n++
+
+    if (i + 1 >= end && bucket < buckets) {
+      const inv = n > 0 ? 1 / n : 0
+      out[bucket * 3] = Math.sqrt(sumLow * inv)
+      out[bucket * 3 + 1] = Math.sqrt(sumMid * inv)
+      out[bucket * 3 + 2] = Math.sqrt(sumHigh * inv)
+      bucket++
+      sumLow = sumMid = sumHigh = 0
+      n = 0
+      end = bucket < buckets ? Math.min(chan.length, Math.floor((bucket + 1) * step)) : chan.length
+    }
+  }
+  return out
+}
+
 function mixToMono(buffer: AudioBuffer): Float32Array {
   const len = buffer.length
   const out = new Float32Array(len)

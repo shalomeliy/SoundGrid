@@ -4,6 +4,7 @@ import type { DeckId, HotCue } from '../types'
 interface Props {
   deckId: DeckId
   peaks: Float32Array | null
+  bands: Float32Array | null
   positionSec: number
   durationSec: number
   bpm: number | null
@@ -15,13 +16,33 @@ interface Props {
 
 const PX_PER_SEC = 150
 
+/*
+ * Spectrum colours. The band mix at each column picks a colour, so the shape
+ * tells you *what* is playing and not just how loud: bass hits read warm, a
+ * vocal or synth lead reads green, hats and air read blue. It is how you spot
+ * the breakdown, the drop and the intro without listening through the track.
+ *
+ * Red/green/blue for low/mid/high is Serato's convention and DJs already read
+ * it fluently, so this keeps it — but muted off the pure primaries, which glare
+ * against the dark panels.
+ */
+const BAND_COLORS = [
+  [244, 96, 76], // low
+  [96, 212, 128], // mid
+  [126, 158, 255], // high
+] as const
+
+/** Silence has no meaningful band ratio — colouring it would be noise. */
+const QUIET = 0.0015
+
 /**
  * Scrolling waveform: playhead stays centred, audio moves under it.
- * Filled mirrored body with a depth gradient, beat grid, cue flags, glow playhead.
+ * Mirrored body coloured by frequency content, beat grid, cue flags, glow playhead.
  */
 export function Waveform({
   deckId,
   peaks,
+  bands,
   positionSec,
   durationSec,
   bpm,
@@ -111,41 +132,52 @@ export function Waveform({
       }
     }
 
-    // waveform body — mirrored fill with depth gradient
-    const grad = ctx.createLinearGradient(0, 0, 0, h)
-    grad.addColorStop(0, c + 'cc')
-    grad.addColorStop(0.5, c + '66')
-    grad.addColorStop(1, c + 'cc')
-    const played = ctx.createLinearGradient(0, 0, 0, h)
-    played.addColorStop(0, c)
-    played.addColorStop(0.5, c + 'aa')
-    played.addColorStop(1, c)
-
-    ctx.beginPath()
-    ctx.moveTo(0, mid)
+    // Waveform body: one column per pixel so each carries its own colour.
+    // Colours are quantised to 5% band steps, which is invisible to the eye but
+    // lets neighbouring columns share a style — assigning fillStyle is the
+    // expensive part of this loop, and it now happens a handful of times per
+    // frame instead of once per pixel. Heights stay per-column so the envelope
+    // keeps its shape.
+    let curStyle = ''
     for (let x = 0; x < w; x++) {
       const bi = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
-      if (bi < 0 || bi >= buckets) {
-        ctx.lineTo(x, mid)
-        continue
+      if (bi < 0 || bi >= buckets) continue
+
+      let style: string
+      if (bands) {
+        const lo = bands[bi * 3]
+        const md = bands[bi * 3 + 1]
+        const hi = bands[bi * 3 + 2]
+        const total = lo + md + hi
+        if (total < QUIET) {
+          style = 'rgba(150,160,180,0.3)'
+        } else {
+          // Square the weights before mixing. One-pole filters leak across the
+          // splits, so raw ratios never reach a band's own colour — pure 60Hz
+          // came out orange, not red. Squaring pulls the dominant band forward
+          // and gives genuinely saturated colour while real mixtures still blend.
+          const q = 20 / (lo * lo + md * md + hi * hi)
+          const wl = Math.round(lo * lo * q)
+          const wm = Math.round(md * md * q)
+          const wh = Math.round(hi * hi * q)
+          const r = (BAND_COLORS[0][0] * wl + BAND_COLORS[1][0] * wm + BAND_COLORS[2][0] * wh) / 20
+          const g = (BAND_COLORS[0][1] * wl + BAND_COLORS[1][1] * wm + BAND_COLORS[2][1] * wh) / 20
+          const b = (BAND_COLORS[0][2] * wl + BAND_COLORS[1][2] * wm + BAND_COLORS[2][2] * wh) / 20
+          // played side at full strength, what's still ahead held back
+          style = `rgba(${r | 0},${g | 0},${b | 0},${x < w / 2 ? 1 : 0.5})`
+        }
+      } else {
+        style = x < w / 2 ? c : c + '80'
       }
-      ctx.lineTo(x, mid + peaks[bi * 2 + 1] * mid * 0.96)
+
+      if (style !== curStyle) {
+        ctx.fillStyle = style
+        curStyle = style
+      }
+      const top = mid + peaks[bi * 2] * mid * 0.96
+      const bot = mid + peaks[bi * 2 + 1] * mid * 0.96
+      ctx.fillRect(x, top, 1, Math.max(1, bot - top))
     }
-    for (let x = w - 1; x >= 0; x--) {
-      const bi = Math.floor(centerBucket + (x - w / 2) * bucketsPerPx)
-      ctx.lineTo(x, bi < 0 || bi >= buckets ? mid : mid + peaks[bi * 2] * mid * 0.96)
-    }
-    ctx.closePath()
-    ctx.fillStyle = grad
-    ctx.fill()
-    // played half brighter
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(0, 0, w / 2, h)
-    ctx.clip()
-    ctx.fillStyle = played
-    ctx.fill()
-    ctx.restore()
 
     // centre spine
     ctx.fillStyle = 'rgba(255,255,255,0.14)'
@@ -179,7 +211,7 @@ export function Waveform({
     ctx.closePath()
     ctx.fillStyle = '#fff'
     ctx.fill()
-  }, [peaks, positionSec, durationSec, bpm, hotCues, color, loading, size])
+  }, [peaks, bands, positionSec, durationSec, bpm, hotCues, color, loading, size])
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current

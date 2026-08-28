@@ -20,6 +20,7 @@ function emptyDeck(id: DeckId): DeckState {
     bpm: null,
     tempo: 0,
     peaks: null,
+    bands: null,
     hotCues: [],
     cuePointSec: 0,
     loopActive: false,

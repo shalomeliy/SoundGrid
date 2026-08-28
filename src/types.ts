@@ -41,6 +41,8 @@ export interface DeckState {
   tempo: number
   /** normalised waveform peaks for rendering (min/max interleaved) */
   peaks: Float32Array | null
+  /** per-bucket low/mid/high energy, 3 per bucket — colours the waveform */
+  bands: Float32Array | null
   hotCues: HotCue[]
   /** temp cue point set with the CUE button */
   cuePointSec: number
