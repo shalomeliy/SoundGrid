@@ -614,6 +614,15 @@ async function readChunked(file: File, tags: TrackTags, littleEndian: boolean) {
 // --------------------------------------------------------------------- entry
 
 /**
+ * YouTube's auto-generated artist channels tag every file `<Artist> - Topic`,
+ * and a DJ library pulled from there carries the suffix into every row. It is
+ * never part of the name, so it goes.
+ */
+function cleanArtist(raw: string): string | undefined {
+  return text(raw.replace(/\s*-\s*Topic$/i, ''))
+}
+
+/**
  * Read whatever metadata the file already carries. Never throws — an
  * unreadable or exotic file just yields fewer fields.
  */
@@ -645,5 +654,6 @@ export async function readTags(file: File): Promise<TrackTags> {
   if (tags.durationSec != null && (!isFinite(tags.durationSec) || tags.durationSec <= 0)) {
     delete tags.durationSec
   }
+  if (tags.artist) tags.artist = cleanArtist(tags.artist)
   return tags
 }
