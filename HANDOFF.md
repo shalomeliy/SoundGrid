@@ -12,7 +12,7 @@
   בדיוק, אין גלישה. **חסר רק מה שדורש את העיניים של המשתמש:** אישור ויזואלי,
   סבב ליטוש, והשוואת צילומי מסך מול Serato/rekordbox (קריטריון "הושלם").
 - **branch:** `main` · **build + lint:** ירוקים · **דחוף ל‑origin:** ❌ לא —
-  **15 commits מקומיים**
+  **16 commits מקומיים**
 - **דגל CLEAR:** 🟢 מומלץ `/clear` — v0.1.7 נסגרה
 
 ### מה נעשה ב‑v0.1.7 (commit `be3c783`)
@@ -80,7 +80,7 @@ byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק של
      (כרגע ברצפה של `min-h-[96px]`).
    - **בדיקה מול Serato/rekordbox** — צילום מסך זה‑לצד‑זה (קריטריון "הושלם").
    - אם תקין: `ui-ux-review` + `drop-generic-design` סבב "אחרי", לסמן v0.1.5 ✅.
-3. **`git push`** — 15 commits מקומיים ממתינים.
+3. **`git push`** — 16 commits מקומיים ממתינים.
 4. אחר כך: v0.1.6 (seams/ports) או v0.2.0 (jog wheels).
 
 **צילום מסך מה‑Browser pane לא עובד** בסביבה הזו ("pane is not displayed") —
