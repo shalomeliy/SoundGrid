@@ -50,14 +50,14 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col overflow-hidden">
       <TopBar />
-      <main className="grid min-h-0 flex-[5] grid-cols-[1fr_auto_1fr] gap-3 p-3">
+      <main className="grid shrink-0 grid-cols-[1fr_auto_1fr] gap-3 p-3">
         <Deck deckId="A" />
         <Mixer />
         <Deck deckId="B" />
       </main>
-      <div className="min-h-0 flex-[3] px-3 pb-3">
+      <div className="min-h-[200px] flex-1 px-3 pb-3">
         <Library />
       </div>
     </div>

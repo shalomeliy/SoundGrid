@@ -38,7 +38,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
 
   return (
     <section
-      className="panel relative flex flex-col gap-3 p-3 transition-shadow"
+      className="panel relative flex min-h-0 min-w-0 flex-col gap-2.5 p-3 transition-shadow"
       style={dropActive ? { boxShadow: `0 0 0 2px ${color}, var(--shadow-panel)` } : undefined}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes(TRACK_MIME)) {
