@@ -35,6 +35,14 @@
    TLV, GEOB tags: Markers2/BeatGrid/Autotags/Overview) מ‑reverse engineering
    של ההתקנה המקומית. בסיס ל‑import של v0.16 ולקליינט דסקטופ post‑1.0.
    **המשתמש רוצה גרסאות דסקטופ ל‑Windows+Mac לקראת סוף הפרויקט** (ROADMAP v1.0/Tauri).
+7. docs: `docs/architecture/directions.md` — עקרון "core/ בלי פלטפורמה", רשימת
+   ה‑ports להגדרה ב‑v0.1.6, חוזה שכבת ה‑AI, בידול מול Serato/rekordbox, יעדי חומרה.
+   ROADMAP עודכן עם גרסאות `.5`: v0.1.6 (seams), v0.4.5 (next-song), v0.5.5 (NL
+   control), v0.8.5 (semantic search), v0.9.5 (coaching), v0.11.5 (plugin API),
+   v0.13.5 (live co-pilot).
+8. feat: `recommend.ts` — `mixRecommendations()` מדגיש בספרייה טראקים תואמי‑BPM
+   לדק המנגן (bold + נקודה בצבע הדק, טוגל "N mixable"). `loadTrackToDeck` כותב
+   bpm/duration חזרה ל‑library entry. גרסה בסיסית של v0.4.5.
 
 ### לשיחה הבאה
 - לפתוח Browser pane / `npm run dev`, לצלם, להשוות מול Serato/rekordbox.
