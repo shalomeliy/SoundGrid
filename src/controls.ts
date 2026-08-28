@@ -37,6 +37,16 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     engine.decks[deckId].load(buffer)
     const peaks = computePeaks(buffer, 2400)
     const bpm = detectBpm(buffer)
+    // write analysis back into the library entry so its BPM/Time columns
+    // populate and mix recommendations have data to work with
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({
+      tracks: library.tracks.map((t) =>
+        t.id === track.id
+          ? { ...t, bpm: bpm ?? t.bpm, durationSec: buffer.duration }
+          : t,
+      ),
+    })
     patchDeck(deckId, {
       track: { ...track, bpm: bpm ?? undefined, durationSec: buffer.duration },
       loading: false,

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import * as ctl from '../controls'
 import {
   ensureReadPermission,
@@ -7,9 +7,13 @@ import {
   restoreLibraryFolder,
   scanLibrary,
 } from '../library/library'
+import { useShallow } from 'zustand/react/shallow'
+import { mixRecommendations, type MixMatch } from '../recommend'
 import { useStore } from '../state/store'
 import type { Track } from '../types'
 import { Button } from './controls'
+
+const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
 function fmtTime(sec?: number) {
   if (!sec || !isFinite(sec)) return '–'
@@ -21,6 +25,29 @@ function fmtTime(sec?: number) {
 export function Library() {
   const library = useStore((s) => s.library)
   const setLibrary = useStore((s) => s.setLibrary)
+  const [mixOnly, setMixOnly] = useState(false)
+
+  // Narrow subscription to primitives only: the playhead moves every frame, but
+  // recommendations depend just on play state / bpm / tempo / loaded track, so
+  // the whole library list doesn't re-render 60×/s. useShallow compares each
+  // element, so this must stay a flat array of primitives.
+  const [aP, aB, aT, aId, bP, bB, bT, bId] = useStore(
+    useShallow((s) => [
+      s.decks.A.playing, s.decks.A.bpm, s.decks.A.tempo, s.decks.A.track?.id ?? null,
+      s.decks.B.playing, s.decks.B.bpm, s.decks.B.tempo, s.decks.B.track?.id ?? null,
+    ]),
+  )
+  const recs = useMemo(
+    () =>
+      mixRecommendations(
+        [
+          { id: 'A', playing: aP, bpm: aB, tempo: aT, trackId: aId },
+          { id: 'B', playing: bP, bpm: bB, tempo: bT, trackId: bId },
+        ],
+        library.tracks,
+      ),
+    [aP, aB, aT, aId, bP, bB, bT, bId, library.tracks],
+  )
 
   useEffect(() => {
     setLibrary({ supported: fileSystemAccessSupported() })
@@ -60,7 +87,9 @@ export function Library() {
     })
   }
 
-  const list = ctl.filteredTracks()
+  const list = mixOnly
+    ? ctl.filteredTracks().filter((t) => recs.has(t.id))
+    : ctl.filteredTracks()
 
   return (
     <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
@@ -83,7 +112,21 @@ export function Library() {
           </Button>
         )}
 
-        <label className="relative ml-auto">
+        {recs.size > 0 && (
+          <Button
+            variant="toggle"
+            size="sm"
+            active={mixOnly}
+            tone="var(--color-live)"
+            className="ml-auto"
+            onClick={() => setMixOnly((v) => !v)}
+            title="Show only tracks that mix with what's playing"
+          >
+            ♫ {recs.size} mixable
+          </Button>
+        )}
+
+        <label className={`relative ${recs.size > 0 ? '' : 'ml-auto'}`}>
           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-grid-dim">⌕</span>
           <input
             value={library.query}
@@ -139,6 +182,7 @@ export function Library() {
                   key={t.id}
                   track={t}
                   selected={t.id === library.selectedId}
+                  match={recs.get(t.id)}
                   onSelect={() => setLibrary({ selectedId: t.id })}
                 />
               ))}
@@ -157,10 +201,12 @@ function Th({ children, className = '' }: { children: React.ReactNode; className
 function Row({
   track,
   selected,
+  match,
   onSelect,
 }: {
   track: Track
   selected: boolean
+  match?: MixMatch
   onSelect: () => void
 }) {
   return (
@@ -177,8 +223,19 @@ function Row({
         selected ? 'bg-accent/15' : 'hover:bg-surface-2'
       }`}
     >
-      <td className="relative max-w-0 truncate py-1.5 pl-3 pr-2 font-medium">
+      <td
+        className={`relative max-w-0 truncate py-1.5 pl-3 pr-2 ${
+          match?.strong ? 'font-bold text-grid-text' : 'font-medium'
+        }`}
+      >
         {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
+        {match && (
+          <span
+            className="mr-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full align-middle"
+            style={{ background: DECK_COLOR[match.deck], opacity: match.strong ? 1 : 0.5 }}
+            title={`Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}`}
+          />
+        )}
         {track.name}
       </td>
       <td className="py-1.5 pr-2 uppercase text-grid-dim">{track.kind}</td>
