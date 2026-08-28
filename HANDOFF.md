@@ -7,9 +7,32 @@
 ## סטטוס נוכחי
 
 - **גרסה אחרונה שהושלמה:** `v0.1.0` (MVP)
-- **גרסה בעבודה:** אין — הבאה בתור: `v0.1.5 — Design Overhaul`
-- **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** כן
-- **דגל CLEAR:** 🟢 שיחה חדשה לפני `v0.1.5` (גם כדי לטעון את codegraph MCP)
+- **גרסה בעבודה:** `v0.1.5 — Design Overhaul` — כל הקוד נכתב, build + lint ירוקים.
+  **חסר:** בדיקה ויזואלית מול Serato/rekordbox (קריטריון "הושלם"), וסבב ליטוש
+  אחרי שרואים את זה רץ. ה‑Browser pane לא הצליח לרנדר בשיחה שבה נכתב — צריך
+  לפתוח אותו / להריץ `npm run dev` ידנית ולצלם.
+- **branch:** `main` · **build:** ירוק · **דחוף ל‑origin:** לא (3 commits מקומיים של v0.1.5)
+- **דגל CLEAR:** —
+
+### מה נעשה ב‑v0.1.5 (commits מקומיים)
+1. `design tokens, pro knob/fader/button, deck + platter + waveform` — `src/index.css`
+   שוכתב: surface tokens שכבתיים, Inter Variable (`@fontsource-variable/inter`),
+   type/radius/motion scale, elevation shadows, utilities `.tnum/.label/.panel`.
+   `controls.tsx` שוכתב לגמרי: `Button` (transport/toggle/ghost), `Knob` (SVG arc
+   + readout on hover + מקלדת), `Fader` (מסילה חרוצה, ticks, detent, cap עם אחיזה).
+   `Deck` — היררכיה שם→זמן→BPM, readouts ב‑tabular, disabled בלי טראק.
+   `Platter.tsx` חדש — טבעת מיקום + סמן מסתובב (בסיס לג'וג של v0.2).
+   `Waveform` — גוף מלא עם gradient, spine, beat grid, cue flags, playhead עם glow,
+   מצבי loading/empty. `PadGrid` — עומק + a11y.
+2. `mixer, topbar, library redesign + designed states` — `Mixer` מיושר לגריד הדקים,
+   EQ ב‑well שקוע. `TopBar` — status pills עם נקודה. `Library` — כותרת טבלה דביקה,
+   עמודות BPM/Time, בורר accent, שורות 44px, מצבי empty/scanning/unsupported אמיתיים.
+3. token contrast fix (grid-muted/dim ל‑WCAG AA).
+
+### לשיחה הבאה
+- לפתוח Browser pane / `npm run dev`, לצלם, להשוות מול Serato/rekordbox.
+- לכוונן: זום/צבע ה‑waveform, גודל ה‑Platter, ריווח פאנלים, גובה ברירת מחדל של Library.
+- אם תקין: לסמן v0.1.5 ✅ ב‑ROADMAP, `git push`.
 
 ### הקשר ל‑v0.1.5 (מהמשתמש)
 העיצוב הנוכחי "מגושם מדי". הצבעים יפים ונשארים (טורקיז deck A, כתום deck B, סגול accent).
@@ -104,3 +127,4 @@ src/
 | 2026-08-27 | v0.1.0 | scaffold, מנוע אודיו, decks, mixer, waveform, library, MIDI + FLX4, ריפו ציבורי בגיטהאב | — |
 | 2026-08-28 | — | ROADMAP.md (20 גרסאות), HANDOFF.md, נוהל שיחה | — |
 | 2026-08-28 | — | codegraph init בפרויקט; הוספת v0.1.5 (design overhaul) לרודמפ | 🟢 שיחה חדשה לפני v0.1.5 |
+| 2026-08-28 | v0.1.5 | שכתוב שפת עיצוב: tokens+Inter, Button/Knob/Fader, Deck+Platter, Waveform, Mixer, TopBar, Library + מצבים. build+lint ירוק. ממתין לבדיקה ויזואלית | אחרי ליטוש |
