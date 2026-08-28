@@ -28,6 +28,13 @@
    EQ ב‑well שקוע. `TopBar` — status pills עם נקודה. `Library` — כותרת טבלה דביקה,
    עמודות BPM/Time, בורר accent, שורות 44px, מצבי empty/scanning/unsupported אמיתיים.
 3. token contrast fix (grid-muted/dim ל‑WCAG AA).
+4. fix: רשימת הספרייה לא נגללה עם הרבה טראקים (הפאנל לא היה מוגבל בגובה) —
+   `h-full + overflow-hidden` על ה‑section.
+5. feat: גרירת טראק מהספרייה אל דק (DnD) + overlay "Drop to load deck X".
+6. docs: `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate
+   TLV, GEOB tags: Markers2/BeatGrid/Autotags/Overview) מ‑reverse engineering
+   של ההתקנה המקומית. בסיס ל‑import של v0.16 ולקליינט דסקטופ post‑1.0.
+   **המשתמש רוצה גרסאות דסקטופ ל‑Windows+Mac לקראת סוף הפרויקט** (ROADMAP v1.0/Tauri).
 
 ### לשיחה הבאה
 - לפתוח Browser pane / `npm run dev`, לצלם, להשוות מול Serato/rekordbox.
