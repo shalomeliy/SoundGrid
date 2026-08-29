@@ -17,6 +17,24 @@ export const git = (...args: string[]): string =>
   execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 
 /**
+ * Three of these invariants ask git questions. Run from an exported tarball or a
+ * tree without `.git` they would each fail with a raw spawn error, and the reader
+ * would debug five confusing failures instead of one clear one. Fail once, by
+ * name — the check is genuinely unavailable, which is not the same as passing.
+ */
+export function requireGit(): void {
+  try {
+    if (git('rev-parse', '--is-inside-work-tree') === 'true') return
+  } catch {
+    // falls through to the named failure below
+  }
+  throw new Error(
+    'tests/repo/ needs a git work tree — these invariants ask git about commits and\n' +
+      'about which files are dirty. Run them from a clone, not from an export.',
+  )
+}
+
+/**
  * Every markdown file that a session might read. The invariants below are about
  * documentation drifting away from the repo, so the set has to be discovered
  * rather than listed — a doc added later and never registered here would be

@@ -129,7 +129,7 @@ tests/repo/               אינווריאנטים על הריפו כמערכת 
 | --- | --- |
 | `handoff-size.test.ts` | הקובץ הזה גדל ב‑97% ביום אחד ונקרא ראשון בכל שיחה |
 | `version-in-step.test.ts` | `package.json` אמר `"0.0.0"` בזמן ש‑v0.2.0 כבר ב‑main |
-| `doc-paths.test.ts` | מפת הארכיטקטורה הצביעה על `src/audio/`, `src/library/`, `src/midi/` — נתיבים שמתו ב‑v0.1.6 | <!-- dead-path -->
+| `doc-paths.test.ts` | מפת הארכיטקטורה הדריכה דרך `library/tags.ts` ו‑`midi/manager.ts` — נתיבים שמתו ב‑v0.1.6 <!-- dead-path -->, וקישור שבור ב‑`README.md` |
 | `doc-commits.test.ts` | הקובץ הזה קיבע SHA בשורת מצב ה‑push, והשורה הזדקנה לשקר (`969f004`) |
 | `claude-md-pair.test.ts` | הכלל "שני קבצי ה‑CLAUDE משתנים באותו commit" היה הכלל היחיד בפרויקט בלי אכיפה |
 
@@ -164,6 +164,9 @@ tests/repo/               אינווריאנטים על הריפו כמערכת 
 - `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
 - Waveform מרונדר ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
+- **`strict` לא מופעל באף `tsconfig`** — לא ב‑`app`, לא ב‑`node`, ולא ב‑`test`
+  שנוסף ב‑v0.2.1. ‏`CLAUDE.md` מכריז "TypeScript (strict)" והריפו לא. חוב קיים
+  שהתגלה בסקירת v0.2.1; להפעיל כמשימה בפני עצמה, לא באמצע פיצ'ר.
 - **הפרת גבול `platform/` → `app/`** — `transport-webmidi/manager.ts` מייבא את
   `@/app/state/store` ואת `@/controls` במקום לפלוט `ControlActions` דרך הפורט. נכנס
   ב‑`f1ae061` (v0.2.0). מתועד ביושר ב‑`.dependency-cruiser.cjs:29‑33` עם severity

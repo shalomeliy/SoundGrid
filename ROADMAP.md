@@ -89,7 +89,7 @@
 - `src/core/ports/` — interfaces: `AudioBackend`, `TrackSource`, `ControlTransport`,
   `Analyzer` + `AnalysisCache`, `Clock`, `Persistence`, `Capabilities`, `AIProvider` (stub)
 - העברת הקוד הקיים למאחורי ה‑ports: `engine.ts`/`deck.ts` → `platform/audio-webaudio/`,
-  `library.ts` → `platform/source-fsaccess/`, `midi/manager.ts` צד‑קלט → `transport-webmidi/`
+  `library.ts` → `platform/source-fsaccess/`, `midi/manager.ts` צד‑קלט → `transport-webmidi/` <!-- dead-path -->
 - `Clock` יחיד מעל `audioContext.currentTime`; `useRenderLoop` נרשם אליו
 - אובייקט `Capabilities` מחושב ב‑boot; ה‑UI מתדרדר בחן לפיו
 - `dependency-cruiser` ב‑CI: `core/**` אסור לייבא `react`/`react-dom`/`*.tsx`
@@ -153,7 +153,7 @@ key ל‑397). לקרוא, לא לנתח — כך עמודות ה‑BPM/Key/Time
 - **`vitest`** — מסגרת הבדיקות הראשונה בריפו. `npm test`, ונכנס לתוך `npm run check`.
   ‏`ROADMAP` תיזמן טסטים ל‑v1.0.0; זה היה מאוחר מדי, כי האינווריאנטים שלמטה
   לא ניתנים לביטוי בלי runner.
-- **פיצול `HANDOFF.md`** — הקובץ שנקרא ראשון בכל שיחה ירד מ‑43,916 ל‑13,128 בייטים.
+- **פיצול `HANDOFF.md`** — הקובץ שנקרא ראשון בכל שיחה ירד מ‑43,916 ל‑13,512 בייטים.
   גרסה שנסגרת עוברת ל‑`docs/handoff/<version>.md`, בשורש נשאר ההווה בלבד.
 - **חמישה אינווריאנטים ב‑`tests/repo/`** — תקציב גודל, גרסה מסונכרנת בין
   `package.json` ל‑`HANDOFF.md`, נתיבים חיים במסמכים, SHA שמתרזולב, ושני קבצי

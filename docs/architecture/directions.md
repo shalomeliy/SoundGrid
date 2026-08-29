@@ -56,7 +56,7 @@ src/
 | --- | --- | --- | --- |
 | **`AudioBackend`** | Web Audio קשיח ב‑`engine.ts`/`deck.ts` | AudioWorklet + WASM DSP · native ASIO/CoreAudio ב‑Tauri · WebGPU mixing | ⬜ interface ב‑v0.1.6 |
 | **`TrackSource`** | File System Access ב‑`library.ts` | URL · ספק ענן (OAuth) · locker אופליין (Cache API) · stems כמקור | ⬜ interface ב‑v0.1.6, מקורות נוספים v0.15 |
-| **`ControlTransport`** | Web MIDI בלבד (`midi/manager.ts`) | WebHID · Bluetooth MIDI · WebSerial · OSC · טלפון/רשת כשלט | ⬜ הפרדת צד‑קלט ב‑v0.1.6 |
+| **`ControlTransport`** | Web MIDI בלבד (`transport-webmidi/manager.ts`) | WebHID · Bluetooth MIDI · WebSerial · OSC · טלפון/רשת כשלט | ⬜ הפרדת צד‑קלט ב‑v0.1.6 |
 | **`Analyzer` + `AnalysisCache`** | `detectBpm` נאיבי (`analyze.ts`) | WASM · WebGPU · שירות מרוחק · מודל ML למבנה/סולם | ⬜ interface v0.1.6, מימוש v0.4 |
 | **`Clock`** | `audioContext.currentTime` פזור בקוד | Ableton Link · MIDI clock · שעון מערכת | ⬜ v0.1.6 (ראה §2) |
 | **`Persistence`** | `idb-keyval` נקודתי | SQLite ב‑Tauri · sync ענן · ייצוא/ייבוא JSON נייד | ⬜ repository דק v0.1.6 |

@@ -10,8 +10,11 @@ import { read } from './repo.ts'
  *
  * The budget is deliberately loose. A choking budget creates pressure to weaken
  * the test instead of moving a block out, which is the failure mode that makes
- * a check worthless. 16,000 bytes is ~22% above the 13,128 the file measured
- * right after the v0.2.1 split.
+ * a check worthless. 16,000 bytes is ~18% above the 13,512 the file measured right
+ * after the v0.2.1 split — a number that reproduces with `wc -c HANDOFF.md`, which
+ * an earlier draft of this comment did not: it recorded a count taken mid-edit and
+ * was 19 bytes off. In a project whose definition of verification is "numbers
+ * written down", a number that does not reproduce is the crack the standard opens on.
  */
 const BUDGET_BYTES = 16_000
 
