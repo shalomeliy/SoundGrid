@@ -318,9 +318,12 @@ export class WorkletPlayer implements SourcePlayer {
       transfer.push(data.buffer)
     }
     if (srcChannels > outChannels) {
-      // Equal-gain fold of every extra channel into both sides, which is what
-      // Web Audio's own downmix does. Without this the loop bound above only
-      // narrows the output — the extra channels are read by nobody.
+      // Equal-gain fold of every extra channel into both sides. Not the spec
+      // downmix, which applies specific coefficients (0.7071 for centre and
+      // surrounds in 5.1) and only defines a 5.1 layout — channel meaning is
+      // not knowable for an arbitrary count, so a uniform fold is the honest
+      // generic choice. Without it the loop bound above only narrows the
+      // output and the extra channels are read by nobody.
       const extra = new Float32Array(buffer.length)
       const gain = 1 / (srcChannels - 1)
       for (let c = outChannels; c < srcChannels; c++) {

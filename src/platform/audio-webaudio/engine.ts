@@ -40,6 +40,12 @@ export class AudioEngine {
     for (const d of [this.decks.A, this.decks.B]) {
       d.onProcessorError = (reason) => {
         this.scratchError = `${reason} (deck ${d.id})`
+        // A dead processor is not a working scratch engine, even though the
+        // module is still loaded. Leaving workletReady true records the reason
+        // in a field the UI never reads, because the pill is gated on
+        // availability — the failure would stay silent for the second time.
+        this.workletReady = false
+        this.onScratchStateChange?.()
       }
     }
     this.decks.A.faderGain.connect(this.masterBus)
@@ -103,6 +109,14 @@ export class AudioEngine {
   private workletLoad: Promise<boolean> | null = null
   private workletReady = false
   scratchError: string | null = null
+
+  /**
+   * Fired whenever scratch availability changes. Recording the reason is not
+   * enough on its own: a worklet can die long after boot, and a field nobody
+   * re-reads is the same silent failure the reporting was added to prevent.
+   * `controls.ts` owns the subscription — this layer must not reach into the store.
+   */
+  onScratchStateChange?: () => void
 
   async ensureScratchEngine(): Promise<boolean> {
     if (!this.workletLoad) {

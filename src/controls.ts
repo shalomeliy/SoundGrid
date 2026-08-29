@@ -23,13 +23,24 @@ export async function initAudio() {
       const ch = state.mixer.channels[id]
       engine.decks[id].setVolume(ch.volume)
     })
-    useStore.setState({
-      audioReady: true,
-      scratchReady: engine.scratchAvailable,
-      scratchError: engine.scratchError,
-    })
+    useStore.setState({ audioReady: true })
+    syncScratchState()
   }
 }
+
+/** Copy the engine's scratch availability into the store for the TopBar pill. */
+function syncScratchState() {
+  useStore.setState({
+    scratchReady: engine.scratchAvailable,
+    scratchError: engine.scratchError,
+  })
+}
+
+// Subscribed at module scope, deliberately not inside initAudio's first-run
+// block. A worklet can die mid-render hours after boot, and anything wired only
+// on the first initialisation is not wired at all if audio was already running
+// — which is the same one-shot mistake that left the pill dead in the first place.
+engine.onScratchStateChange = syncScratchState
 
 export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   await initAudio()
@@ -39,11 +50,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     const data = await readTrackData(track)
     const buffer = await engine.decode(data)
     // Read everything we need OUT of the buffer before handing it to the deck.
-    // The deck may take ownership of the samples (the scratch worklet is given
-    // them by transfer, which detaches the AudioBuffer and leaves a live object
-    // holding zero bytes). Analysing after the handoff therefore produces a
-    // flat waveform and a null BPM with no error thrown — invisible. Keep the
-    // handoff last.
+    // Deliberately defensive rather than currently required: the worklet player
+    // copies the samples with copyFromChannel and transfers only those copies,
+    // so today's AudioBuffer is not detached (see the note in players.ts). A
+    // backend that took the buffer itself would detach it, and analysing after
+    // the handoff would then yield a flat waveform and a null BPM with nothing
+    // thrown. Cheap to keep the handoff last; invisible if it ever stops being.
     const durationSec = buffer.duration
     // One analysis bucket per ~1.3 rendered pixels. A fixed 2400 buckets meant
     // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
