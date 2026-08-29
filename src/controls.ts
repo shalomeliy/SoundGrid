@@ -144,6 +144,36 @@ export function seekDeck(deckId: DeckId, sec: number) {
   useStore.getState().patchDeck(deckId, { positionSec: sec })
 }
 
+/**
+ * Platter grabbed. Both the on-screen platter and a jog-wheel touch land here,
+ * which is the point of this module: one path, so a mouse drag and a finger on
+ * the FLX4 cannot drift apart.
+ */
+export function beginScratch(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  deck.beginScratch()
+  useStore.getState().patchDeck(deckId, { scratching: true, playing: deck.playing })
+}
+
+/** Rate in playback multiples while held: 1 = forward at speed, negative = back. */
+export function scratchRate(deckId: DeckId, rate: number) {
+  engine.decks[deckId].scratchRate(rate)
+}
+
+export function endScratch(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  deck.endScratch()
+  useStore.getState().patchDeck(deckId, { scratching: false, playing: deck.playing })
+}
+
+export function toggleVinylMode(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  const on = !deck.vinylMode
+  deck.setVinylMode(on)
+  useStore.getState().patchDeck(deckId, { vinylMode: on })
+}
+
 export function nudgeDeck(deckId: DeckId, deltaSec: number) {
   const deck = engine.decks[deckId]
   seekDeck(deckId, deck.position + deltaSec)

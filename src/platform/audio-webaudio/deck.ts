@@ -42,7 +42,8 @@ export class Deck {
   private _durationSec = 0
   private _tempo = 0
   private _cueMonitor = false
-  private _vinylMode = false
+  // on by default, as every DJ deck ships; the store's initial state matches
+  private _vinylMode = true
   private _scratching = false
   /** what play state to return to when the hand comes off the platter */
   private _resumePlaying = false

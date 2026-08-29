@@ -125,6 +125,15 @@ class ScratchProcessor extends AudioWorkletProcessor {
     })
   }
 
+  /**
+   * Note the `c < nCh ? c : nCh - 1` channel mapping in the write loops. The
+   * node declares a stereo output, but a mono file supplies one channel, and
+   * writing only that one leaves the right output untouched — i.e. silent.
+   * Web Audio upmixed mono to stereo for free on the AudioBufferSourceNode
+   * this replaced, so without the fan-out every mono track in the library
+   * would suddenly play out of the left speaker only. Measured before the fix:
+   * left -7.4 dBFS, right -999 dBFS.
+   */
   process(
     _inputs: Float32Array[][],
     outputs: Float32Array[][],
@@ -134,6 +143,7 @@ class ScratchProcessor extends AudioWorkletProcessor {
     const n = out[0]?.length ?? 0
     const chans = this.channels
     const nCh = chans.length
+    const outCh = out.length
 
     if (nCh === 0 || this.frames === 0 || !this.playing) {
       // Nothing to render. Outputs arrive zero-filled, so leaving them alone is
@@ -162,7 +172,7 @@ class ScratchProcessor extends AudioWorkletProcessor {
 
       const p = this.pos
       if (p < 0 || p >= this.frames - 1) {
-        for (let c = 0; c < nCh; c++) out[c][i] = 0
+        for (let c = 0; c < outCh; c++) out[c][i] = 0
       } else {
         const i0 = p | 0
         const frac = p - i0
@@ -171,10 +181,10 @@ class ScratchProcessor extends AudioWorkletProcessor {
           // Rate 1.0 from an integer offset keeps the pointer integral, so this
           // returns the stored sample untouched — that is what makes normal
           // playback bit-identical to the AudioBufferSourceNode it replaced.
-          for (let c = 0; c < nCh; c++) out[c][i] = chans[c][i0] * g
+          for (let c = 0; c < outCh; c++) out[c][i] = chans[c < nCh ? c : nCh - 1][i0] * g
         } else {
-          for (let c = 0; c < nCh; c++) {
-            const d = chans[c]
+          for (let c = 0; c < outCh; c++) {
+            const d = chans[c < nCh ? c : nCh - 1]
             out[c][i] = (d[i0] + (d[i0 + 1] - d[i0]) * frac) * g
           }
         }

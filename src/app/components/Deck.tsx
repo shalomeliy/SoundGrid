@@ -183,9 +183,18 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             </Button>
             <Button
               variant="toggle"
+              active={deck.vinylMode}
+              tone={color}
+              className="ml-auto"
+              onClick={() => ctl.toggleVinylMode(deckId)}
+              title="Vinyl mode: stop and start spin down and up instead of cutting"
+            >
+              Vinyl
+            </Button>
+            <Button
+              variant="toggle"
               active={deck.cueMonitor}
               tone="var(--color-live)"
-              className="ml-auto"
               onClick={() => ctl.toggleCueMonitor(deckId)}
             >
               PFL
@@ -198,9 +207,12 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         {/* right: platter + tempo ------------------------------------- */}
         <div className="flex w-[76px] shrink-0 flex-col items-center gap-2">
           <Platter
+            deckId={deckId}
             positionSec={deck.positionSec}
             durationSec={deck.durationSec}
             playing={deck.playing}
+            scratching={deck.scratching}
+            hasTrack={!!deck.track}
             color={color}
             size={54}
           />

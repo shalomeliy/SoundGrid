@@ -46,6 +46,10 @@ export interface DeckState {
   hotCues: HotCue[]
   /** temp cue point set with the CUE button */
   cuePointSec: number
+  /** vinyl mode: stop and start spin down and up instead of cutting */
+  vinylMode: boolean
+  /** a hand is on the platter right now */
+  scratching: boolean
   loopActive: boolean
   loopBeats: number
   cueMonitor: boolean

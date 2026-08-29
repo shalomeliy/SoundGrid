@@ -255,9 +255,18 @@ export class WorkletPlayer implements SourcePlayer {
   }
 
   load(buffer: AudioBuffer) {
+    // The deck chain downstream is stereo, and the worklet writes exactly the
+    // channels the node declares. Anything past the second source channel would
+    // therefore just vanish — where the AudioBufferSourceNode this replaced got
+    // a spec downmix from Web Audio for free. Fold the extras in rather than
+    // dropping them: a surround file must not quietly lose its centre channel.
+    // (Mono is handled the other way round, inside the processor, by fanning
+    // one source channel out to both outputs.)
+    const srcChannels = buffer.numberOfChannels
+    const outChannels = Math.min(srcChannels, 2)
     const channels: Float32Array[] = []
     const transfer: ArrayBuffer[] = []
-    for (let c = 0; c < buffer.numberOfChannels; c++) {
+    for (let c = 0; c < outChannels; c++) {
       // copyFromChannel into our own array rather than transferring the
       // AudioBuffer's own storage: transferring that detaches the AudioBuffer
       // itself, and callers upstream are entitled to still hold a live one.

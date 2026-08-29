@@ -25,6 +25,8 @@ function emptyDeck(id: DeckId): DeckState {
     bands: null,
     hotCues: [],
     cuePointSec: 0,
+    vinylMode: true,
+    scratching: false,
     loopActive: false,
     loopBeats: 4,
     cueMonitor: false,
