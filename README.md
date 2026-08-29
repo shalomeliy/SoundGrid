@@ -42,7 +42,8 @@ npm run dev
 
 ## Controller mapping
 
-The FLX4 map lives in [`src/midi/mappings/flx4.ts`](src/midi/mappings/flx4.ts).
+The FLX4 map lives in
+[`src/platform/transport-webmidi/mappings/flx4.ts`](src/platform/transport-webmidi/mappings/flx4.ts).
 Note/CC numbers follow Pioneer's published FLX4 layout but vary by firmware — use
 the MIDI monitor in the top bar and the Learn action to correct any control.
 

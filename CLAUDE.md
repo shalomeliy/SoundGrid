@@ -166,8 +166,8 @@ conversations must be allowed to end.
   file, so it does **not** reset `context_check.py`'s counters — keep clearing and it
   reads 🔴 while context is actually empty. One transcript per version also keeps
   `--resume` and `/rewind` usable. `/clear` is only for throwaway exploration with no
-  record worth keeping. (The "קריטריון CLEAR" section still sitting in `HANDOFF.md`
-  predates this rule and is superseded by it.)
+  record worth keeping. (The old "קריטריון CLEAR" section in `HANDOFF.md` was superseded
+  by this rule and removed in the 2026-08-29 doc split.)
 - Prefer a subagent for read-only exploration ("where is X used", "does Y exist") so its
   reading stays out of this conversation's context.
 - Don't dump whole files or full command output into the transcript when a targeted
@@ -179,27 +179,34 @@ Each doc answers one question and stays out of the others' way:
 
 | Question | File |
 | --- | --- |
-| What's in flight **right now** — version, next step, open decisions, known debt | `HANDOFF.md` |
+| What's in flight **right now** — version, what's open, next step, known debt | `HANDOFF.md` |
+| What was built in a **closed** version, and what was measured there | `docs/handoff/<version>.md` |
 | What gets built **next**, in what order, and why the order changed | `ROADMAP.md` |
+| **Where everything lives** in the source tree | `docs/architecture/map.md` |
 | **Long-term principles** — the ports, `core/` purity, the AI-layer contract, differentiation vs Serato/rekordbox, hardware targets | `docs/architecture/directions.md` |
 | **Serato's on-disk formats** (database V2 / crate TLV, GEOB Markers2/BeatGrid/Autotags/Overview) | `docs/reference/serato-formats.md` |
 | What the app is, for someone who just found the repo | `README.md` |
 | What's allowed while working | this file (Hebrew: `CLAUDE-HE.md`) |
 
+**The split (2026-08-29).** `HANDOFF.md` had reached 43.9KB and `ROADMAP.md` 34.6KB — both
+append-only, both read at the start of every conversation, so together the largest standing
+context cost in the repo. Worse than the size: the file had gone false. Its header announced
+"v0.2.0b written" while **four of the six items in its own plan had never been done**, buried
+in one block out of twenty. A file that grows stops being read, and a file that isn't read
+starts to lie.
+
+Now: `HANDOFF.md` holds **the present only**, under a **15,000-byte budget** stated at the
+top of the file. When a version closes its block moves to `docs/handoff/<version>.md`, which
+carries both the original scope and the outcome. **Anything still open stays in `HANDOFF.md`**
+— the archive is for the record, not for hiding work.
+
 **Open debt in the docs themselves:**
 
-- **Size.** `HANDOFF.md` is 20,602 chars and `ROADMAP.md` is 28,872. Both are append-only
-  and both are read at the start of a conversation, which makes them the largest standing
-  context cost in the repo. ESOP let the same file reach 97,449 chars before splitting it
-  into `docs/handoff/<version>.md` and adding a size test; SoundGrid is on the same curve.
-  When a version closes, its block should **move out** of `HANDOFF.md` — the root file
-  holds the present only.
-- **Stale paths.** `HANDOFF.md`'s "ארכיטקטורה — מפה מהירה" section and `README.md`'s
-  controller-mapping link still use pre-v0.1.6 paths (`src/audio/`, `src/library/`,
-  `src/midi/mappings/flx4.ts`). The real files are under `src/core/`, `src/platform/`,
-  `src/app/`.
-- **`package.json` says `"version": "0.0.0"`** while the repo is at v0.1.7. Either keep it
-  in step with `ROADMAP.md` or state explicitly that the field is unused.
+- **Nothing enforces any of this.** The size budget, the version field, and "the status line
+  is true" are all conventions right now. They become checks only when a test runner exists;
+  there is none (see `HANDOFF.md`, "חוב תשתית התיעוד", item ②).
+- **`package.json` says `"version": "0.0.0"`** while `main` is at v0.2.0. Either keep it in
+  step with `ROADMAP.md` or state explicitly that the field is unused.
 
 ## Useful commands
 
