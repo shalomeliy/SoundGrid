@@ -34,33 +34,40 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   try {
     const data = await readTrackData(track)
     const buffer = await engine.decode(data)
-    engine.decks[deckId].load(buffer)
+    // Read everything we need OUT of the buffer before handing it to the deck.
+    // The deck may take ownership of the samples (the scratch worklet is given
+    // them by transfer, which detaches the AudioBuffer and leaves a live object
+    // holding zero bytes). Analysing after the handoff therefore produces a
+    // flat waveform and a null BPM with no error thrown — invisible. Keep the
+    // handoff last.
+    const durationSec = buffer.duration
     // One analysis bucket per ~1.3 rendered pixels. A fixed 2400 buckets meant
     // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
     // waveform came out as blocks — the old path fill hid it by interpolating.
-    const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(buffer.duration * 200)))
+    const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(durationSec * 200)))
     const { peaks, bands } = analyzeWaveform(buffer, buckets)
     // A tag written by Serato beats our own estimate: detectBpm is a crude
     // energy autocorrelation (see ROADMAP v0.3) and was overriding a good value
     // with a worse one — a tagged 124 became a detected 123.5, which SYNC then
     // drifts on. Once the real beatgrid lands this precedence flips back.
     const bpm = track.bpm ?? detectBpm(buffer)
+    engine.decks[deckId].load(buffer)
     // write analysis back into the library entry so its BPM/Time columns
     // populate and mix recommendations have data to work with
     const { library, setLibrary } = useStore.getState()
     setLibrary({
       tracks: library.tracks.map((t) =>
         t.id === track.id
-          ? { ...t, bpm: bpm ?? t.bpm, durationSec: buffer.duration }
+          ? { ...t, bpm: bpm ?? t.bpm, durationSec }
           : t,
       ),
     })
     patchDeck(deckId, {
-      track: { ...track, bpm: bpm ?? undefined, durationSec: buffer.duration },
+      track: { ...track, bpm: bpm ?? undefined, durationSec },
       loading: false,
       playing: false,
       positionSec: 0,
-      durationSec: buffer.duration,
+      durationSec,
       bpm,
       peaks,
       bands,

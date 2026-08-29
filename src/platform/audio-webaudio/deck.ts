@@ -29,6 +29,8 @@ export class Deck {
   private buffer: AudioBuffer | null = null
 
   private _playing = false
+  private _hasTrack = false
+  private _durationSec = 0
   private startCtxTime = 0
   private startOffset = 0
   private _tempo = 0
@@ -76,16 +78,23 @@ export class Deck {
   }
 
   get hasTrack() {
-    return this.buffer !== null
+    return this._hasTrack
   }
 
   get duration() {
-    return this.buffer?.duration ?? 0
+    return this._durationSec
   }
 
   load(buffer: AudioBuffer) {
     this.stopSource()
     this.buffer = buffer
+    // Duration and "is a track loaded" are captured as plain values rather than
+    // asked of the buffer each time. A player that takes ownership of the
+    // samples leaves a live AudioBuffer holding zero bytes behind it, so
+    // `buffer !== null` and `buffer.duration` both start lying while looking
+    // perfectly healthy. These two fields are the deck's own truth.
+    this._durationSec = buffer.duration
+    this._hasTrack = true
     this.startOffset = 0
     this._playing = false
     this.loopStart = this.loopEnd = null
@@ -94,20 +103,22 @@ export class Deck {
   unload() {
     this.stopSource()
     this.buffer = null
+    this._durationSec = 0
+    this._hasTrack = false
     this.startOffset = 0
     this._playing = false
   }
 
   get position(): number {
-    if (!this.buffer) return 0
-    if (!this._playing) return clamp(this.startOffset, 0, this.buffer.duration)
+    if (!this._hasTrack) return 0
+    if (!this._playing) return clamp(this.startOffset, 0, this._durationSec)
     const elapsed = (this.ctx.currentTime - this.startCtxTime) * this.rate
     let pos = this.startOffset + elapsed
     if (this.loopStart !== null && this.loopEnd !== null && pos >= this.loopEnd) {
       const span = this.loopEnd - this.loopStart
       pos = this.loopStart + ((pos - this.loopStart) % span)
     }
-    return clamp(pos, 0, this.buffer.duration)
+    return clamp(pos, 0, this._durationSec)
   }
 
   private get rate() {
@@ -115,7 +126,7 @@ export class Deck {
   }
 
   play() {
-    if (!this.buffer || this._playing) return
+    if (!this._hasTrack || this._playing) return
     this.startSource(this.position)
     this._playing = true
   }
