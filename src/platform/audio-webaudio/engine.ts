@@ -35,6 +35,13 @@ export class AudioEngine {
       A: new Deck(this.ctx, 'A'),
       B: new Deck(this.ctx, 'B'),
     }
+    // A worklet that dies mid-render takes its deck's audio with it, silently.
+    // Route it to the same place a failed addModule goes, so the UI says so.
+    for (const d of [this.decks.A, this.decks.B]) {
+      d.onProcessorError = (reason) => {
+        this.scratchError = `${reason} (deck ${d.id})`
+      }
+    }
     this.decks.A.faderGain.connect(this.masterBus)
     this.decks.B.faderGain.connect(this.masterBus)
     this.decks.A.cueGain.connect(this.cueBus)

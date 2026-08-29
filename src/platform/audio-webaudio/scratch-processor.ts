@@ -56,6 +56,12 @@ class ScratchProcessor extends AudioWorkletProcessor {
   private loopStart: number | null = null
   private loopEnd: number | null = null
   private ended = false
+  /**
+   * Track identity, bumped only by load/unload — deliberately separate from
+   * `epoch`, which invalidates *position samples* on every seek/start/stop.
+   * Conflating them is what made `ended` droppable: see the note on postEnded.
+   */
+  private generation = 0
 
   private gain = 0
   private declickStep = 1 / (DECLICK_SEC * sampleRate)
@@ -76,6 +82,7 @@ class ScratchProcessor extends AudioWorkletProcessor {
         this.ended = false
         this.loopStart = this.loopEnd = null
         this.epoch = msg.epoch
+        this.generation++
         // Silence first, then ramp in. Landing mid-waveform at full gain is a
         // step discontinuity, which is exactly what a click is.
         this.gain = 0
@@ -94,7 +101,11 @@ class ScratchProcessor extends AudioWorkletProcessor {
         break
       case 'loop':
         this.loopStart = msg.startSec === null ? null : msg.startSec * sampleRate
-        this.loopEnd = msg.endSec === null ? null : msg.endSec * sampleRate
+        // Clamp to the track: a loop end past the last frame plays audio, then
+        // a gap of nothing, then repeats. The AudioBufferSourceNode path this
+        // replaced got that clamp from the spec for free.
+        this.loopEnd =
+          msg.endSec === null ? null : this.clampFrames(msg.endSec * sampleRate)
         break
       case 'unload':
         this.channels = []
@@ -102,6 +113,9 @@ class ScratchProcessor extends AudioWorkletProcessor {
         this.pos = 0
         this.playing = false
         this.epoch = msg.epoch
+        // Must move in step with the main thread's counter, which also bumps
+        // here — otherwise the two disagree and every later `ended` is dropped.
+        this.generation++
         break
     }
   }
@@ -122,6 +136,7 @@ class ScratchProcessor extends AudioWorkletProcessor {
       epoch: this.epoch,
       positionSec: this.pos / sampleRate,
       ctxTimeSec: currentTime,
+      generation: this.generation,
     })
   }
 
@@ -214,6 +229,7 @@ class ScratchProcessor extends AudioWorkletProcessor {
       this.port.postMessage({
         type: 'ended',
         epoch: this.epoch,
+        generation: this.generation,
         positionSec: this.pos / sampleRate,
       })
     } else if (++this.quantaSinceAnchor >= ANCHOR_EVERY_QUANTA) {

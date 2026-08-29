@@ -201,6 +201,8 @@ export class WorkletPlayer implements SourcePlayer {
   readonly kind = 'worklet'
   readonly canScratch = true
   onEnd?: () => void
+  /** the worklet died mid-render; this deck renders nothing until reloaded */
+  onProcessorError?: () => void
 
   private node: AudioWorkletNode
   private rateParam: AudioParam
@@ -208,6 +210,8 @@ export class WorkletPlayer implements SourcePlayer {
   private playing = false
   private rate = 1
   private epoch = 0
+  /** track identity as the processor sees it; only load/unload move it */
+  private generation = 0
 
   /** newest accepted anchor: where the pointer was, and when */
   private anchorPos = 0
@@ -236,20 +240,56 @@ export class WorkletPlayer implements SourcePlayer {
     this.rateParam = rate
     this.node.connect(destination)
     this.node.port.onmessage = (e: MessageEvent) => this.onWorkletMessage(e.data)
+    // A throw inside process() puts the node into a permanent error state: it
+    // stops rendering for the life of the deck and says nothing at all. This is
+    // the difference between a reported fault and a deck that simply went quiet.
+    this.node.onprocessorerror = () => {
+      this.playing = false
+      this.ramp = null
+      this.onProcessorError?.()
+      this.onEnd?.()
+    }
   }
 
-  private onWorkletMessage(msg: { type: string; epoch: number; positionSec: number }) {
-    // Anything stamped with a superseded epoch is describing a world that no
-    // longer exists — a seek has happened since it was sent. Accepting it would
-    // overwrite the new position with the old one and snap the playhead back.
-    if (msg.epoch !== this.epoch) return
+  private onWorkletMessage(msg: {
+    type: string
+    epoch: number
+    generation: number
+    positionSec: number
+    ctxTimeSec: number
+  }) {
     if (msg.type === 'anchor') {
+      // A superseded epoch describes a world that no longer exists — a seek has
+      // happened since it was sent. Accepting it would overwrite the new
+      // position with the old one and snap the playhead back.
+      if (msg.epoch !== this.epoch) return
       this.anchorPos = msg.positionSec
-      this.anchorCtxTime = this.ctx.currentTime
-    } else if (msg.type === 'ended') {
+      // The processor's own clock reading, not the time this message happened
+      // to be delivered. Stamping delivery time makes every anchor late by the
+      // message-queue latency, which varies with main-thread load — so the
+      // playhead jittered ~43x/sec against audio that was perfectly steady.
+      this.anchorCtxTime = msg.ctxTimeSec
+      return
+    }
+
+    if (msg.type === 'ended') {
+      // `ended` is a terminal transition, not a position sample, so the epoch
+      // filter must not apply to it: a seek near the end of a track bumps the
+      // epoch before the message drains, the message is dropped, and nothing
+      // ever clears `playing`. The processor has stopped, so `process()`
+      // early-returns forever — a silent deck whose playhead still advances and
+      // whose play button no-ops, recoverable only by pausing first.
+      //
+      // Generation is the right filter instead. It moves only on load/unload,
+      // so an `ended` belonging to a previous track is still ignored, while one
+      // belonging to *this* track always lands. Epoch cannot do that job: it
+      // also moves on every seek, which is precisely the case being missed.
+      if (msg.generation !== this.generation) return
+      if (!this.playing) return
       this.anchorPos = msg.positionSec
-      this.anchorCtxTime = this.ctx.currentTime
+      this.anchorCtxTime = msg.ctxTimeSec
       this.playing = false
+      this.ramp = null
       this.onEnd?.()
     }
   }
@@ -267,9 +307,9 @@ export class WorkletPlayer implements SourcePlayer {
     const channels: Float32Array[] = []
     const transfer: ArrayBuffer[] = []
     for (let c = 0; c < outChannels; c++) {
-      // copyFromChannel into our own array rather than transferring the
-      // AudioBuffer's own storage: transferring that detaches the AudioBuffer
-      // itself, and callers upstream are entitled to still hold a live one.
+      // copyFromChannel into our own array rather than handing over the
+      // AudioBuffer's own storage: only these copies are transferred, so the
+      // caller's AudioBuffer is never detached and stays fully readable.
       // Peak memory is briefly 2x, steady state is 1x — the samples live here
       // and nowhere else once decode's buffer is released.
       const data = new Float32Array(buffer.length)
@@ -277,10 +317,26 @@ export class WorkletPlayer implements SourcePlayer {
       channels.push(data)
       transfer.push(data.buffer)
     }
+    if (srcChannels > outChannels) {
+      // Equal-gain fold of every extra channel into both sides, which is what
+      // Web Audio's own downmix does. Without this the loop bound above only
+      // narrows the output — the extra channels are read by nobody.
+      const extra = new Float32Array(buffer.length)
+      const gain = 1 / (srcChannels - 1)
+      for (let c = outChannels; c < srcChannels; c++) {
+        buffer.copyFromChannel(extra, c)
+        for (let i = 0; i < extra.length; i++) {
+          channels[0][i] += extra[i] * gain
+          channels[1][i] += extra[i] * gain
+        }
+      }
+    }
     this.durationSec = buffer.duration
     this.playing = false
     this.anchorPos = 0
     this.anchorCtxTime = this.ctx.currentTime
+    this.ramp = null
+    this.generation++
     this.post({ type: 'load', channels }, transfer)
   }
 
@@ -288,6 +344,8 @@ export class WorkletPlayer implements SourcePlayer {
     this.durationSec = 0
     this.playing = false
     this.anchorPos = 0
+    this.ramp = null
+    this.generation++
     this.post({ type: 'unload' })
   }
 

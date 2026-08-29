@@ -58,6 +58,8 @@ export class Deck {
   loopEnd: number | null = null
 
   onEnded?: () => void
+  /** the scratch worklet died mid-render; the engine surfaces the reason */
+  onProcessorError?: (reason: string) => void
 
   constructor(ctx: AudioContext, id: DeckId) {
     this.ctx = ctx
@@ -126,10 +128,17 @@ export class Deck {
 
   load(buffer: AudioBuffer) {
     if (this.workletAvailable && this.player.kind !== 'worklet') {
-      this.player.dispose()
-      this.player = new WorkletPlayer(this.ctx, this.trim)
-      this.player.onEnd = () => this.handleEnd()
-      this.player.setRate(this.rate)
+      // Construct before disposing. Constructing an AudioWorkletNode can throw,
+      // and disposing first would leave the deck holding a torn-down player
+      // with no way back — a dead deck from a failure that was recoverable.
+      const next = new WorkletPlayer(this.ctx, this.trim)
+      const previous = this.player
+      this.player = next
+      previous.dispose()
+      next.onEnd = () => this.handleEnd()
+      next.onProcessorError = () =>
+        this.onProcessorError?.('the scratch engine stopped on this deck')
+      next.setRate(this.rate)
     }
     this.player.load(buffer)
     // Duration and "is a track loaded" are captured as plain values rather than
