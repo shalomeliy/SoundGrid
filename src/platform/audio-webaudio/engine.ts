@@ -1,5 +1,5 @@
-import { Deck } from './deck'
-import type { DeckId } from '../types'
+import { Deck } from '@/platform/audio-webaudio/deck'
+import type { DeckId } from '@/core/types'
 
 interface AudioContextWithSink extends AudioContext {
   setSinkId?: (id: string | { type: 'none' }) => Promise<void>

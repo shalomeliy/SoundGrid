@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import * as ctl from '../controls'
-import { TEMPO_RANGE } from '../audio/constants'
-import { useStore } from '../state/store'
-import type { DeckId } from '../types'
-import { Button, Fader } from './controls'
-import { PadGrid } from './PadGrid'
-import { Platter } from './Platter'
-import { Waveform } from './Waveform'
+import * as ctl from '@/controls'
+import { TEMPO_RANGE } from '@/core/constants'
+import { useStore } from '@/app/state/store'
+import type { DeckId } from '@/core/types'
+import { Button, Fader } from '@/app/components/controls'
+import { PadGrid } from '@/app/components/PadGrid'
+import { Platter } from '@/app/components/Platter'
+import { Waveform } from '@/app/components/Waveform'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { DeckId, HotCue } from '../types'
+import type { DeckId, HotCue } from '@/core/types'
 
 interface Props {
   deckId: DeckId

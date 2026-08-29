@@ -1,7 +1,7 @@
-import * as ctl from '../controls'
-import { useStore } from '../state/store'
-import type { DeckId } from '../types'
-import { Fader, Knob } from './controls'
+import * as ctl from '@/controls'
+import { useStore } from '@/app/state/store'
+import type { DeckId } from '@/core/types'
+import { Fader, Knob } from '@/app/components/controls'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
 

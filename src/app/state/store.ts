@@ -7,9 +7,9 @@ import type {
   MidiStatus,
   MixerState,
   Track,
-} from '../types'
-import type { Capabilities } from '../core/ports'
-import { detectCapabilities } from '../platform/capabilities'
+} from '@/core/types'
+import type { Capabilities } from '@/core/ports'
+import { detectCapabilities } from '@/platform/capabilities'
 
 function emptyDeck(id: DeckId): DeckState {
   return {

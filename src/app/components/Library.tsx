@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as ctl from '../controls'
+import * as ctl from '@/controls'
 import {
   ensureReadPermission,
   fileSystemAccessSupported,
@@ -7,12 +7,12 @@ import {
   readLibraryTags,
   restoreLibraryFolder,
   scanLibrary,
-} from '../library/library'
+} from '@/platform/source-fsaccess/library'
 import { useShallow } from 'zustand/react/shallow'
-import { mixRecommendations, type MixMatch } from '../recommend'
-import { useStore } from '../state/store'
-import type { Track } from '../types'
-import { Button } from './controls'
+import { mixRecommendations, type MixMatch } from '@/core/recommend'
+import { useStore } from '@/app/state/store'
+import type { Track } from '@/core/types'
+import { Button } from '@/app/components/controls'
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 

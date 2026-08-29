@@ -1,6 +1,6 @@
-import * as ctl from '../controls'
-import { HOT_CUE_COLORS } from '../audio/constants'
-import type { DeckId, HotCue } from '../types'
+import * as ctl from '@/controls'
+import { HOT_CUE_COLORS } from '@/core/constants'
+import type { DeckId, HotCue } from '@/core/types'
 
 interface Props {
   deckId: DeckId

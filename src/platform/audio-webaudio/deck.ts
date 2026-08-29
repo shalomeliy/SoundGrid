@@ -1,5 +1,5 @@
-import { EQ_DB, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from './constants'
-import type { DeckId } from '../types'
+import { EQ_DB, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/constants'
+import type { DeckId } from '@/core/types'
 
 /**
  * One playback deck. Owns its Web Audio graph:

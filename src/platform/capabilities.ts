@@ -1,4 +1,4 @@
-import type { Capabilities } from '../core/ports'
+import type { Capabilities } from '@/core/ports'
 
 /**
  * Resolved once at boot. Every probe is a feature test, never a user-agent

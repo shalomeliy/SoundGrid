@@ -1,4 +1,4 @@
-import { bindingKey, type MidiMapping } from '../mapping'
+import { bindingKey, type MidiMapping } from '@/core/mapping/mapping'
 
 /**
  * Best-effort MIDI map for the Pioneer DDJ-FLX4.

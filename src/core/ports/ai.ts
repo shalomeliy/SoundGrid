@@ -5,7 +5,7 @@
  * satisfy this), and it reaches the app only by emitting `ControlAction`s
  * through `controls.ts` — it never touches the audio graph or the store.
  */
-import type { ControlAction } from '../../midi/mapping'
+import type { ControlAction } from '@/core/mapping/mapping'
 
 export interface AISuggestion {
   action: ControlAction

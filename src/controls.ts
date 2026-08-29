@@ -1,9 +1,9 @@
-import { analyzeWaveform, detectBpm } from './audio/analyze'
-import { engine } from './audio/engine'
-import { HOT_CUE_COLORS } from './audio/constants'
-import { readTrackData } from './library/library'
-import { useStore } from './state/store'
-import type { DeckId, Track } from './types'
+import { analyzeWaveform, detectBpm } from '@/platform/analyzer-js/analyze'
+import { engine } from '@/platform/audio-webaudio/engine'
+import { HOT_CUE_COLORS } from '@/core/constants'
+import { readTrackData } from '@/platform/source-fsaccess/library'
+import { useStore } from '@/app/state/store'
+import type { DeckId, Track } from '@/core/types'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.

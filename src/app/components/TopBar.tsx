@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { engine } from '../audio/engine'
-import { initAudio } from '../controls'
-import { midi } from '../midi/manager'
-import { useStore } from '../state/store'
-import { Button } from './controls'
+import { engine } from '@/platform/audio-webaudio/engine'
+import { initAudio } from '@/controls'
+import { midi } from '@/platform/transport-webmidi/manager'
+import { useStore } from '@/app/state/store'
+import { Button } from '@/app/components/controls'
 
 export function TopBar() {
   const audioReady = useStore((s) => s.audioReady)

@@ -1,4 +1,4 @@
-import type { Track } from '../../types'
+import type { Track } from '@/core/types'
 
 /**
  * Where tracks come from. Today: a local folder via File System Access

@@ -1,4 +1,4 @@
-import type { DeckId } from '../types'
+import type { DeckId } from '@/core/types'
 
 export type MidiMsgType = 'note' | 'cc'
 

@@ -1,5 +1,5 @@
-import { TEMPO_RANGE } from './audio/constants'
-import type { DeckId, Track } from './types'
+import { TEMPO_RANGE } from '@/core/constants'
+import type { DeckId, Track } from '@/core/types'
 
 export interface MixMatch {
   /** true = tight match (bold + dot); false = loose match (dot only) */

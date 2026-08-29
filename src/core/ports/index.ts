@@ -3,11 +3,11 @@
  * `platform/` provides the implementations. See
  * `docs/architecture/directions.md` for why each one exists.
  */
-export type { AudioBackend, DeckBackend, DecodedAudio, AudioOutput, SetOutputResult } from './audio'
-export type { TrackSource, ScanProgress } from './source'
-export type { ControlTransport, TransportStatus, TransportDevice } from './transport'
-export type { Analyzer, AnalysisCache, TrackAnalysis, WaveformData } from './analyzer'
-export type { Clock, Cancel } from './clock'
-export type { Persistence } from './persistence'
-export type { Capabilities } from './capabilities'
-export type { AIProvider, AISuggestion } from './ai'
+export type { AudioBackend, DeckBackend, DecodedAudio, AudioOutput, SetOutputResult } from '@/core/ports/audio'
+export type { TrackSource, ScanProgress } from '@/core/ports/source'
+export type { ControlTransport, TransportStatus, TransportDevice } from '@/core/ports/transport'
+export type { Analyzer, AnalysisCache, TrackAnalysis, WaveformData } from '@/core/ports/analyzer'
+export type { Clock, Cancel } from '@/core/ports/clock'
+export type { Persistence } from '@/core/ports/persistence'
+export type { Capabilities } from '@/core/ports/capabilities'
+export type { AIProvider, AISuggestion } from '@/core/ports/ai'

@@ -1,14 +1,14 @@
-import * as ctl from '../controls'
-import { useStore } from '../state/store'
-import type { DeckId } from '../types'
-import { FLX4_MAPPING } from './mappings/flx4'
+import * as ctl from '@/controls'
+import { useStore } from '@/app/state/store'
+import type { DeckId } from '@/core/types'
+import { FLX4_MAPPING } from '@/platform/transport-webmidi/mappings/flx4'
 import {
   bindingKey,
   parseMessage,
   relativeDelta,
   type Binding,
   type MidiMapping,
-} from './mapping'
+} from '@/core/mapping/mapping'
 import { get, set } from 'idb-keyval'
 
 const CUSTOM_KEY = 'soundgrid:midiMapping'

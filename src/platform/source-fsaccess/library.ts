@@ -1,6 +1,6 @@
 import { get, set } from 'idb-keyval'
-import type { Track } from '../types'
-import { readTags } from './tags'
+import type { Track } from '@/core/types'
+import { readTags } from '@/platform/source-fsaccess/tags'
 
 const HANDLE_KEY = 'soundgrid:libraryDir'
 

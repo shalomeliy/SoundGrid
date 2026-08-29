@@ -1,4 +1,4 @@
-import type { ControlAction } from '../../midi/mapping'
+import type { ControlAction } from '@/core/mapping/mapping'
 
 /**
  * An external control surface's *input* side. Web MIDI is the only transport

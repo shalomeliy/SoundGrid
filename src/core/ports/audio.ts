@@ -1,4 +1,4 @@
-import type { DeckId } from '../../types'
+import type { DeckId } from '@/core/types'
 
 /**
  * Audio output, as the rest of the app is allowed to see it.

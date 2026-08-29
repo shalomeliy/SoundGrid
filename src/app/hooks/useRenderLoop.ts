@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
-import { engine } from '../audio/engine'
-import { clock } from '../platform/clock-audio'
-import { useStore } from '../state/store'
-import type { DeckId } from '../types'
+import { engine } from '@/platform/audio-webaudio/engine'
+import { clock } from '@/platform/clock-audio'
+import { useStore } from '@/app/state/store'
+import type { DeckId } from '@/core/types'
 
 /**
  * Pushes each deck's authoritative playhead into the store so waveforms and

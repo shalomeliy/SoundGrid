@@ -1,10 +1,10 @@
 import { useEffect } from 'react'
-import { Deck } from './components/Deck'
-import { Library } from './components/Library'
-import { Mixer } from './components/Mixer'
-import { TopBar } from './components/TopBar'
-import * as ctl from './controls'
-import { useRenderLoop } from './hooks/useRenderLoop'
+import { Deck } from '@/app/components/Deck'
+import { Library } from '@/app/components/Library'
+import { Mixer } from '@/app/components/Mixer'
+import { TopBar } from '@/app/components/TopBar'
+import * as ctl from '@/controls'
+import { useRenderLoop } from '@/app/hooks/useRenderLoop'
 
 export default function App() {
   useRenderLoop()
