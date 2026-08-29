@@ -19,7 +19,11 @@ function deck(ch: number) {
     [bindingKey('note', ch, 0x46)]: { action: 'load' as const, deck: idx(ch), mode: 'button' as const },
     // tempo fader (14-bit MSB only used here)
     [bindingKey('cc', ch, 0x00)]: { action: 'tempo' as const, deck: idx(ch), mode: 'absolute' as const, invert: true },
-    // jog wheel (platter, scratch-off = CC 0x22 relative)
+    // Jog wheel. The touch sensor is what tells scratch apart from bend, so it
+    // is bound separately: note 0x36 goes high while a hand rests on the platter
+    // top, and the CCs report rotation either way. Best-effort like the rest of
+    // this preset — correct it with Learn if the FLX4 reports something else.
+    [bindingKey('note', ch, 0x36)]: { action: 'jogTouch' as const, deck: idx(ch), mode: 'button' as const },
     [bindingKey('cc', ch, 0x22)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     [bindingKey('cc', ch, 0x21)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     // loop

@@ -167,6 +167,64 @@ export function endScratch(deckId: DeckId) {
   useStore.getState().patchDeck(deckId, { scratching: false, playing: deck.playing })
 }
 
+/**
+ * Jog-wheel ticks from a controller.
+ *
+ * The same wheel does two jobs, decided by whether the platter is being
+ * touched — which is why the touch sensor is its own binding. Held: the wheel
+ * is the record, and ticks become a scratch rate. Not held: the wheel is the
+ * rim of a running deck, and ticks become a pitch bend that decays back.
+ *
+ * Ticks are converted to a rate over elapsed time rather than used directly,
+ * so how fast the wheel is turned decides the rate, not how often the
+ * controller happens to report.
+ */
+const jogState: Record<string, { time: number; rate: number }> = {}
+
+/** Jog ticks in one full revolution. Best-effort for the FLX4 — tune here. */
+const JOG_TICKS_PER_REV = 600
+/** One revolution equals this much audio at normal speed (matches the platter). */
+const JOG_SEC_PER_REV = 1.333
+const JOG_SMOOTHING = 0.4
+const JOG_MAX_RATE = 8
+/** Bend strength per tick when the platter is not held. */
+const BEND_PER_TICK = 0.012
+
+export function jogTurn(deckId: DeckId, ticks: number) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+
+  if (!deck.scratching) {
+    deck.pitchBend(Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK)))
+    return
+  }
+
+  const now = performance.now()
+  const prev = jogState[deckId]
+  const dt = prev ? (now - prev.time) / 1000 : 0
+  if (dt <= 0) {
+    jogState[deckId] = { time: now, rate: prev?.rate ?? 0 }
+    return
+  }
+  const revs = ticks / JOG_TICKS_PER_REV
+  const instant = (revs * JOG_SEC_PER_REV) / dt
+  const smoothed = (prev?.rate ?? 0) + (instant - (prev?.rate ?? 0)) * JOG_SMOOTHING
+  const rate = Math.max(-JOG_MAX_RATE, Math.min(JOG_MAX_RATE, smoothed))
+  jogState[deckId] = { time: now, rate }
+  deck.scratchRate(rate)
+}
+
+/** Platter touch sensor: the hand landing on the record, and coming off it. */
+export function jogTouch(deckId: DeckId, down: boolean) {
+  if (down) {
+    jogState[deckId] = { time: performance.now(), rate: 0 }
+    beginScratch(deckId)
+  } else {
+    delete jogState[deckId]
+    endScratch(deckId)
+  }
+}
+
 export function toggleVinylMode(deckId: DeckId) {
   const deck = engine.decks[deckId]
   const on = !deck.vinylMode

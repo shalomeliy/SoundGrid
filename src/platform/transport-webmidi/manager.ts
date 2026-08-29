@@ -124,7 +124,10 @@ class MidiManager {
         if (deck) ctl.setTempo(deck, bipolar(value, b.invert))
         break
       case 'jog':
-        if (deck) ctl.nudgeDeck(deck, relativeDelta(value) * 0.01)
+        if (deck) ctl.jogTurn(deck, relativeDelta(value))
+        break
+      case 'jogTouch':
+        if (deck) ctl.jogTouch(deck, value > 0)
         break
       case 'hotcue':
         if (value > 0 && deck && b.param != null) ctl.setHotCue(deck, b.param)

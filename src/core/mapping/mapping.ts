@@ -9,6 +9,7 @@ export type ControlAction =
   | 'load'
   | 'tempo'
   | 'jog'
+  | 'jogTouch'
   | 'hotcue'
   | 'loopToggle'
   | 'loopHalve'

@@ -7,6 +7,11 @@ import type { DeckId } from '@/core/types'
 const BRAKE_SEC = 0.55
 const SPIN_UP_SEC = 0.32
 
+/** How long a pitch bend lingers after the last jog tick before easing back. */
+const BEND_HOLD_MS = 90
+/** And how long the ease back to grid speed takes. */
+const BEND_RELEASE_SEC = 0.12
+
 /**
  * One playback deck. Owns its Web Audio graph:
  *
@@ -47,6 +52,7 @@ export class Deck {
   private _scratching = false
   /** what play state to return to when the hand comes off the platter */
   private _resumePlaying = false
+  private bendTimer = 0
 
   loopStart: number | null = null
   loopEnd: number | null = null
@@ -222,6 +228,25 @@ export class Deck {
       this._playing = true
     }
     this.player.setRate(0)
+  }
+
+  /**
+   * Temporary pitch bend — nudging a playing deck forward or back to line it up
+   * without touching tempo. This is a *rate* change, not a seek: seeking moves
+   * the playhead and would tear a beatgrid, while bending is what a hand on the
+   * rim of a running turntable actually does. The bend decays back to grid
+   * speed on its own, so the deck cannot be left running off-speed.
+   */
+  pitchBend(amount: number) {
+    if (!this._playing || this._scratching) return
+    const bent = this.rate * (1 + amount)
+    this.player.setRate(bent)
+    if (this.bendTimer) window.clearTimeout(this.bendTimer)
+    this.bendTimer = window.setTimeout(() => {
+      this.bendTimer = 0
+      if (this._scratching || !this._playing) return
+      this.player.rampRate(this.rate, BEND_RELEASE_SEC)
+    }, BEND_HOLD_MS)
   }
 
   /** Rate in playback multiples: 1 = normal forward, negative = backwards. */
