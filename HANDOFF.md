@@ -15,12 +15,12 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.2.0 — Jog wheels & scratching` 🔶 — המנוע והמחווה נכתבו, **הגרסה לא סגורה** |
+| **בעבודה** | `v0.2.0 — Jog wheels & scratching` 🔶 — המנוע והמחווה נכתבו, **הגרסה לא סגורה** (חמישה פתוחים למטה) |
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 — הרשומות ב‑[`docs/handoff/`](docs/handoff/) |
-| **branch** | `main`, מסונכרן מול origin. לאמת בפועל: `git fetch && git status -sb` — **לא לקבע כאן SHA**, הוא מתיישן בקומיט הבא |
+| **branch** | ‏`v0.2.1` יושב על `claude/read-handoff-continue-coding-18o0gy` ב‑**[PR #1](https://github.com/shalomeliy/SoundGrid/pull/1), פתוח וטרם מוזג**. ‏`main` מכיל את הפיצול אבל **לא** את הבדיקות. לאמת בפועל: `git fetch && git status -sb` — **לא לקבע כאן SHA**, הוא מתיישן בקומיט הבא |
 | **גרסה נוכחית** | `v0.2.1` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. להריץ לפני כל commit |
-| **הבא בתור** | ① לסגור את חמשת הפתוחים למטה ② לבדוק מול ה‑FLX4 ומול העכבר ③ v0.3.0 (beatgrid) |
+| **הבא בתור** | ① למזג את PR #1 ② לסגור את חמשת הפתוחים למטה ③ לבדוק מול ה‑FLX4 ומול העכבר ④ v0.3.0 (beatgrid) |
 
 ---
 
@@ -91,6 +91,9 @@
 - `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
+- **`strict` לא מופעל באף `tsconfig`** — לא ב‑`app`, לא ב‑`node`, ולא ב‑`test`
+  שנוסף ב‑v0.2.1. ‏`CLAUDE.md` מכריז "TypeScript (strict)" והריפו לא. עלה בסקירת
+  v0.2.1; להפעיל כמשימה בפני עצמה, לא באמצע פיצ'ר.
 - **הפרת גבול `platform/` → `app/`** — `transport-webmidi/manager.ts` מייבא את
   `@/app/state/store` ואת `@/controls` במקום לפלוט `ControlAction`s דרך הפורט. נכנס
   ב‑`f1ae061`. מתועד ביושר ב‑`.dependency-cruiser.cjs:29‑33` ב‑severity `warn` כדי
