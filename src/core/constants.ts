@@ -11,6 +11,20 @@ export const TEMPO_RANGE = 0.08
  */
 export const KEYBOARD_BEND = 0.04
 
+/**
+ * Platter diameter in CSS px.
+ *
+ * It shipped at 54, which is ~41px of grabbable face — about **11mm** on the
+ * user's 157-PPI screen, where every CSS px is ~0.76 of its nominal size. That
+ * is a control you aim at, not one you scratch with.
+ *
+ * **Floor: never ship an interactive platter below 120 CSS px.** 142 costs no
+ * height: the deck's left column measures 178px and the right column already
+ * stretches to match it, so 142 + 4 + the 32px Vinyl chip fills exactly the
+ * space that was there.
+ */
+export const PLATTER_SIZE = 142
+
 /** EQ gain in dB at the extremes of each band knob. */
 export const EQ_DB = 26
 
