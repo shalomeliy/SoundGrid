@@ -39,10 +39,13 @@ npm run dev
 ```
 
 `npm run build` type-checks and produces a static bundle in `dist/`.
+`npm run check` is the gate before a commit: `tsc -b` + `oxlint` +
+`dependency-cruiser` (the layer rules) + `vitest run` (the repo invariants in
+`tests/repo/`).
 
 ## Controller mapping
 
-The FLX4 map lives in [`src/midi/mappings/flx4.ts`](src/midi/mappings/flx4.ts).
+The FLX4 map lives in [`src/platform/transport-webmidi/mappings/flx4.ts`](src/platform/transport-webmidi/mappings/flx4.ts).
 Note/CC numbers follow Pioneer's published FLX4 layout but vary by firmware — use
 the MIDI monitor in the top bar and the Learn action to correct any control.
 
@@ -57,6 +60,8 @@ the MIDI monitor in the top bar and the Learn action to correct any control.
 
 ## Status
 
-Early MVP. Working: decks, mixer, waveform, library, hot cues, loops, MIDI
-mapping layer, output routing. Not yet: jog-wheel scratching, phase-accurate
-sync, key detection, recording, saved cue points per track.
+Early MVP. Working: decks, mixer, waveform, library with tags read from the
+files' own headers (BPM/key/artist), hot cues, loops, MIDI mapping layer, output
+routing. Jog-wheel scratching is implemented on an `AudioWorklet` playback engine
+but has not yet been played on hardware. Not yet: phase-accurate sync, key
+detection from audio, recording, saved cue points per track.

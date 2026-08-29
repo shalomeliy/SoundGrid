@@ -1,330 +1,57 @@
 # HANDOFF — מצב עבודה נוכחי
 
-מסמך העברת הקשר בין שיחות. **לקרוא ראשון בכל שיחה חדשה.** לעדכן בסוף כל גרסה / תת‑גרסה.
+מסמך העברת ההקשר בין שיחות. **לקרוא ראשון בכל שיחה חדשה.** לעדכן בסוף כל גרסה /
+תת‑גרסה. **מחזיק את ההווה בלבד** — גרסה שנסגרת עוברת ל‑[`docs/handoff/`](docs/handoff/README.md).
 
 ---
 
 ## סטטוס נוכחי
 
-- **גרסאות שהושלמו:** `v0.1.5 — Design Overhaul` ✅ · `v0.1.7 — Tag read` ✅ (2026-08-28) · `v0.1.6 — Seams` ✅ (2026-08-29)
-- **בעבודה:** `v0.2.0 — Jog wheels & scratching` — **v0.2.0a (מנוע) + v0.2.0b (פלטר/ויניל/ג'וג) נכתבו**. חסר: בדיקה מול חומרה
-- **branch:** `main` · **`npm run check`:** ירוק (tsc + oxlint + dependency-cruiser) · **`npm run build`:** ירוק ·
-  **דחוף ל‑origin:** ✅ הכל נדחף (אומת 2026-08-29). **אל תקבע כאן SHA** — הוא מתיישן
-  בקומיט הבא ויוצר בדיוק את ההכרזה השקרית שהסעיף "חוב תשתית התיעוד" מזהיר מפניה.
-  לבדוק בפועל: `git fetch && git status -sb`
-- **מבנה חדש מ‑v0.1.6:** `core/` (TS טהור) · `platform/` (מימושים) · `app/` (React) ·
-  `controls.ts` (choke point). imports דרך alias `@/*`. **לפני commit: `npm run check`.**
-- **הבא בתור:** ① **פיצול המסמכים + אינווריאנטים ברמת הריפו** — ראה "חוב תשתית התיעוד"
-  למטה. זה ראשון בכוונה: הקובץ הזה כבר ~41KB ונקרא ראשון בכל שיחה, וגם הכריז מצב שגוי
-  ② לבדוק את v0.2.0 עם ה‑FLX4 ועם העכבר ③ ואז v0.3.0 (beatgrid)
-  (הכשלת ה‑worklet — **נסגר**, ראה למטה)
-- **⚠️ פתוח:** המשתמש דיווח על קריסה ב‑28/08 ולא סיפק פרטים; תוקנה בעיית זיכרון
-  אמיתית (`analyzeWaveform` — +63MB→+2MB) אבל **לא אומת שזו הייתה הקריסה**.
-  אם היא חוזרת: לשאול אם הטאב מת / נתקע / מסך לבן, ועל איזה קובץ.
+- **גרסה נוכחית:** `v0.2.1` — זה גם מה ש‑`package.json` אומר, ובדיקה מקבעת את
+  השוויון (`tests/repo/version-in-step.test.ts`). **לשנות את שניהם יחד.**
+- **branch:** `claude/read-handoff-continue-coding-18o0gy`
+- **מצב הריפו מול origin:** אין כאן קביעה — היא מתיישנת בקומיט הבא ויוצרת בדיוק את
+  ההכרזה השקרית שהאינווריאנטים נבנו נגדה. לבדוק בפועל: `git fetch && git status -sb`
+- **`npm run check`** = `tsc -b` + `oxlint` + `depcruise` + `vitest run`. ירוק.
+  **להריץ לפני כל commit.**
 
-### הכשלת ה‑worklet בכוונה — ✅ נסגר (2026-08-29)
+### מה פתוח עכשיו
 
-הפריט האחרון ב‑definition of done של v0.2.0. **שלושה מסלולי כשל, כולם הורצו על
-האפליקציה החיה** ונמדדו מול ה‑DOM, לא מול הטיפוסים:
-
-| # | איך הוכשל | מה הופיע ב‑TopBar |
+| # | מה | למה זה תקוע |
 | --- | --- | --- |
-| A1 | `ctx.audioWorklet.addModule` נדחה (הזרקה בגבול ה‑API — זהה מצד המנוע ל‑404 / שגיאת תחביר / חסימת CSP) | `no scratch · Failed to load module script: injected fault…` |
-| A2 | `addModule` **מצליח** ומצביע על מודול שלא רושם כלום | `no scratch · …'scratch-player' is not defined in AudioWorkletGlobalScope` |
-| B | `throw` זמני בתוך `process()` אחרי 0.1ש' של אודיו — **מוות אמיתי תוך כדי רינדור** | `no scratch · the scratch engine stopped on this deck (deck A)` |
+| ① | **v0.2.0 — בדיקה מול ה‑FLX4 ומול העכבר.** הקוד כתוב ואומת בקונסולה ובהכשלה מכוונת; המחווה עצמה לא נוגעה ביד | דורש את החומרה של המשתמש. לא ניתן לביצוע מסביבה מרוחקת |
+| ② | **באג MIDI שחוסם את מצב ויניל בחומרה.** ב‑`mappings/flx4.ts` גם CC `0x22` וגם `0x21` ממופים ל‑`jog`, ו‑`manager.ts` קורא ל‑`nudgeDeck` בלי תנאי. בחומרה אלה שני פקדים שונים — `0x22` משטח המגע (scratch), `0x21` טבעת הצד (bend). צריך `jogScratch`/`jogBend`/`jogTouch`/`vinylMode` ב‑`ControlAction`, ב‑`dispatch` ובפריסט | נתפס בתכנון v0.2.0b ולא תוקן. חלק מ‑① |
+| ③ | **לאמת בעין** שעמודות Artist/BPM/Key/Time בספרייה מתמלאות ושפריסת 7 העמודות סבירה. הפרסר נבדק מול 360 קבצים; הטבלה עצמה מעולם לא נבדקה על מסך | פתוח מ‑v0.1.7. דורש דפדפן של המשתמש |
+| ④ | **סבב `ui-ux-review` + `drop-generic-design` "אחרי"** שהיה בתכולת v0.1.5 ולא בוצע | — |
+| ⑤ | **קריסה שדווחה 28/08 ולא אומתה.** תוקנה בעיית זיכרון אמיתית (`analyzeWaveform`, ‏+63MB→+2MB) אבל **לא ידוע שזו הייתה הקריסה.** אם היא חוזרת: לשאול אם הטאב מת / נתקע / מסך לבן, ועל איזה קובץ | חסר מידע מהמשתמש |
 
-**A2 הוא ההצדקה של ה‑probe node:** נמדד `addModule_resolved_ok: true` — הקריאה
-באמת החזירה "בסדר" בזמן שלא נרשם מעבד. בלי ה‑probe הדקים היו מכריזים שהם יודעים לגרד.
+**הבא בתור בקוד:** אחרי ש‑① יאומת — `v0.2.5` (פתיחה עם הספרייה כבר טעונה) ואז
+`v0.3.0` (beatgrid + phase sync). שניהם מאופיינים במלואם ב‑`ROADMAP.md`.
 
-**B הוא המסלול שהיה מת עד `f2025ad`**, והרצף הוא ההוכחה שהוא חי: לפני טעינה אין פיל
-(`scratchReady: true`) · תוך כדי ניגון על `WorkletPlayer` **עדיין אין פיל** · ורק אחרי
-שהמעבד מת הפיל מופיע ו‑`playing` יורד ל‑false. השלב האמצעי הוא מה שמבדיל בין "הפיל
-עובד" ל"הפיל תקוע דלוק". זה מאמת את המנוי ב‑scope של המודול ב‑`controls.ts:43` — קביעת
-מצב שקרתה **הרבה אחרי** שהבלוק החד‑פעמי של `initAudio` רץ.
+### היסטוריה — לא כאן
 
-**אימות הפוך** (המעבד הוחזר, `git status` נקי): מופע מנוע יחיד, `player.kind === 'worklet'`,
-אין פיל, ו‑scratch בקצב ‎-1.5 ל‑400ms הזיז את המצביע **0.923 → 0.328ש'** מול צפי 0.323 —
-**שגיאה 5ms**, בתוך מרווח ה‑anchor.
+הבלוקים של הגרסאות שנסגרו עברו ל‑[`docs/handoff/`](docs/handoff/README.md):
+[v0.1.5](docs/handoff/v0.1.5.md) · [v0.1.7](docs/handoff/v0.1.7.md) ·
+[v0.2.0](docs/handoff/v0.2.0.md) · [v0.2.1](docs/handoff/v0.2.1.md).
+יומן השיחות נמצא שם גם הוא. **לקרוא משם רק כששאלה היסטורית דורשת** — הקובץ הזה
+נקרא בכל שיחה, הם לא.
 
-**⚠️ מלכודת לכל אימות עתידי מהקונסולה — עלתה כאן והטעתה אותי בסבב הראשון.** אחרי
-עריכת קובץ, Vite מגיש אותו ואת מייבאיו עם חותמת `?t=<ms>`. ‏`import('/src/…/engine.ts')`
-בנתיב חשוף מקבל URL **אחר** מזה שהאפליקציה מחזיקה, כלומר **`AudioEngine` שני** —
-מדדתי מנוע שאינו קשור לדף וקיבלתי תשובות סותרות (`scratchAvailable: false` מול
-`store.scratchReady: true`). **הדרך הנכונה:** לאתר את ה‑URL האמיתי דרך
-`performance.getEntriesByType('resource')` ולבחור את המופע שבו `onScratchStateChange`
-הוא `function` — ‏`controls.ts` מציב אותו רק על המנוע של האפליקציה.
-
-### סקירת v0.2.0a — נסגרה ב‑`8ead1d1` (2026-08-29)
-
-השיחה שכתבה את v0.2.0a (המנוע, `fe6ff9e` + `dd7a3ba`) קיבלה סקירה עצמאית שחזרה REPAIR,
-והעבירה את הממצאים לשיחה שכתבה את v0.2.0b במקום לתקן — כדי לא לדרוס אותה באותו עץ עבודה.
-**כל הממצאים תוקנו ואומתו ב‑`8ead1d1`.** נשמר כאן כי הבעיות עצמן חוזרות בקלות:
-
-| הממצא | איפה זה נסגר |
-| --- | --- |
-| **חוסם — `ended` מתנגש ב‑`seek`.** סינון ה‑epoch חל גם על `ended`; seek לקראת סוף טראק זרק את ההודעה, `playing` לא התאפס, ו‑`process()` חזר ריק לנצח — דק אילם שהפלייהד שלו ממשיך לזוז, ו‑`play()` לא עושה כלום | `players.ts` — `ended` פטור מהסינון כטרנזיציה סופית. ההעברה הציעה לתלות ב‑`playing`; המתקן זיהה שזה פותח מרוץ אחר (אין סדר מובטח בין הכיוונים) ופתר אחרת |
-| **חוסם — ספירת ערוצים.** מונו יצא משמאל בלבד (‑7.4 / ‑999 dBFS); >2 ערוצים זרקו TypeError **בתוך** `process()` = מעבד מת לצמיתות | `scratch-processor.ts` (פאן־אאוט של מונו) + `players.ts:load` (קיפול שווה־עוצמה של הערוצים העודפים). אומת: אות בערוץ 2 בלבד → L/R שניהם ‑23dB |
-| `ctxTimeSec` נזרק והוחלף בזמן הגעה ב‑main thread — פלייהד רועד ~43/שנייה | `players.ts` — משתמש בשעון של המעבד |
-| `Deck.load` שחרר את הנגן לפני שבנה את הבא | `deck.ts:129` — בונה קודם, משחרר אחרי |
-| סוף לופ מעבר לסוף הטראק לא נחתך | `scratch-processor.ts:104` |
-
-נמדד עם ffprobe על הספרייה: 357 מ‑360 נבדקו, **כולם סטריאו** — אז באגי המונו היו לטנטיים,
-אבל אקפלות וסטמים ווקאליים הם מונו באופן שגרתי.
-
-### שלושה ממצאים מסבב שני — **כולם נסגרו** ב‑`f2025ad` (2026-08-29)
-
-רשמתי קודם ששניים מאלה נסגרו ב‑`8ead1d1`. **טעיתי** — בדקתי שהחוליות קיימות ולא עקבתי
-עד הסוף. סבב אימות נוסף מצא את השלושה הבאים, וכולם תוקנו מאז. הטבלה נשמרת כתיעוד
-של דפוס שחוזר, לא כעבודה פתוחה:
-
-| # | הממצא | היכן |
-| --- | --- | --- |
-| A | **`onprocessorerror` מחובר ארבע חוליות ואז נגמר באוויר.** השרשרת `node.onprocessorerror` → `WorkletPlayer` → `Deck` → `engine.scratchError` קיימת ועובדת. אבל `controls.ts:29` הוא **המקום היחיד** שמעתיק את `engine.scratchError` ל‑store, והוא יושב בתוך `if (!state.audioReady)` — כלומר רץ **פעם אחת** באתחול האודיו, הרבה לפני שמעבד יכול למות. אף אחד לא נרשם לשדה אחר כך. מוות של מעבד קובע מחרוזת שאיש לא קורא, והפיל `no scratch · <reason>` **לעולם לא מופיע**. ההערה ב‑`engine.ts:38` אומרת "so the UI says so" — וה‑UI לא אומר. זה בדיוק הכשל השקט שהחיווט נבנה כדי למנוע, וזו גם הסיבה שסעיף ה‑definition of done לא נסגר: מי שהיה מכשיל את ה‑worklet בכוונה היה נתקל בזה | `controls.ts:26‑30`, `engine.ts:41‑43`, `TopBar.tsx:13` |
-| B | **שתי הערות בעץ סותרות זו את זו על אותה עובדה.** `controls.ts:43` אומר שמסירת הדגימות ל‑worklet "detaches the AudioBuffer"; `players.ts:311` אומר את ההפך ומסביר ש‑`copyFromChannel` נבחר דווקא כדי ש**לא** ינותק. **`players.ts` הוא הנכון.** `8ead1d1` תיקן את `deck.ts` ופספס את `controls.ts`. סדר הטעינה עצמו תקין — רק הנימוק שקרי, ומי שיבדוק אותו עלול לבטל את הסדר | `controls.ts:43` |
-| C | **הנימוק לקיפול הערוצים שגוי.** ההערה טוענת שקיפול בעוצמה שווה "is what Web Audio's own downmix does". לא נכון — הספֶּק משתמש במקדמים ספציפיים (0.7071 למרכז ולסראונד ב‑5.1→סטריאו), לא בעוצמה שווה. גם החישוב עצמו לא תואם: ב‑5.1 יוצא `gain = 1/5` לכל ערוץ עודף. **הקיפול עצמו בחירה סבירה** — רק ההצדקה שקרית, אותה קטגוריה כמו B | `players.ts:320‑321` |
-
-שלושתם מאותו סוג: **הקוד עושה משהו סביר, וההערה או השרשרת מבטיחות משהו שלא קורה.**
-זה מסוכן יותר מבאג רגיל, כי בדיקה שטחית מאשרת אותו — בדיוק מה שקרה לי כאן.
-
-**איך נסגרו** (אומת בקוד 2026-08-29, אחרי `f2025ad`):
-
-- **A** — `engine.onScratchStateChange = syncScratchState` יושב עכשיו ב‑scope של המודול
-  ב‑`controls.ts`, לא בתוך הבלוק החד‑פעמי. ההערה שם מתעדת גם ניסיון ראשון שנכשל: הוא
-  הושם בתוך אותו בלוק ולכן לא נרשם כלל כשהאודיו כבר אותחל. נמצא בהרצה, לא בקריאה.
-- **B** — ההערה השקרית ב‑`controls.ts` נמחקה. נשארה רק המדויקת ב‑`players.ts:312`
-  (`copyFromChannel`, ולכן **לא** מנותק).
-- **C** — ההערה ב‑`players.ts:320` אומרת עכשיו במפורש שזה **לא** ה‑downmix של הספֶּק,
-  ומסבירה למה קיפול אחיד הוא הבחירה הכנה כשמשמעות הערוצים לא ידועה.
-
-**הפריט שנשאר פתוח מהסקירה היה לא ממצא אלא אימות** — והוא **בוצע ועבר**: ראה
-"הכשלת ה‑worklet בכוונה" למעלה. שלושת מסלולי הכשל מייצרים את הפיל, כולל מסלול B
-שהוא בדיוק מה ש‑A למעלה שבר.
-
-### סבב הליטוש שסגר את v0.1.5 (2026-08-28)
-המשתמש השווה מול Serato על אותו מסך ואמר "נראה גרוע יותר". שלושה כשלים נפרדים:
-
-1. **טיפוגרפיה לא מכוילת לגודל פיזי.** מסך **14 אינץ'** = 12.2" רוחב, כלומר
-   1536 CSS px על פני 12.2" = **126 CSS px לאינץ'** מול 96 בייחוס. 125% של
-   Windows לא מפצה על 157 PPI (היה צריך ~164%), אז **הכל קטן פיזית ב‑24%**
-   ממה שהמספר אומר — טקסט 11px נמדד כמו 8.4px.
-   Serato על אותו מסך: שורות ~31px עם טקסט ~16px — **צפוף יותר וגם קריא יותר**.
-   אצלנו היה ההפך: שורות 44px עם טקסט 12px. עברנו ל‑**36px/14px** → 5 שורות
-   גלויות במקום 4, ואותיות גדולות יותר. עלה 4px בגובה ה‑main; 710 עדיין מחזיק.
-   **כלל אצבע להמשך: הכפל כל גודל CSS ב‑0.76 כדי לדעת מה הוא באמת רואה.**
-2. **ויוופורם מרובע.** 2400 דליים קבועים = 16/שנייה, אבל מציירים ב‑150px/שנייה →
-   כל דלי נמרח על 9 פיקסלים. הציור הישן (`lineTo`) אינטרפולל וטשטש; הציור לפי
-   עמודות חשף בר‑צ'ארט. **הדליים גדלים עם האורך (~200/שנייה, תקרה 120k)**
-   וכל פיקסל **מאגד** את כל הדליים שתחתיו (לא דוגם אחד — אחרת טרנזיאנטים נופלים
-   והמעטפת מרצדת בגלילה). נמדד על 145 שניות: רצף שטוח 10px→1px, גבהים 50→435.
-3. **צבעים חלשים.** הייתי "ריככתי את הפרימריים כדי לא לסנוור" — טעות על פאנל
-   כמעט‑שחור, שם אין סנוור למנוע רק ניגודיות להרוויח. + החצי שלא נוגן היה
-   ב‑50% שקיפות ונראה מת (עכשיו 82%). + **לא היה נרמול** — טראק ממוסטר חלש
-   צייר קו דק; `computePeaks` מנרמל עכשיו לשיא של הטראק (display gain בלבד).
-
-**באג שההשוואה חשפה:** הדק הראה `123.5` והספרייה `124` לאותו טראק — `detectBpm`
-הגס דרס ערך תגית של Serato, ו‑SYNC נסחף על ההפרש. **התגית מנצחת עכשיו**
-(`track.bpm ?? detectBpm(buffer)`) עד ל‑beatgrid אמיתי ב‑v0.3, ואז זה מתהפך בחזרה.
-
-**⚠️ לא בוצע:** סבב `ui-ux-review` + `drop-generic-design` "אחרי" שהיה בתכולת v0.1.5.
-
-### מה נעשה ב‑v0.1.7 (commit `be3c783`)
-`src/library/tags.ts` חדש — קריאת מטא‑דאטה מכותרות הקבצים, **בלי decode**, הכל
-byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק שלם לזיכרון). קריאה בלבד,
-לא כותבים חזרה לקבצי המשתמש.
-- **פורמטים:** ID3v2.2/2.3/2.4 (כולל TXXX, ו‑fallback ל‑GEOB `Serato Autotags`),
-  MP4/M4A atoms (`tmpo`, `©ART`, `©nam`, freeform `----`), FLAC/OGG Vorbis
-  comments, ו‑RIFF/AIFF chunks.
-- **duration אמיתי לכל פורמט:** Xing/VBRI או bitrate (MP3), `mvhd` (MP4),
-  `STREAMINFO` (FLAC), `fmt`+`data` (WAV), `COMM` (AIFF). TLEN כמעט לא קיים בפועל.
-- **⚠️ WAV:** Serato כותב את ה‑ID3 בצ'אנק `ID3 ` **אחרי** צ'אנק ה‑`data`. לכן
-  `readChunked` עושה seek לפי offset של כל צ'אנק ולא קורא חלון מתחילת הקובץ —
-  בלי זה 40 קבצי ה‑WAV של המשתמש נשארו ריקים. **אל תחזיר לקריאת חלון.**
-- **`parseKey`** מנרמל כתיב מוזיקלי (`Am`/`F#m`/`A minor`), Camelot (`8A`) ו‑Open
-  Key (`1m`) לקוד Camelot אחד + כתיב תצוגה אחיד (`Gbm` → `F#m`).
-  `Track` קיבל `key`, `camelot`, `artist`, `title`, `album`.
-- **`readLibraryTags`** ב‑`library.ts` — פאס שני אחרי `scanLibrary` (pool של 8,
-  batching כל 50 קבצים / 400ms) כדי שהרשימה תופיע מיד ותתמלא. ערך קיים תמיד גובר,
-  כך שניתוח (v0.3/v0.4) לא נדרס.
-- **`mixRecommendations`** משתמש בסולם כששני הצדדים מתויגים: התנגשות Camelot
-  מורידה התאמת‑טמפו הדוקה ל‑loose, **אף פעם לא מסננת החוצה**.
-- **ספרייה:** עמודות Artist ו‑Key (badge עם tooltip Camelot); הפילטר מחפש גם
-  באמן/כותרת.
-
-**נמדד על הספרייה האמיתית** (360 קבצים — 281 mp3, 40 wav, 39 m4a):
-**BPM 96.9% · Key 97.2% · Duration 100% · 0.6 שנייה** לכל הסריקה.
-ה‑11 שנשארו הם m4a שפשוט לא מתויגים (ריפים, לא באג).
-26 מקרי בדיקה ל‑`parseKey`/`keysCompatible` עברו.
-> הרצת האימות נעשתה ב‑Node ישירות מול `C:\Users\Shalom\Music\Tracks` עם shim
-> קטן ל‑`File` (רק `size` + `slice().arrayBuffer()`) — דרך טובה לבדוק פרסרים
-> בלי לעבור דרך ה‑file picker של הדפדפן.
-
-### מה נעשה ב‑v0.1.5 (13 commits מקומיים, ראה `git log`)
-1. **design tokens + Inter** — `index.css` שוכתב: surface tokens שכבתיים,
-   `@fontsource-variable/inter`, type/radius/motion scale, elevation shadows,
-   utilities `.tnum/.label/.panel`, `prefers-reduced-motion`.
-2. **`controls.tsx` שוכתב** — `Button` (transport/toggle/ghost, idle→armed→active),
-   `Knob` (SVG arc + readout on‑hover + מקלדת), `Fader` (מסילה חרוצה, ticks, detent, cap).
-3. **`Deck`** — היררכיה שם→זמן→BPM, readouts tabular, אזהרת 30ש' אחרונות, disabled בלי טראק.
-4. **`Platter.tsx`** חדש — טבעת מיקום + סמן מסתובב (בסיס לג'וג v0.2), `size` prop.
-5. **`Waveform`** — גוף מלא gradient, spine, beat grid, cue flags, playhead glow,
-   loading/empty. **הקנבס `position:absolute`** כדי שהגודל האינטרינזי שלו לא יזין
-   feedback loop שמנפח את גובה הדק (באג שתוקן — אל תחזיר ל‑`block`).
-6. **`Mixer`** — EQ+Filter ב‑well **אופקי**, master/cue knobs בשורה, crossfader נעוץ
-   בתחתית (`mt-auto`). קומפקטי (~360px) בכוונה, אחרת הספרייה נחנקת ב‑1536×710.
-7. **`TopBar`** — status pills עם נקודת חיווי. **`Library`** — כותרת טבלה דביקה,
-   עמודות BPM/Time, בורר accent, שורות 44px, מצבי empty/scanning/unsupported/no‑match.
-8. token contrast → WCAG AA.
-9. **fix גלילת ספרייה** — `h-full + overflow-hidden` על ה‑section.
-10. **feat DnD** — גרירת טראק מהספרייה לדק + overlay "Drop to load deck X".
-11. **feat `recommend.ts`** — `mixRecommendations()` מדגיש טראקים תואמי‑BPM לדק המנגן
-    (bold + נקודה בצבע הדק, טוגל "N mixable"). `loadTrackToDeck` כותב bpm/duration
-    חזרה ל‑library entry. גרסה בסיסית של v0.4.5. subscription צר עם `useShallow`.
-12. **fix פריסה אנכית** — `App`: main `shrink-0` (גובה טבעי), library `flex-1 min-h`.
-    `Deck` `min-h-0`, waveform `flex-1`, ResizeObserver. Platter 54, tempo fader 92.
-13. **docs** — ראה למטה.
-
-### מה נעשה ב‑v0.2.0b — פלטר, ויניל, וג'וג (`1ee9380`, `9eee845`, `f1ae061`)
-
-**המלכודת המרכזית: ramp שובר את חישוב המיקום.** `positionSec` עושה אקסטרפולציה
-בין ה‑anchors של ה‑worklet, והיא הניחה **קצב קבוע**. אבל המצביע נע לפי
-ה‑**אינטגרל** של הקצב, אז תחת שיפוע המיקום ריבועי בזמן. נמדד על בלימה 1→0
-לאורך 0.5 שניות: המרחק האמיתי **0.25ש'**, אקסטרפולציה בקצב קבוע טוענת **0.5ש'**
-— **250ms של חריגה, ~37px של playhead** על ויוופורם ב‑150px/שנייה, בכל בלימה.
-`travelled()` מבצע אינטגרציה על ה‑ramp; המיקום המדווח נוחת על 0.25 עם **שגיאה 0**.
-
-- `SourcePlayer.rampRate(target, seconds)`. `BufferSourcePlayer` מתדרדר ביושר —
-  הוא לא יכול לעבור דרך אפס (קצב 0 מקפיא את המצביע ופולט DC), אז בלימה שם נגמרת
-  בעצירה.
-- `Deck.brakeToStop` / `spinUpToPlay`; `togglePlay` עובר דרכם במצב ויניל.
-  **ה‑pause נוחת כשהפטיפון באמת עצר**, לא כשהפקודה נשלחה. play/seek באמצע גובר.
-- `beginScratch` / `scratchRate` / `endScratch`. הדק ממשיך לדווח `playing` בזמן
-  שיד על הפלטר — אצבע על תקליט מסתובב לא עצרה את הטרנספורט, והבהוב שלו בכל נגיעה
-  היה מהבהב ב‑UI. scratch על דק עצור עדיין מזין את המצביע כדי שיישמע.
-- **פלטר גריר** (`Platter.tsx`). היחס ויזואלי 1:1 ולא פקטור שרירותי: סיבוב אחד =
-  `SEC_PER_REV` של אודיו, אז סחיפה במהירות שהסמן מסתובב בה נותנת קצב 1.
-  שלושה דברים שגרסה נאיבית שוברת: **התפר ב‑±180°** (בלי unwrap חצייה שלו נקראת
-  כסיבוב מלא וקופצת קצב), **אצבע במנוחה** (אירועי pointer נפסקים, אז הקצב האחרון
-  היה ממשיך לנגן — timeout של 60ms מאפס), ו**ה‑easing של 120ms** בטבעת שנקרא
-  כפיגור תחת scratch.
-  **תוקן גם באג ישן:** שני הדקים פלטו `radialGradient` עם אותו `id="platter-face"`.
-- **ג'וג ב‑MIDI פוצל.** היה מחובר ל‑`nudgeDeck` שהוא **seek** — הזזת playhead,
-  ומ‑v0.3 עם beatgrid אמיתי זו הפעולה ההפוכה. עכשיו: **מגע** (note 0x36) מכריע.
-  אחוז = הגלגל הוא התקליט, טיקים → קצב scratch (מומר לפי זמן שחלף, לא ישירות).
-  לא אחוז = טיקים → **pitch bend** שדועך חזרה לקצב הגריד אחרי 90ms.
-- **`JOG_TICKS_PER_REV = 600` הוא ניחוש**, כמו שאר הפריסט. קבוע בעל שם — לתקן שם.
-
-**⚠️ לא נבדק מול חומרה.** ה‑note של המגע וספירת הטיקים לסיבוב הם best-effort.
-גם הגרירה בעכבר לא נוסתה על טראק אמיתי — צריך לטעון שיר ולגרור.
-
-### מה נעשה ב‑v0.2.0a — מנוע ה‑scratch (commits `fe6ff9e`, `dd7a3ba`)
-
-**הממצא שהניע את הכל:** ‏Chrome **לא מסוגל** לגרד דרך `AudioBufferSourceNode`.
-נמדד ב‑Chrome 148 דרך `OfflineAudioContext`: ב‑`playbackRate` ‏‎-1, ‎-0.5 ו‑0 הוא לא
-מנגן אחורה ולא משתיק — **מצביע הקריאה קופא והצומת פולט את הדגימה האחרונה כ‑DC**.
-לכן מקור הניגון הוחלף ב‑`AudioWorklet` עם מצביע קריאה **חתום**.
-
-- `platform/audio-webaudio/scratch-processor.ts` — המעבד עצמו. **אסור שייבא כלום**:
-  ל‑`AudioWorkletGlobalScope` אין DOM, וייבוא עקיף אחד שנוגע ב‑DOM הופך ל‑rejection
-  אטום של `addModule`. הקצב הוא **AudioParam יחיד ב‑a-rate** — כך שעקומת עצירת
-  הוויניל של v0.2.0b תהיה `linearRampToValueAtTime` בלי הודעות בכלל.
-- `platform/audio-webaudio/players.ts` — `SourcePlayer` עם שני מימושים:
-  `BufferSourcePlayer` (המנוע הישן, התנהגות זהה) ו‑`WorkletPlayer`. **מחלקת `Deck`
-  אחת**, לא שני `DeckBackend` — כל מה שמ‑`trim` והלאה (EQ, פילטרים, gains, ניתוב)
-  משותף, ורק ראש השרשרת מתחלף.
-- **מיקום חוזר כ‑anchors ולא כמיקומים**: `{epoch, positionSec, ctxTimeSec}` בערך
-  43 פעמים בשנייה, והצד הראשי מבצע אקסטרפולציה. **ה‑epoch חובה** — בלעדיו anchor
-  שעדיין באוויר בזמן seek דורס את המיקום החדש וה‑playhead קופץ אחורה.
-- **מתחת ל‑|rate| של 0.02 הפלט דועך לשקט.** מצביע עצור פולט DC; פטיפון במנוחה שותק.
-- **סוף טראק הוא הודעה מפורשת.** ל‑worklet אין `onended`, ובלי ההודעה `playing`
-  היה נשאר true לנצח בסוף כל טראק.
-
-**סדר הטעינה ב‑`loadTrackToDeck` הפוך עכשיו** (`fe6ff9e`): מנתחים את ה‑buffer ואז
-מוסרים אותו לדק, לא להפך. ה‑worklet מקבל את הדגימות ב‑transfer, מה שמנתק את
-ה‑AudioBuffer — ובסדר הישן `analyzeWaveform`/`detectBpm`/`buffer.duration` היו
-קוראים גופה. נמדד: ניתוח על buffer מנותק מחזיר **0 מתוך 600 דליים לא‑אפסיים,
-שיא 0.0, ו‑`duration` עדיין מדווח 3 שניות — בלי לזרוק שום שגיאה.**
-`Deck` מחזיק עכשיו `_hasTrack` ו‑`_durationSec` משלו במקום לשאול את ה‑buffer.
-
-**אימות** (מול המודול שנשלח בפועל, דרך פרוטוקול ההודעות האמיתי שלו,
-ב‑`OfflineAudioContext` — ל‑Node אין `OfflineAudioContext`, אז זו הצורה
-המקבילה לסקריפט של v0.1.7, לא בדיקה מוחלשת):
-
-| בדיקה | תוצאה |
-| --- | --- |
-| זהות למנוע הישן במהירות 1.0 | 43,700 דגימות, **0 שונות**, הפרש מקסימלי **0** |
-| אחורה במהירות ‎-1 | **4500/4500** מדויק |
-| מהירות 0 | **‎-999 dBFS** — שקט, לא DC |
-| לולאה | שגיאה **0** מול המקור, שגיאת מחזוריות **0** |
-| סוף טראק | **הודעה אחת** ב‑0.300 שנ' מתוך 0.300; 12 anchors |
-
-**שני באגים שהאימות תפס והאוזן לא הייתה תופסת:**
-1. **הגברת האנטי‑נקישה התנדנדה.** היא הוסיפה צעד בלי תנאי וקיצצה אחר כך, אז בהגיעה
-   ל‑1.0 היא חרגה, ירדה, וחרגה שוב — אפנון משרעת 0.45% **כל דגימה שנייה**, כלומר
-   ב‑Nyquist. התגלה כי **בדיוק חצי** מהדגימות נכשלו בהשוואת הזהות.
-2. **`addModule` שמצליח לא מוכיח שהמעבד קיים.** מכוון אל מודול ה‑URL של Vite
-   (92 בתים) הוא מחזיר "ok" ולא רושם כלום; הכשל היה מתגלה רק אחר כך. `ensureScratchEngine`
-   בונה עכשיו probe node ובודק את פרמטר ה‑`rate` לפני שהוא מכריז על הצלחה.
-
-**נפילה חזרה גלויה:** אם הוורקלט לא נטען, הדקים נשארים על המנוע הישן — שמנגן נכון
-אבל לא יודע לגרד — וה‑TopBar מציג `no scratch · <סיבה>`. זה **הצרכן הראשון** של
-תשתית ה‑capabilities מ‑v0.1.6, שעד היום לא היו לה צרכנים בכלל.
-
-**Vite:** ‏`import url from './scratch-processor?worker&url'`. ה‑build מייצר
-`dist/assets/scratch-processor-*.js` בגודל 2.37KB, IIFE עצמאי **בלי ייבואים**.
-
-### לשיחה הבאה — v0.2.0b (הפלטר והג'וג)
-
-1. **הפלטר קטן מדי כדי לגרד עליו.** `Deck.tsx` מעביר `size={54}` (דורס את 60 שב‑`Platter.tsx`)
-   → **41px נתפסים ≈ 11 מ"מ**. היעד: **142 CSS px**, וזה **לא עולה שום גובה** —
-   מפסיקים לערום את פאדר הטמפו מתחת לפלטר ומציבים אותם זה לצד זה:
-   `142 + 4 + צ'יפ VINYL 32 = 178` בדיוק כמו גובה העמודה השמאלית.
-   **רצפה: לא לשלוח פלטר אינטראקטיבי מתחת ל‑120 CSS px.**
-2. **גרירה אופקית (ציר X), לא זווית.** ליד המרכז 1px = 5.7° ובשפה 0.77° — פי 7 הבדל
-   בגיין לפי איפה שתפסת; ותנועה מהירה שחוצה 180° בין אירועים מתפרשת ב‑`atan2`
-   ככיוון ההפוך. `Knob` כבר עושה בדיוק את זה — פקד עגול, גרירה ישרה.
-3. **באג MIDI קיים שהעיצוב חשף:** ב‑`mappings/flx4.ts:23-24` גם CC `0x22` וגם `0x21`
-   ממופים לאותה פעולה `jog`, ו‑`manager.ts:126-127` קורא ל‑`nudgeDeck` בלי תנאי.
-   בחומרה אלה **שני פקדים פיזיים שונים** — `0x22` משטח המגע העליון (scratch),
-   `0x21` טבעת הצד (bend בלבד). **כרגע מצב ויניל לא יכול לעבוד בחומרה.**
-   צריך לפצל ל‑`jogScratch`/`jogBend` + `jogTouch` + `vinylMode` ב‑`ControlAction`,
-   ב‑`dispatch`, ובפריסט.
-4. **מקלדת:** bend כן (החזקה, ‎±4%, להתעלם מ‑`e.repeat`); scratch **לא** — מחווה
-   רציפה לא ניתנת לביטוי במקש, ו"מקש scratch" היה פקד שנראה כמו פיצ'ר ואינו.
-5. `useRenderLoop.ts:24` מעדכן רק כשההפרש > 0.001 שנ' — **גירוד איטי ייפול מתחת לסף
-   והפלטר יקפא בזמן שהאודיו זז.** לעקוף את הסף כש‑`platterHeld`.
-6. עדיין פתוח מ‑v0.1.7: **לאמת בעין** שעמודות Artist/BPM/Key/Time מתמלאות ושפריסת
-   7 העמודות סבירה. הפרסר נבדק מול 360 קבצים; הטבלה עצמה לא נבדקה במסך.
-
-**צילום מסך מה‑Browser pane לא עובד** בסביבה הזו ("pane is not displayed") —
-המשתמש מסתכל ב‑Chrome האמיתי שלו. מה שכן עובד: `mcp__Claude_Browser__javascript_tool`
-על tabId `seed` למדידת DOM, ו‑`read_console_messages` לשגיאות.
-**שרת ה‑dev:** `preview_start` עם `name: soundgrid-dev` (ראה סעיף 1 בנוהל השיחה).
-ההערה הישנה כאן — "השרת שייך לשיחה אחרת, להתחבר דרך `url`" — כבר לא נכונה:
-אותו שרת מת עם השיחה שהרימה אותו, ואז 5173 היה ריק לגמרי. תמיד להרים חדש.
-
-### docs שנוספו ב‑v0.1.5
-- `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate TLV,
-  GEOB: Markers2/BeatGrid/Autotags/Overview) מ‑reverse engineering של ההתקנה המקומית
-  (`C:\Users\Shalom\Music\_Serato_`). בסיס ל‑v0.1.7, v0.16, וקליינט דסקטופ.
-- `docs/architecture/directions.md` — עקרון "`core/` בלי פלטפורמה", רשימת ה‑ports
-  ל‑v0.1.6, חוזה שכבת AI (אופציונלי/model‑agnostic/דרך `controls.ts`), בידול מול
-  Serato/rekordbox, יעדי חומרה. **המשתמש רוצה גרסאות דסקטופ Windows+Mac לקראת סוף
-  הפרויקט** (Tauri, v1.0).
-- ROADMAP קיבל גרסאות `.5`/`.6`/`.7`: v0.1.6 seams, v0.1.7 tag‑read, v0.4.5 next‑song,
-  v0.5.5 NL control, v0.8.5 semantic search, v0.9.5 coaching, v0.11.5 plugin API,
-  v0.13.5 live co‑pilot.
+---
 
 ### סביבת המשתמש
+
 - לפטופ **Dell Latitude 7440**, מסך 1920×1080 @ **125% scale** → viewport CSS 1536×864,
-  ואחרי סרגלי דפדפן ~**1536×710** לדף. **לתכנן פריסה לגובה ~710px.**
-- מסתכל ב‑Chrome האמיתי (לא ב‑Browser pane של Claude). `npm run dev` → localhost:5173.
+  ואחרי סרגלי דפדפן ~**1536×710** לדף. **לתכנן פריסה לגובה ~710px**, ולזכור שהכל
+  נראה פיזית קטן ב‑24% ממה שהמספר אומר (הכפל כל גודל CSS ב‑0.76).
+- מסתכל ב‑Chrome האמיתי שלו, לא ב‑Browser pane של Claude. **צילום מסך מה‑pane לא
+  עובד** בסביבה הזו ("pane is not displayed"). מה שכן עובד: `javascript_tool` למדידת
+  DOM ו‑`read_console_messages` לשגיאות.
+- **שרת ה‑dev:** `preview_start` עם `name: soundgrid-dev` (סעיף 1 בנוהל השיחה).
+  **שרת שהורם בשיחה קודמת מת איתה** — תמיד להרים מחדש, לא להתחבר ל‑`url` ישן.
 - הספרייה של המשתמש: `C:\Users\Shalom\Music\Tracks` (תת‑תיקיות HipHop/House/Techno/
   Trance/Mizrahi/Final). folderName שנשמר = "Tracks".
-
-### הקשר ל‑v0.1.5 (מהמשתמש)
-העיצוב הנוכחי "מגושם מדי". הצבעים יפים ונשארים (טורקיז deck A, כתום deck B, סגול accent).
-היעד: **יפה יותר מ‑Serato ומ‑rekordbox**. הבעיה במבנה/ריווח/טיפוגרפיה/פקדים, לא בפלטה.
-להשתמש בסקילים `ui-ux-review` ו‑`drop-generic-design`. פרטים מלאים ב‑`ROADMAP.md#v015`.
+- **שיחה שרצה בסביבה מרוחקת (ענן) לא רואה כלום מזה** — אין את הספרייה, ואין דפדפן
+  שהמשתמש יכול להגיע אליו. עבודה שדורשת אימות חי לא שייכת לשם.
 
 ### codegraph
 ה‑MCP של codegraph **פעיל** — `codegraph_explore` זמין וגם הזרקת הקשר אוטומטית ב‑prompt.
@@ -346,20 +73,9 @@ byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק של
    - `npm run build` + `npm run lint` ירוקים.
    - עדכן `ROADMAP.md` (סמן ✅) ו‑`HANDOFF.md` (הסעיפים למטה).
    - commit + push.
-   - **בדיקת CLEAR אוטומטית** (ראה קריטריון למטה) → אם צריך, אמור למשתמש במפורש:
-     "גרסה X הושלמה, HANDOFF מעודכן — מומלץ `/clear` עכשיו" או "מומלץ לפתוח שיחה חדשה".
+   - **הרץ `context_check.py`** ופעל לפי הוורדיקט (ראה "Context discipline" ב‑`CLAUDE.md`).
+     🟡/🔴 = **שיחה חדשה, לא `/clear`**. הקריטריון הידני שהיה כאן בוטל — הוא נמדד עכשיו.
 4. **שיחה חדשה:** ה‑HANDOFF הוא נקודת האמת. אם משהו לא כתוב פה — הוא לא הועבר.
-
-### קריטריון CLEAR / שיחה חדשה
-המלץ על `/clear` כאשר מתקיים אחד מ:
-- הושלמה גרסת MINOR שלמה (`v0.X.0`).
-- ההקשר עבר ~50% מהחלון (יש system-reminder על summarization, או השיחה > ~30 סבבי כלים).
-- מעבר לתחום אחר בקוד (למשל מ‑audio engine ל‑library UI).
-המלץ על **שיחה חדשה לגמרי** (לא רק clear) כשמתחילים גרסת MINOR חדשה עם תכולה גדולה.
-אם אף תנאי לא מתקיים — המשך באותה שיחה.
-
-> הערה: אין לי כלי בשם `dcodegraph`. ניהול ההקשר נעשה דרך המסמך הזה + פקודות
-> ה‑session של Claude Code (`/clear`, שיחה חדשה). אם התכוונת לכלי ספציפי — תפרט ואבדוק.
 
 ---
 
@@ -367,33 +83,58 @@ byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק של
 
 ```
 src/
-  types.ts              טיפוסים משותפים (DeckState, MixerState, Track, ...)
-  controls.ts           ★ שכבת הפעולות המשותפת ל‑UI ול‑MIDI. כל פעולת משתמש עוברת פה.
-  audio/
-    engine.ts           AudioEngine singleton — ניתוב 4ch/סטריאו, crossfader, setSinkId, decode
-    deck.ts             Deck — גרף Web Audio לדק בודד, מיקום sample-accurate, loops, tempo
-    analyze.ts          computePeaks, detectBpm
-    constants.ts        TEMPO_RANGE, EQ, צבעי hot cue
-  state/store.ts        zustand — כל ה‑UI state. patchDeck/patchChannel/patchMixer/set*
-  hooks/useRenderLoop.ts  rAF יחיד שמושך position מהמנוע ל‑store
-  library/library.ts    File System Access — pick/scan/restore, idb-keyval לזכירת התיקייה,
-                        readLibraryTags (פאס תגיות שני, batched)
-  library/tags.ts       ★ readTags — ID3v2/MP4/Vorbis/RIFF/AIFF, parseKey → Camelot.
-                        byte-range reads בלבד, אף פעם לא decode ולא כתיבה לקבצים
-  midi/
-    mapping.ts          טיפוסים + parseMessage + relativeDelta
-    manager.ts          ★ MidiManager singleton — Web MIDI, dispatch לפי mapping, Learn
-    mappings/flx4.ts     פריסט DDJ-FLX4 (note/CC — best-effort, לתקן דרך Learn)
-  components/           TopBar, Deck, Mixer, Library, Waveform, Platter, PadGrid,
-                        controls (Button/Knob/Fader)
-  recommend.ts          mixRecommendations() — טראקים תואמי‑BPM לדק המנגן (בסיס v0.4.5)
+  controls.ts             ★ choke point — כל פעולת משתמש (עכבר/מקלדת/MIDI/AI) עוברת פה
+  main.tsx                bootstrap
+  core/                   TS טהור: בלי React, בלי DOM, בלי AudioContext, בלי Web MIDI
+    types.ts              DeckState, MixerState, Track, ...
+    constants.ts          TEMPO_RANGE, EQ, צבעי hot cue
+    recommend.ts          mixRecommendations() — טראקים תואמי BPM/סולם לדק המנגן
+    mapping/mapping.ts    ControlAction + parseMessage + relativeDelta
+    ports/                audio · source · transport · clock · analyzer · capabilities ·
+                          persistence · ai — הגבול שכל תלות בפלטפורמה עוברת דרכו
+  platform/               המימושים שמאחורי ה‑ports
+    audio-webaudio/       engine.ts (ניתוב 4ch/סטריאו, crossfader, setSinkId, decode) ·
+                          deck.ts (גרף לדק בודד, loops, tempo) ·
+                          players.ts (SourcePlayer: worklet + fallback, anchors) ·
+                          scratch-processor.ts (ה‑AudioWorklet עצמו)
+    source-fsaccess/      library.ts (pick/scan/restore + idb-keyval) ·
+                          tags.ts (★ byte-range בלבד — אף פעם לא decode, אף פעם לא כתיבה)
+    transport-webmidi/    manager.ts (Web MIDI, dispatch, Learn) · mappings/flx4.ts
+    analyzer-js/analyze.ts  computePeaks, detectBpm
+    capabilities.ts · clock-audio.ts
+  app/                    React בלבד
+    App.tsx · components/ (TopBar, Deck, Mixer, Library, Waveform, Platter, PadGrid,
+    controls.tsx) · hooks/useRenderLoop.ts · state/store.ts (zustand)
+tests/repo/               אינווריאנטים על הריפו כמערכת (v0.2.1)
 ```
 
 **כללי זהב:**
+- imports חוצי‑קובץ דרך alias `@/*`, **אף פעם לא `../`** — נתיב יחסי מסתיר איזו שכבה
+  הוא חוצה, וזה מה שהפך את השכבות לבלתי נראות עד `f8f5cf8`.
 - מנוע האודיו אימפרטיבי וחי מחוץ ל‑React. ה‑store מחזיק רק state סריאליזבילי.
-- פעולה חדשה → מוסיפים ל‑`controls.ts`, קוראים ממנה גם ב‑UI וגם ב‑`midi/manager.ts:dispatch`.
-- פעולת MIDI חדשה → מוסיפים ל‑`ControlAction` ב‑`mapping.ts` + case ב‑`dispatch` + entry ב‑`flx4.ts`.
+- פעולה חדשה → `controls.ts`, ונקראת גם מה‑UI וגם מ‑`transport-webmidi/manager.ts:dispatch`.
+- פעולת MIDI חדשה → `ControlAction` ב‑`core/mapping/mapping.ts` + case ב‑`dispatch`
+  + entry ב‑`mappings/flx4.ts`.
 - Chromium בלבד. לא לשבור fallback סטריאו / מקלדת.
+- הגבולות נאכפים ע"י `.dependency-cruiser.cjs`, לא ע"י מוסכמה. `npm run check` נופל אחרת.
+
+---
+
+## אינווריאנטים ברמת הריפו (v0.2.1)
+
+`tests/repo/` בודק את **הריפו כמערכת**, לא את הקוד. הכלל שנגזר מ‑ESOP: **כל באג
+שנתפס פעם אחת הופך לבדיקה קבועה.** חמש בדיקות, כל אחת מקבעת באג שקרה כאן:
+
+| הבדיקה | הבאג שהיא מקבעת |
+| --- | --- |
+| `handoff-size.test.ts` | הקובץ הזה גדל ב‑97% ביום אחד ונקרא ראשון בכל שיחה |
+| `version-in-step.test.ts` | `package.json` אמר `"0.0.0"` בזמן ש‑v0.2.0 כבר ב‑main |
+| `doc-paths.test.ts` | מפת הארכיטקטורה הצביעה על `src/audio/`, `src/library/`, `src/midi/` — נתיבים שמתו ב‑v0.1.6 | <!-- dead-path -->
+| `doc-commits.test.ts` | הקובץ הזה קיבע SHA בשורת מצב ה‑push, והשורה הזדקנה לשקר (`969f004`) |
+| `claude-md-pair.test.ts` | הכלל "שני קבצי ה‑CLAUDE משתנים באותו commit" היה הכלל היחיד בפרויקט בלי אכיפה |
+
+**כשבדיקה נופלת, ההודעה אומרת מה לעשות.** אל תחליש בדיקה כדי לעבור — זה בדיוק
+מה שהופך אותה לחסרת ערך. תקציב הגודל נקבע עם מרווח מכוון מהסיבה הזאת.
 
 ---
 
@@ -405,43 +146,7 @@ src/
 - Ableton Link — WASM port מול שרת גשר מקומי (v0.19)
 - stems — מודל on-device: איזה? רישוי? (v0.20)
 
-## חוב תשתית התיעוד — הפריט הבא בתור
-
-מגיע מסקירה של `C:\Users\Shalom\Projects\ESOP` (2026-08-29), פרויקט שכבר נשבר על זה
-ופתר. שני חלקים, בסדר הזה:
-
-**① פיצול המסמכים.** המצב היום:
-
-| קובץ | גודל | נקרא |
-| --- | --- | --- |
-| `HANDOFF.md` | ~41KB | ראשון בכל שיחה חדשה |
-| `ROADMAP.md` | ~35KB | קרוב לזה |
-
-ב‑29/08 בבוקר `HANDOFF.md` היה 20.6KB. תוך יום אחד — **+97%**, מזה ~4.5KB מהסעיף
-הזה עצמו: אפילו התיעוד של הבעיה מגדיל אותה, וזו בדיוק הסיבה שהפתרון הוא פיצול ולא
-משמעת. שני הקבצים append‑only: כל גרסה מוסיפה בלוק ואף אחד לא מוחק.
-
-ESOP הגיע ל‑97,449 תווים בקובץ המקביל לפני
-שפיצל, ואז גילה שהקובץ שנקרא **ראשון בכל שיחה** היה עלות ההקשר הגדולה ביותר בריפו.
-
-הפתרון שם: `HANDOFF.md` מחזיק את **ההווה בלבד**; כשגרסה נסגרת הבלוק שלה עובר ל‑
-`docs/handoff/<version>.md` ולא נקרא שוב אלא אם שאלה היסטורית דורשת. אותו דבר לרודמפ.
-
-**② אינווריאנטים ברמת הריפו.** בדיקות שמסתכלות על הריפו כמערכת, לא על הקוד. הכלל
-שנגזר ב‑ESOP: **כל באג שנתפס פעם אחת הופך לבדיקה קבועה.** שלוש שכבר מוצדקות כאן:
-
-- **תקציב גודל ל‑`HANDOFF.md`.** ESOP קבע 14,000 תווים אחרי הפיצול שלו. תקציב חונק
-  מייצר לחץ להחליש את הבדיקה — לקבוע אותו עם מרווח (~23% מעל הגודל שאחרי הפיצול).
-- **`package.json` לא מפגר אחרי הגרסה בפועל.** הוא אומר `"version": "0.0.0"` בזמן
-  ש‑v0.2.0 כבר ב‑`main`. זה בדיוק הבאג שיצר את הקובץ ב‑ESOP: שם `VERSION` נשאר על
-  0.5.1 בזמן ששתי גרסאות כבר נחתו, ושלושה פורטלים הציגו למשתמשים גרסה שקרית.
-- **`HANDOFF.md` לא מכריז מצב שקרי.** ב‑29/08 הקובץ הזה טען "❌ 2 commits מקומיים"
-  כשהכל היה דחוף, ו"שלושה ממצאים פתוחים" כששלושתם נסגרו. סשן חדש שקורא אותו ראשון
-  היה מתחיל לעבוד על סמך מידע שגוי. זה הנזק שהפיצול והבדיקות אמורים למנוע.
-
-**תלות:** ② דורש מסגרת בדיקות, ואין כרגע אף אחת — אין `vitest`, אין `test` ב‑scripts,
-אין `tests/`. `npm run check` הוא `tsc + oxlint + depcruise` בלבד, כלומר כלים סטטיים
-שלא מאמתים התנהגות. להקים `vitest` לפני ②, או לצידו.
+---
 
 ## חובות טכניים ידועים
 
@@ -463,17 +168,3 @@ ESOP הגיע ל‑97,449 תווים בקובץ המקביל לפני
   `@/app/state/store` ואת `@/controls` במקום לפלוט `ControlActions` דרך הפורט. נכנס
   ב‑`f1ae061` (v0.2.0). מתועד ביושר ב‑`.dependency-cruiser.cjs:29‑33` עם severity
   `warn` כדי שיישאר גלוי — כלומר `npm run check` נשאר ירוק בזמן שהכלל מופר.
-
----
-
-## יומן שיחות
-
-| תאריך | גרסה | מה נעשה | CLEAR אחרי? |
-| --- | --- | --- | --- |
-| 2026-08-27 | v0.1.0 | scaffold, מנוע אודיו, decks, mixer, waveform, library, MIDI + FLX4, ריפו ציבורי בגיטהאב | — |
-| 2026-08-28 | — | ROADMAP.md (20 גרסאות), HANDOFF.md, נוהל שיחה | — |
-| 2026-08-28 | — | codegraph init בפרויקט; הוספת v0.1.5 (design overhaul) לרודמפ | 🟢 שיחה חדשה לפני v0.1.5 |
-| 2026-08-28 | v0.1.5 | שכתוב שפת עיצוב: tokens+Inter, Button/Knob/Fader, Deck+Platter, Waveform, Mixer, TopBar, Library + מצבים. build+lint ירוק. ממתין לבדיקה ויזואלית | אחרי ליטוש |
-| 2026-08-28 | v0.1.5 | +DnD, +recommend.ts (mix highlight), תיקון גלילה, תיקון feedback loop של הקנבס, כיול פריסה ל‑1536×710. docs: serato-formats + architecture/directions. ROADMAP: גרסאות .5/.6/.7. 13 commits מקומיים, לא נדחף | 🟢 שיחה חדשה — לסיים ליטוש + push |
-| 2026-08-29 | v0.2.0a ✅ | מנוע scratch: `AudioWorklet` עם מצביע קריאה חתום מחליף את `AudioBufferSourceNode` (שקופא ופולט DC באחורה/עצירה). `SourcePlayer` עם fallback גלוי, anchors+epoch למיקום, סוף‑טראק כהודעה. נמדד: זהות ביט‑לביט במהירות 1.0, 4500/4500 אחורה, ‎-999dBFS ב‑0. תפס אפנון Nyquist ב‑gain ו‑`addModule` שמשקר | — |
-| 2026-08-28 | v0.1.7 ✅ | `library/tags.ts` — ID3v2/MP4/Vorbis/RIFF/AIFF + parseKey→Camelot; `readLibraryTags` פאס שני batched; עמודות Artist/Key; `mixRecommendations` עם התאמת סולם. נמדד: BPM 96.9%, Key 97.2%, Duration 100%, 0.6ש' על 360 קבצים | 🟢 מומלץ `/clear` |

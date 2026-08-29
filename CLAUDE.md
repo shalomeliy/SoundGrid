@@ -102,17 +102,25 @@ SoundGrid's hard invariant, and it outranks convenience:
 
 ## Definition of done
 
-**There is no test framework in this repo today** — no runner, no test script in
-`package.json`. `ROADMAP.md` schedules tests at v1.0.0, which is late; introducing one
-is its own piece of work, not something to improvise mid-feature. Until it lands, "a
-test that fails without the change" means an explicit, recorded verification. The v0.1.7
-pattern is the standard: a small Node script run directly against
-`C:\Users\Shalom\Music\Tracks` with a minimal `File` shim, numbers written down
-(BPM 96.9%, Key 97.2%, Duration 100%, 0.6s over 360 files).
+**`vitest` landed in v0.2.1** — `npm test`, and `npm run check` runs it. What lives in
+`tests/repo/` are invariants about the **repository as a system**: doc size, version
+drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together. The rule
+they come from: **every bug caught once becomes a permanent check.** When you fix
+something a test could have caught, add the test in the same commit.
+
+**There are still no tests of application behaviour**, and a runner does not conjure
+them: the audio engine needs an `AudioContext`, the library needs the user's real files,
+and faking either would test the fake. So "a check that fails without the change" still
+usually means an explicit, recorded verification. The v0.1.7 pattern is the standard: a
+small Node script run directly against `C:\Users\Shalom\Music\Tracks` with a minimal
+`File` shim, numbers written down (BPM 96.9%, Key 97.2%, Duration 100%, 0.6s over 360
+files). Pure logic in `core/` — mapping, `recommend`, `parseKey` — has no such excuse and
+should get real tests as it is touched.
 
 A change is done only when:
 
-- **`npm run check` is green** — `tsc -b` + `oxlint` + `depcruise`. Run it before every commit.
+- **`npm run check` is green** — `tsc -b` + `oxlint` + `depcruise` + `vitest run`. Run it
+  before every commit.
 - **A check exists that would fail without the change**, was actually run, and its result
   is recorded — a script, a measurement against the real library, or a browser-verified
   observation with numbers. "It builds" is not verification.
@@ -166,8 +174,7 @@ conversations must be allowed to end.
   file, so it does **not** reset `context_check.py`'s counters — keep clearing and it
   reads 🔴 while context is actually empty. One transcript per version also keeps
   `--resume` and `/rewind` usable. `/clear` is only for throwaway exploration with no
-  record worth keeping. (The "קריטריון CLEAR" section still sitting in `HANDOFF.md`
-  predates this rule and is superseded by it.)
+  record worth keeping.
 - Prefer a subagent for read-only exploration ("where is X used", "does Y exist") so its
   reading stays out of this conversation's context.
 - Don't dump whole files or full command output into the transcript when a targeted
@@ -186,28 +193,34 @@ Each doc answers one question and stays out of the others' way:
 | What the app is, for someone who just found the repo | `README.md` |
 | What's allowed while working | this file (Hebrew: `CLAUDE-HE.md`) |
 
-**Open debt in the docs themselves:**
+**The docs are checked, not trusted** (v0.2.1). Three pieces of debt that used to sit
+here — an append-only `HANDOFF.md`, paths pointing at the pre-v0.1.6 layout, and a
+`package.json` stuck on `"version": "0.0.0"` — are fixed, and each one now has a test in
+`tests/repo/` so it cannot come back quietly. What that means while working:
 
-- **Size.** `HANDOFF.md` is 20,602 chars and `ROADMAP.md` is 28,872. Both are append-only
-  and both are read at the start of a conversation, which makes them the largest standing
-  context cost in the repo. ESOP let the same file reach 97,449 chars before splitting it
-  into `docs/handoff/<version>.md` and adding a size test; SoundGrid is on the same curve.
-  When a version closes, its block should **move out** of `HANDOFF.md` — the root file
-  holds the present only.
-- **Stale paths.** `HANDOFF.md`'s "ארכיטקטורה — מפה מהירה" section and `README.md`'s
-  controller-mapping link still use pre-v0.1.6 paths (`src/audio/`, `src/library/`,
-  `src/midi/mappings/flx4.ts`). The real files are under `src/core/`, `src/platform/`,
-  `src/app/`.
-- **`package.json` says `"version": "0.0.0"`** while the repo is at v0.1.7. Either keep it
-  in step with `ROADMAP.md` or state explicitly that the field is unused.
+- **`HANDOFF.md` holds the present only.** When a version closes, its block **moves** to
+  `docs/handoff/<version>.md` and the root file keeps a link. There is a byte budget on
+  the root file; when it fails, move a block out — never raise the budget.
+- **A path named in a doc must exist.** If you deliberately name a dead path to explain a
+  move, mark the line `<!-- dead-path -->`. Named exemption, not omission — the same rule
+  as `COMPANION_EXT`.
+- **`package.json`'s version and `HANDOFF.md`'s "גרסה נוכחית" line are one fact.** Change
+  them together, and give the version a row in `ROADMAP.md`.
+- **A commit SHA quoted in a doc must resolve.** The docs argue from history; a SHA that
+  resolves to nothing reads as evidence and is not.
+
+Still open: `ROADMAP.md` is ~35KB and append-only, and was left alone on purpose — the
+version specs in it are read *selectively*, one section at a time, so it does not carry
+the same per-conversation cost. It has no budget test yet.
 
 ## Useful commands
 
 ```bash
-npm run check      # tsc -b + oxlint + depcruise — the gate before every commit
+npm run check      # tsc -b + oxlint + depcruise + vitest — the gate before every commit
 npm run build      # type-check + static bundle into dist/
 npm run lint       # oxlint alone
 npm run arch       # dependency-cruiser alone — the layer rules
+npm test           # vitest alone — the repo invariants in tests/repo/
 ```
 
 ```bash
@@ -216,6 +229,5 @@ python C:/Users/Shalom/.claude/tools/context_check.py
 
 Dev server: `preview_start` with `soundgrid-dev` (port 5173) — **not** Bash.
 
-There is no test runner, no formatter, and no CI in this repo — don't invent an
-`npm test` step or assume something checks the branch. `npm run check` is the whole gate,
-and it only runs when someone runs it.
+There is no formatter and no CI in this repo — don't assume anything checks the branch.
+`npm run check` is the whole gate, and it only runs when someone runs it.
