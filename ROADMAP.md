@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | v0.1.0 | MVP — דקים, מיקסר, ספרייה, waveform, MIDI, פריסט FLX4 | ✅ הושלם |
 | v0.1.5 | **Design overhaul** — שפת עיצוב חדשה, יפה מסראטו/רקורדבוקס | ✅ אושר ויזואלית ע"י המשתמש (2026-08-28) |
-| v0.1.6 | **Seams** — ports/interfaces לפני שהקוד גדל (audio, transport, clock, caps) | ⬜ |
+| v0.1.6 | **Seams** — ports/interfaces לפני שהקוד גדל (audio, transport, clock, caps) | ✅ |
 | v0.1.7 | **Tag read** — קריאת BPM/key/duration/artist מתגיות הקבצים בזמן סריקה | ✅ |
 | v0.2.0 | Jog wheels & scratching | ⬜ |
 | v0.3.0 | Beatgrid & phase‑sync | ⬜ |
@@ -93,6 +93,15 @@
 - `dependency-cruiser` ב‑CI: `core/**` אסור לייבא `react`/`react-dom`/`*.tsx`
 - **הושלם כאשר:** אין import של `AudioContext`/DOM/React ב‑`core/`; build + lint ירוקים;
   אפס שינוי התנהגות למשתמש.
+- **✅ הושלם (2026-08-29).** ל‑`core/` שלושה imports בסך הכל, כולם פנימיים.
+  `npm run check` = tsc + oxlint + dependency-cruiser, 0 errors.
+  - `constants.ts` הועבר ל‑`core/` — הוא לא הכיל שום דבר Web Audio, ו‑`recommend.ts`
+    (מודול טהור) ייבא ממנו `TEMPO_RANGE` דרך שכבת האודיו.
+  - alias `@/*` במקום imports יחסיים: `../types` לא מסגיר לאיזו שכבה נכנסים,
+    וכל הזזה שובר אותו.
+  - **אזהרה שהושארה גלויה בכוונה:** `transport-webmidi/manager.ts` כותב ל‑store
+    וקורא ל‑`controls.ts` ישירות במקום לפלוט `ControlAction` דרך ה‑port.
+    ניתוקו הוא שינוי בפני עצמו; הכלל מונע מזה להפוך לנורמה בשקט.
 
 ## v0.1.7 — Tag read
 **מטרה:** הנתונים כבר קיימים בקבצים (הספרייה מתויגת ע"י Serato — BPM ל‑410 טראקים,

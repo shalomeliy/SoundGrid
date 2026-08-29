@@ -6,10 +6,15 @@
 
 ## סטטוס נוכחי
 
-- **גרסאות שהושלמו:** `v0.1.5 — Design Overhaul` ✅ · `v0.1.7 — Tag read` ✅ (שתיהן 2026-08-28)
-- **branch:** `main` · **build + lint:** ירוקים · **דחוף ל‑origin:** ❌ **לא — 23 commits מקומיים**
+- **גרסאות שהושלמו:** `v0.1.5 — Design Overhaul` ✅ · `v0.1.7 — Tag read` ✅ (2026-08-28) · `v0.1.6 — Seams` ✅ (2026-08-29)
+- **branch:** `main` · **`npm run check`:** ירוק (tsc + oxlint + dependency-cruiser) · **דחוף ל‑origin:** ✅
+- **מבנה חדש מ‑v0.1.6:** `core/` (TS טהור) · `platform/` (מימושים) · `app/` (React) ·
+  `controls.ts` (choke point). imports דרך alias `@/*`. **לפני commit: `npm run check`.**
 - **דגל CLEAR:** 🟢 מומלץ `/clear` — שתי גרסאות נסגרו
-- **הבא בתור:** v0.1.6 (seams/ports) או v0.2.0 (jog wheels)
+- **הבא בתור:** v0.2.0 (jog wheels & scratching)
+- **⚠️ פתוח:** המשתמש דיווח על קריסה ב‑28/08 ולא סיפק פרטים; תוקנה בעיית זיכרון
+  אמיתית (`analyzeWaveform` — +63MB→+2MB) אבל **לא אומת שזו הייתה הקריסה**.
+  אם היא חוזרת: לשאול אם הטאב מת / נתקע / מסך לבן, ועל איזה קובץ.
 
 ### סבב הליטוש שסגר את v0.1.5 (2026-08-28)
 המשתמש השווה מול Serato על אותו מסך ואמר "נראה גרוע יותר". שלושה כשלים נפרדים:
