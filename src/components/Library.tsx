@@ -64,6 +64,7 @@ export function Library() {
   // Which key notation to show. DJs are split between musical and Camelot and
   // nobody wants to relearn theirs, so it's a preference that sticks.
   const [keyMode, setKeyMode] = useState<KeyMode>(loadKeyMode)
+  const skippedTotal = Object.values(library.skipped).reduce((a, b) => a + b, 0)
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
 
@@ -122,11 +123,12 @@ export function Library() {
     tagScan.current = scan
 
     setLibrary({ scanning: true, folderName: name, scanMsg: 'Scanning…' })
-    const tracks = await scanLibrary(handle, (p) =>
+    const { tracks, skipped } = await scanLibrary(handle, (p) =>
       setLibrary({ scanMsg: `${p.found} tracks · ${p.currentDir}` }),
     )
     setLibrary({
       tracks,
+      skipped,
       scanning: false,
       scanMsg: `${tracks.length} tracks · reading tags…`,
       selectedId: tracks[0]?.id ?? null,
@@ -211,6 +213,18 @@ export function Library() {
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
           )}
           {library.scanMsg || (library.tracks.length ? `${library.tracks.length} tracks` : '')}
+          {!library.scanning && skippedTotal > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-warn"
+              title={`Files in this folder the browser cannot play, so they are not listed: ${Object.entries(
+                library.skipped,
+              )
+                .map(([ext, n]) => `${n} × .${ext}`)
+                .join(', ')}`}
+            >
+              {skippedTotal} skipped
+            </span>
+          )}
         </span>
       </div>
 

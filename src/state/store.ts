@@ -46,6 +46,8 @@ export interface AppState {
     scanMsg: string
     query: string
     selectedId: string | null
+    /** files the scan walked past, by extension — never skip silently */
+    skipped: Record<string, number>
     supported: boolean
   }
 
@@ -93,6 +95,7 @@ export const useStore = create<AppState>((set) => ({
     scanMsg: '',
     query: '',
     selectedId: null,
+    skipped: {},
     supported: true,
   },
   midi: { status: 'idle', devices: [], lastMessage: null, learning: null },

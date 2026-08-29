@@ -4,7 +4,36 @@ import { readTags } from './tags'
 
 const HANDLE_KEY = 'soundgrid:libraryDir'
 
-const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'aiff', 'aif'])
+/**
+ * Everything Chromium's `decodeAudioData` can actually play. Kept as an
+ * allowlist rather than "try to decode anything" because a music folder is full
+ * of things that are not tracks — artwork, playlists, and the stem caches
+ * below — and a library that lists them is worse than one that misses a format.
+ */
+const AUDIO_EXT = new Set([
+  'mp3',
+  'wav',
+  'flac',
+  'm4a',
+  'm4b',
+  'mp4',
+  'aac',
+  'ogg',
+  'oga',
+  'opus',
+  'weba',
+  'webm',
+  'aiff',
+  'aif',
+])
+
+/**
+ * Companion files that sit next to a real track and must never become rows of
+ * their own. `.serato-stems` is Serato's stem-separation cache: every one of
+ * them has a playable source file alongside it, so listing them would show
+ * those songs twice.
+ */
+const COMPANION_EXT = new Set(['serato-stems', 'asd', 'reapeaks', 'ovw'])
 
 export interface LibraryFolder {
   handle: FileSystemDirectoryHandle
@@ -55,12 +84,19 @@ export interface ScanProgress {
   currentDir: string
 }
 
+export interface ScanResult {
+  tracks: Track[]
+  /** files we walked past, by extension — surfaced so a skip is never silent */
+  skipped: Record<string, number>
+}
+
 /** Recursively walk the folder collecting audio files. */
 export async function scanLibrary(
   root: FileSystemDirectoryHandle,
   onProgress?: (p: ScanProgress) => void,
-): Promise<Track[]> {
+): Promise<ScanResult> {
   const out: Track[] = []
+  const skipped: Record<string, number> = {}
   async function walk(dir: FileSystemDirectoryHandle, prefix: string) {
     onProgress?.({ found: out.length, currentDir: prefix || '/' })
     for await (const [name, entry] of dir.entries()) {
@@ -68,7 +104,14 @@ export async function scanLibrary(
         await walk(entry as FileSystemDirectoryHandle, `${prefix}${name}/`)
       } else {
         const ext = name.split('.').pop()?.toLowerCase() ?? ''
-        if (!AUDIO_EXT.has(ext)) continue
+        if (!AUDIO_EXT.has(ext)) {
+          // companions are expected and uninteresting; anything else is a file
+          // the user may well think of as a track, so it gets counted and shown
+          if (!COMPANION_EXT.has(ext) && !name.startsWith('.')) {
+            skipped[ext || '(no extension)'] = (skipped[ext || '(no extension)'] ?? 0) + 1
+          }
+          continue
+        }
         out.push({
           id: `${prefix}${name}`,
           name: name.replace(/\.[^.]+$/, ''),
@@ -81,7 +124,7 @@ export async function scanLibrary(
   }
   await walk(root, '')
   out.sort((a, b) => a.path.localeCompare(b.path))
-  return out
+  return { tracks: out, skipped }
 }
 
 export async function readTrackData(track: Track): Promise<ArrayBuffer> {
