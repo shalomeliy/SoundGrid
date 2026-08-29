@@ -174,7 +174,12 @@ conversations must be allowed to end.
   file, so it does **not** reset `context_check.py`'s counters — keep clearing and it
   reads 🔴 while context is actually empty. One transcript per version also keeps
   `--resume` and `/rewind` usable. `/clear` is only for throwaway exploration with no
+<<<<<<< ours
   record worth keeping.
+=======
+  record worth keeping. (The old "קריטריון CLEAR" section in `HANDOFF.md` was superseded
+  by this rule and removed in the 2026-08-29 doc split.)
+>>>>>>> theirs
 - Prefer a subagent for read-only exploration ("where is X used", "does Y exist") so its
   reading stays out of this conversation's context.
 - Don't dump whole files or full command output into the transcript when a targeted
@@ -186,13 +191,16 @@ Each doc answers one question and stays out of the others' way:
 
 | Question | File |
 | --- | --- |
-| What's in flight **right now** — version, next step, open decisions, known debt | `HANDOFF.md` |
+| What's in flight **right now** — version, what's open, next step, known debt | `HANDOFF.md` |
+| What was built in a **closed** version, and what was measured there | `docs/handoff/<version>.md` |
 | What gets built **next**, in what order, and why the order changed | `ROADMAP.md` |
+| **Where everything lives** in the source tree | `docs/architecture/map.md` |
 | **Long-term principles** — the ports, `core/` purity, the AI-layer contract, differentiation vs Serato/rekordbox, hardware targets | `docs/architecture/directions.md` |
 | **Serato's on-disk formats** (database V2 / crate TLV, GEOB Markers2/BeatGrid/Autotags/Overview) | `docs/reference/serato-formats.md` |
 | What the app is, for someone who just found the repo | `README.md` |
 | What's allowed while working | this file (Hebrew: `CLAUDE-HE.md`) |
 
+<<<<<<< ours
 **The docs are checked, not trusted** (v0.2.1). Three pieces of debt that used to sit
 here — an append-only `HANDOFF.md`, paths pointing at the pre-v0.1.6 layout, and a
 `package.json` stuck on `"version": "0.0.0"` — are fixed, and each one now has a test in
@@ -212,6 +220,27 @@ here — an append-only `HANDOFF.md`, paths pointing at the pre-v0.1.6 layout, a
 Still open: `ROADMAP.md` is ~35KB and append-only, and was left alone on purpose — the
 version specs in it are read *selectively*, one section at a time, so it does not carry
 the same per-conversation cost. It has no budget test yet.
+=======
+**The split (2026-08-29).** `HANDOFF.md` had reached 43.9KB and `ROADMAP.md` 34.6KB — both
+append-only, both read at the start of every conversation, so together the largest standing
+context cost in the repo. Worse than the size: the file had gone false. Its header announced
+"v0.2.0b written" while **four of the six items in its own plan had never been done**, buried
+in one block out of twenty. A file that grows stops being read, and a file that isn't read
+starts to lie.
+
+Now: `HANDOFF.md` holds **the present only**, under a **15,000-byte budget** stated at the
+top of the file. When a version closes its block moves to `docs/handoff/<version>.md`, which
+carries both the original scope and the outcome. **Anything still open stays in `HANDOFF.md`**
+— the archive is for the record, not for hiding work.
+
+**Open debt in the docs themselves:**
+
+- **Nothing enforces any of this.** The size budget, the version field, and "the status line
+  is true" are all conventions right now. They become checks only when a test runner exists;
+  there is none (see `HANDOFF.md`, "חוב תשתית התיעוד", item ②).
+- **`package.json` says `"version": "0.0.0"`** while `main` is at v0.2.0. Either keep it in
+  step with `ROADMAP.md` or state explicitly that the field is unused.
+>>>>>>> theirs
 
 ## Useful commands
 

@@ -4,19 +4,20 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { ROOT, docFiles, git, numberedLines, requireGit } from './repo.ts'
 
 /**
- * v0.1.6 moved every file into core/ · platform/ · app/. Two days later
- * HANDOFF.md's architecture map still walked a reader through `audio/engine.ts`,
- * `library/tags.ts` and `midi/manager.ts`, and README.md still linked the FLX4
- * map at `src/midi/mappings/flx4.ts` — a dead link on the repo's front page.
- * Nothing noticed, because a wrong path in prose costs nothing until someone
- * follows it.
+ * v0.1.6 moved every file into core/ · platform/ · app/. Two days later the source
+ * tree map still walked a reader through `audio/engine.ts`, `library/tags.ts` and
+ * `midi/manager.ts`, and README.md still linked the FLX4 map at
+ * `src/midi/mappings/flx4.ts` — a dead link on the repo's front page. Nothing
+ * noticed, because a wrong path in prose costs nothing until someone follows it.
+ * The map lives at docs/architecture/map.md now, and it is the file in this repo
+ * most made of paths, which is what makes it the one most worth checking.
  *
  * **Two forms, because the docs use two.** The first version of this test only
  * matched fully-prefixed paths, and an independent review caught that this missed
- * the very map it was written for: the map is an indented tree, so `src/` appears
- * once at the top and every line under it is a bare `library/tags.ts`. A check
- * that cannot see the highest-drift surface in the repo while the docs claim it
- * is covered is worse than no check.
+ * the very map it was written for: a tree map is indented, so `src/` appears once
+ * at the top and every line under it is a bare `library/tags.ts`. A check that
+ * cannot see the highest-drift surface in the repo while the docs claim it is
+ * covered is worse than no check.
  *
  * So a fragment with a slash and a source extension is resolved as a **suffix**
  * against `git ls-files`: `mappings/flx4.ts` matches
@@ -41,9 +42,16 @@ const MARKER = '<!-- dead-path -->'
  * the `/docs/` inside an external URL both read as repo paths.
  */
 const PREFIXED = /(?<![A-Za-z0-9_/-])(?:src|tests|docs)\/[A-Za-z0-9_./-]*/g
-/** `dir/file.ext` — at least one slash, and an extension this repo actually uses. */
+/**
+ * `dir/file.ext` — at least one slash, and an extension this repo actually uses.
+ * Every segment must start with a word character, which is what keeps `..` out:
+ * an earlier version let a segment be any run of `[A-Za-z0-9_.-]`, so the relative
+ * link `../../HANDOFF.md` matched, got resolved from the repo root, and was
+ * reported dead while pointing at a file that plainly exists. Relative links are
+ * the link check's job, below; this one is about paths written as prose.
+ */
 const SUFFIX =
-  /(?<![A-Za-z0-9_/-])[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.(?:tsx?|cjs|js|css|json|md|html)(?![A-Za-z0-9_-])/g
+  /(?<![A-Za-z0-9_/.-])[A-Za-z0-9_][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_][A-Za-z0-9_.-]*)+\.(?:tsx?|cjs|js|css|json|md|html)(?![A-Za-z0-9_-])/g
 const LINK = /\]\(([^)\s]+)\)/g
 
 const FILES = git('ls-files').split('\n')

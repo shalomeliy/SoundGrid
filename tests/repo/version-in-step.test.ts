@@ -7,7 +7,12 @@ import { read } from './repo.ts'
  * portals showed users a version that did not exist. The fix is not vigilance —
  * it is binding the number to the one place a session actually reads.
  */
-const MARKER = /^- \*\*גרסה נוכחית:\*\* `v(\d+\.\d+\.\d+)`/m
+/**
+ * Matched on the line, not on a fixed layout: the marker started life as a bullet
+ * and is a table row today. Pinning the surrounding punctuation would make an
+ * ordinary reformat look like a version mismatch.
+ */
+const MARKER = /גרסה נוכחית.*?`v(\d+\.\d+\.\d+)`/
 
 describe('the declared version is the version', () => {
   const pkg = JSON.parse(read('package.json')) as { version: string }
@@ -16,7 +21,7 @@ describe('the declared version is the version', () => {
     const found = MARKER.exec(read('HANDOFF.md'))
     expect(
       found,
-      'HANDOFF.md has no "- **גרסה נוכחית:** `vX.Y.Z`" line.\n' +
+      'HANDOFF.md has no line carrying "גרסה נוכחית" and a `vX.Y.Z`.\n' +
         'That line is what binds the docs to package.json — restore it, do not delete this test.',
     ).not.toBeNull()
     expect(

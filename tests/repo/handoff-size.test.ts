@@ -8,15 +8,14 @@ import { read } from './repo.ts'
  * section describing the problem. Discipline does not hold a file like this
  * down; a budget plus an archive directory does.
  *
- * The budget is deliberately loose. A choking budget creates pressure to weaken
- * the test instead of moving a block out, which is the failure mode that makes
- * a check worthless. 16,000 bytes is ~18% above the 13,512 the file measured right
- * after the v0.2.1 split — a number that reproduces with `wc -c HANDOFF.md`, which
- * an earlier draft of this comment did not: it recorded a count taken mid-edit and
- * was 19 bytes off. In a project whose definition of verification is "numbers
- * written down", a number that does not reproduce is the crack the standard opens on.
+ * The number is not this test's to choose. `HANDOFF.md`'s own header states the
+ * budget, and it is one fact in two places — the doc a person reads and the check
+ * that enforces it. 15,000 bytes, set by the split that shrank the file to 12.9KB;
+ * loose on purpose, because a choking budget creates pressure to weaken the test
+ * instead of moving a block out, which is the failure mode that makes a check
+ * worthless. If you change it, change the header in the same commit.
  */
-const BUDGET_BYTES = 16_000
+const BUDGET_BYTES = 15_000
 
 describe('HANDOFF.md size budget', () => {
   it(`stays under ${BUDGET_BYTES} bytes`, () => {
