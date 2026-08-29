@@ -23,6 +23,12 @@ export interface SourcePlayer {
   stop(): void
   seek(sec: number): void
   setRate(rate: number): void
+  /**
+   * Glide the rate to `target` over `seconds` — a turntable spinning down or
+   * up rather than the rate stepping. Players that cannot run backwards treat
+   * a target at or below standstill as a stop.
+   */
+  rampRate(target: number, seconds: number): void
   setLoop(startSec: number, endSec: number): void
   clearLoop(): void
   readonly positionSec: number
@@ -33,6 +39,10 @@ export interface SourcePlayer {
 function clamp(v: number, lo: number, hi: number) {
   return v < lo ? lo : v > hi ? hi : v
 }
+
+/** Below this the platter counts as stopped: the worklet already fades to
+ *  silence here, and a rate this small moves the pointer by nothing audible. */
+const STANDSTILL = 0.02
 
 /** The pre-v0.2.0 engine: one AudioBufferSourceNode per start, recreated on seek. */
 export class BufferSourcePlayer implements SourcePlayer {
@@ -135,6 +145,23 @@ export class BufferSourcePlayer implements SourcePlayer {
     }
   }
 
+  /**
+   * Degraded: this node cannot pass through zero — at rate 0 it freezes the
+   * read pointer and emits the last sample as DC (measured in Chrome 148), so
+   * a brake here ends in a stop rather than a held platter.
+   */
+  rampRate(target: number, seconds: number) {
+    if (!this.source) return
+    if (target <= STANDSTILL) {
+      this.stop()
+      return
+    }
+    const now = this.ctx.currentTime
+    this.source.playbackRate.cancelScheduledValues(now)
+    this.source.playbackRate.setValueAtTime(this.source.playbackRate.value, now)
+    this.source.playbackRate.linearRampToValueAtTime(target, now + Math.max(0.001, seconds))
+  }
+
   setLoop(startSec: number, endSec: number) {
     this.loopStart = startSec
     this.loopEnd = endSec
@@ -185,6 +212,15 @@ export class WorkletPlayer implements SourcePlayer {
   /** newest accepted anchor: where the pointer was, and when */
   private anchorPos = 0
   private anchorCtxTime = 0
+
+  /**
+   * An in-flight rate ramp, if any. The read pointer travels the *integral* of
+   * the rate, so while the rate is sloping the position is quadratic in time.
+   * `positionSec` extrapolates between anchors, and extrapolating a brake at a
+   * constant rate would run the playhead well past where the audio actually is
+   * — visibly, on any brake shorter than the ~23ms anchor interval.
+   */
+  private ramp: { from: number; to: number; startTime: number; endTime: number } | null = null
 
   private ctx: AudioContext
 
@@ -246,13 +282,42 @@ export class WorkletPlayer implements SourcePlayer {
     this.post({ type: 'unload' })
   }
 
+  /** How far the pointer travels between two context times, ramp included. */
+  private travelled(from: number, to: number): number {
+    if (to <= from) return 0
+    const r = this.ramp
+    if (!r) return (to - from) * this.rate
+
+    let distance = 0
+    // stretch before the ramp starts, at the old rate
+    const preEnd = Math.min(to, r.startTime)
+    if (preEnd > from) distance += (preEnd - from) * r.from
+    // the sloping stretch: average of the endpoint rates over that span
+    const slopeStart = Math.max(from, r.startTime)
+    const slopeEnd = Math.min(to, r.endTime)
+    if (slopeEnd > slopeStart) {
+      const span = r.endTime - r.startTime
+      const rateAt = (t: number) =>
+        span <= 0 ? r.to : r.from + ((r.to - r.from) * (t - r.startTime)) / span
+      distance += ((rateAt(slopeStart) + rateAt(slopeEnd)) / 2) * (slopeEnd - slopeStart)
+    }
+    // and whatever is left after it settles
+    const postStart = Math.max(from, r.endTime)
+    if (to > postStart) distance += (to - postStart) * r.to
+    return distance
+  }
+
   get positionSec(): number {
     if (this.durationSec === 0) return 0
     if (!this.playing) return clamp(this.anchorPos, 0, this.durationSec)
-    // Extrapolate from the newest anchor at the rate we commanded. Exact at
-    // each anchor, sub-frame between them — and no message per render quantum.
-    const pos = this.anchorPos + (this.ctx.currentTime - this.anchorCtxTime) * this.rate
-    return clamp(pos, 0, this.durationSec)
+    // Exact at each anchor, sub-frame between them, and no message per render
+    // quantum. `travelled` is what keeps that true through a ramp.
+    const now = this.ctx.currentTime
+    if (this.ramp && now >= this.ramp.endTime) {
+      this.rate = this.ramp.to
+      this.ramp = null
+    }
+    return clamp(this.anchorPos + this.travelled(this.anchorCtxTime, now), 0, this.durationSec)
   }
 
   start(offsetSec: number) {
@@ -271,6 +336,7 @@ export class WorkletPlayer implements SourcePlayer {
   }
 
   seek(sec: number) {
+    this.ramp = null
     const pos = clamp(sec, 0, this.durationSec)
     this.anchorPos = pos
     this.anchorCtxTime = this.ctx.currentTime
@@ -282,8 +348,35 @@ export class WorkletPlayer implements SourcePlayer {
     // would be re-evaluated at the new rate and jump.
     this.anchorPos = this.positionSec
     this.anchorCtxTime = this.ctx.currentTime
+    this.ramp = null
     this.rate = rate
-    this.rateParam.setValueAtTime(rate, this.ctx.currentTime)
+    const now = this.ctx.currentTime
+    this.rateParam.cancelScheduledValues(now)
+    this.rateParam.setValueAtTime(rate, now)
+  }
+
+  rampRate(target: number, seconds: number) {
+    const now = this.ctx.currentTime
+    // Rebase first: everything travelled so far belongs to the old curve.
+    this.anchorPos = this.positionSec
+    this.anchorCtxTime = now
+    const from = this.ramp ? this.rateAtNow() : this.rate
+    const span = Math.max(0.001, seconds)
+    this.rateParam.cancelScheduledValues(now)
+    this.rateParam.setValueAtTime(from, now)
+    this.rateParam.linearRampToValueAtTime(target, now + span)
+    this.ramp = { from, to: target, startTime: now, endTime: now + span }
+    this.rate = from
+  }
+
+  /** Current rate partway along an in-flight ramp. */
+  private rateAtNow(): number {
+    const r = this.ramp
+    if (!r) return this.rate
+    const now = this.ctx.currentTime
+    if (now <= r.startTime) return r.from
+    if (now >= r.endTime) return r.to
+    return r.from + ((r.to - r.from) * (now - r.startTime)) / (r.endTime - r.startTime)
   }
 
   setLoop(startSec: number, endSec: number) {

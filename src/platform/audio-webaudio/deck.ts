@@ -2,6 +2,11 @@ import { EQ_DB, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/con
 import { BufferSourcePlayer, WorkletPlayer, type SourcePlayer } from '@/platform/audio-webaudio/players'
 import type { DeckId } from '@/core/types'
 
+/** Turntable spin-down and spin-up times. Roughly a 1200's, which is the
+ *  feel DJs expect; short enough that a stop still reads as deliberate. */
+const BRAKE_SEC = 0.55
+const SPIN_UP_SEC = 0.32
+
 /**
  * One playback deck. Owns its Web Audio graph:
  *
@@ -37,6 +42,10 @@ export class Deck {
   private _durationSec = 0
   private _tempo = 0
   private _cueMonitor = false
+  private _vinylMode = false
+  private _scratching = false
+  /** what play state to return to when the hand comes off the platter */
+  private _resumePlaying = false
 
   loopStart: number | null = null
   loopEnd: number | null = null
@@ -156,8 +165,14 @@ export class Deck {
   }
 
   togglePlay() {
-    if (this._playing) this.pause()
-    else this.play()
+    if (this._playing) {
+      if (this._vinylMode) this.brakeToStop()
+      else this.pause()
+    } else if (this._vinylMode) {
+      this.spinUpToPlay()
+    } else {
+      this.play()
+    }
   }
 
   seek(sec: number) {
@@ -171,7 +186,92 @@ export class Deck {
 
   setTempo(tempo: number) {
     this._tempo = tempo
-    this.player.setRate(this.rate)
+    if (!this._scratching) this.player.setRate(this.rate)
+  }
+
+  get vinylMode() {
+    return this._vinylMode
+  }
+
+  /** Vinyl mode makes stop/start spin down and up instead of cutting. */
+  setVinylMode(on: boolean) {
+    this._vinylMode = on
+  }
+
+  get scratching() {
+    return this._scratching
+  }
+
+  /**
+   * Hand the rate over to a hand on the platter.
+   *
+   * The deck keeps reporting `playing` throughout: a finger on a spinning
+   * record has not paused the deck, and letting the transport flicker on every
+   * touch would flash the UI and fight the render loop. What was playing is
+   * remembered so the release knows whether to spin back up or stay held.
+   */
+  beginScratch() {
+    if (!this._hasTrack || this._scratching) return
+    this._scratching = true
+    this._resumePlaying = this._playing
+    if (!this._playing) {
+      // a stopped deck still has to feed the pointer for a scratch to be heard
+      this.player.setRate(0)
+      this.player.start(this.position)
+      this._playing = true
+    }
+    this.player.setRate(0)
+  }
+
+  /** Rate in playback multiples: 1 = normal forward, negative = backwards. */
+  scratchRate(rate: number) {
+    if (!this._scratching) return
+    this.player.setRate(rate)
+  }
+
+  /**
+   * Release the platter. In vinyl mode the record spins back up to speed over
+   * `SPIN_UP_SEC` rather than snapping, which is what makes a release sound
+   * like a turntable instead of an edit.
+   */
+  endScratch() {
+    if (!this._scratching) return
+    this._scratching = false
+    if (this._resumePlaying) {
+      if (this._vinylMode) this.player.rampRate(this.rate, SPIN_UP_SEC)
+      else this.player.setRate(this.rate)
+    } else {
+      this.player.stop()
+      this._playing = false
+      this.player.setRate(this.rate)
+    }
+  }
+
+  /**
+   * Vinyl stop: spin down to a standstill, then park. The pause lands when the
+   * platter has actually stopped, not when the command was issued — otherwise
+   * the audio would cut mid-spin and the whole point is lost.
+   */
+  brakeToStop(seconds = BRAKE_SEC) {
+    if (!this._playing) return
+    this.player.rampRate(0, seconds)
+    this._playing = false
+    window.setTimeout(() => {
+      // A play/seek during the spin-down wins: only park if nothing else has
+      // taken the deck since.
+      if (this._playing || this._scratching) return
+      this.player.stop()
+      this.player.setRate(this.rate)
+    }, seconds * 1000)
+  }
+
+  /** Vinyl start: from a standstill up to speed. */
+  spinUpToPlay(seconds = SPIN_UP_SEC) {
+    if (!this._hasTrack || this._playing) return
+    this.player.setRate(0)
+    this.player.start(this.position)
+    this._playing = true
+    this.player.rampRate(this.rate, seconds)
   }
 
   setVolume(v: number) {
