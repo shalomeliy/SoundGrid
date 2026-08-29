@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 # CodeGraph (index db is git-ignored inside .codegraph/)
+
+# Claude Code — machine-local permissions/skill overrides (settings.json is shared)
+.claude/settings.local.json
