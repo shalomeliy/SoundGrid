@@ -1,30 +1,33 @@
 import { useEffect } from 'react'
 import { engine } from '../audio/engine'
+import { clock } from '../platform/clock-audio'
 import { useStore } from '../state/store'
 import type { DeckId } from '../types'
 
 /**
- * Single rAF loop that pushes each deck's authoritative playhead position into
- * the store so waveforms and time readouts track smoothly.
+ * Pushes each deck's authoritative playhead into the store so waveforms and
+ * time readouts track smoothly.
+ *
+ * Subscribes to the Clock rather than owning a rAF loop of its own: everything
+ * that needs per-frame time now reads the same authority, which is what keeps
+ * sync, quantize and beat-timed effects from drifting apart later (v0.1.6).
  */
 export function useRenderLoop() {
-  useEffect(() => {
-    let raf = 0
-    const tick = () => {
-      const { decks, patchDeck } = useStore.getState()
-      ;(['A', 'B'] as DeckId[]).forEach((id) => {
-        const d = engine.decks[id]
-        if (!d.hasTrack) return
-        const pos = d.position
-        if (Math.abs(pos - decks[id].positionSec) > 0.001) {
-          patchDeck(id, { positionSec: pos, playing: d.playing })
-        } else if (d.playing !== decks[id].playing) {
-          patchDeck(id, { playing: d.playing })
-        }
-      })
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-  }, [])
+  useEffect(
+    () =>
+      clock.subscribe(() => {
+        const { decks, patchDeck } = useStore.getState()
+        ;(['A', 'B'] as DeckId[]).forEach((id) => {
+          const d = engine.decks[id]
+          if (!d.hasTrack) return
+          const pos = d.position
+          if (Math.abs(pos - decks[id].positionSec) > 0.001) {
+            patchDeck(id, { positionSec: pos, playing: d.playing })
+          } else if (d.playing !== decks[id].playing) {
+            patchDeck(id, { playing: d.playing })
+          }
+        })
+      }),
+    [],
+  )
 }

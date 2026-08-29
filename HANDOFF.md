@@ -7,7 +7,7 @@
 ## סטטוס נוכחי
 
 - **גרסאות שהושלמו:** `v0.1.5 — Design Overhaul` ✅ · `v0.1.7 — Tag read` ✅ (שתיהן 2026-08-28)
-- **branch:** `main` · **build + lint:** ירוקים · **דחוף ל‑origin:** ✅ כן
+- **branch:** `main` · **build + lint:** ירוקים · **דחוף ל‑origin:** ❌ **לא — 23 commits מקומיים**
 - **דגל CLEAR:** 🟢 מומלץ `/clear` — שתי גרסאות נסגרו
 - **הבא בתור:** v0.1.6 (seams/ports) או v0.2.0 (jog wheels)
 
@@ -109,9 +109,9 @@ byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק של
 **צילום מסך מה‑Browser pane לא עובד** בסביבה הזו ("pane is not displayed") —
 המשתמש מסתכל ב‑Chrome האמיתי שלו. מה שכן עובד: `mcp__Claude_Browser__javascript_tool`
 על tabId `seed` למדידת DOM, ו‑`read_console_messages` לשגיאות.
-שרת ה‑dev על 5173 שייך לשיחה אחרת — `preview_start` עם `name` ייכשל על התנגשות
-פורט; להשתמש ב‑`preview_start` עם `url: http://localhost:5173` (אותה תיקייה, HMR
-מרים את השינויים).
+**שרת ה‑dev:** `preview_start` עם `name: soundgrid-dev` (ראה סעיף 1 בנוהל השיחה).
+ההערה הישנה כאן — "השרת שייך לשיחה אחרת, להתחבר דרך `url`" — כבר לא נכונה:
+אותו שרת מת עם השיחה שהרימה אותו, ואז 5173 היה ריק לגמרי. תמיד להרים חדש.
 
 ### docs שנוספו ב‑v0.1.5
 - `docs/reference/serato-formats.md` — פורמטים של Serato (database V2/crate TLV,
@@ -146,7 +146,12 @@ byte‑range reads על ה‑`File` (אף פעם לא טוענים טראק של
 
 ## איך עובדים (נוהל שיחה)
 
-1. **תחילת שיחה:** קרא `HANDOFF.md` → `ROADMAP.md` (סעיף הגרסה הרלוונטית) → `git log --oneline -5`.
+1. **תחילת שיחה — קודם כל להרים את השרת.** לפני קריאת מסמכים ולפני כל קוד:
+   `preview_start` עם `soundgrid-dev` מתוך `.claude/launch.json` (**לא** `npm run dev` דרך
+   Bash — שרת שמורם ככה לא שורד ואי אפשר להגיע אליו מהכלים). לוודא שהפורט מאזין
+   ולדווח למשתמש שהוא באוויר, כדי שיוכל לבדוק את המערכת במקביל לעבודה.
+   **שרת שהורם בשיחה קודמת מת איתה** — תמיד להרים מחדש, לא להניח שהוא חי.
+   רק אחר כך: קרא `HANDOFF.md` → `ROADMAP.md` (סעיף הגרסה הרלוונטית) → `git log --oneline -5`.
 2. **במהלך העבודה:** commit אחרי כל יחידה שעובדת ובונה. הודעת commit מתחילה ב‑`vX.Y.Z:`.
 3. **סיום גרסה / תת‑גרסה:**
    - `npm run build` + `npm run lint` ירוקים.

@@ -77,6 +77,11 @@ export class AudioEngine {
     return this.multichannel
   }
 
+  /** The time authority every Clock consumer ultimately reads. */
+  get currentTime() {
+    return this.ctx.currentTime
+  }
+
   async resume() {
     if (this.ctx.state !== 'running') await this.ctx.resume()
   }

@@ -8,6 +8,8 @@ import type {
   MixerState,
   Track,
 } from '../types'
+import type { Capabilities } from '../core/ports'
+import { detectCapabilities } from '../platform/capabilities'
 
 function emptyDeck(id: DeckId): DeckState {
   return {
@@ -63,6 +65,9 @@ export interface AppState {
 
   audioReady: boolean
 
+  /** what this machine supports, resolved once at boot (v0.1.6) */
+  capabilities: Capabilities
+
   patchDeck: (id: DeckId, patch: Partial<DeckState>) => void
   patchChannel: (id: DeckId, patch: Partial<ChannelState>) => void
   patchMixer: (patch: Partial<Omit<MixerState, 'channels'>>) => void
@@ -93,6 +98,7 @@ export const useStore = create<AppState>((set) => ({
   midi: { status: 'idle', devices: [], lastMessage: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },
   audioReady: false,
+  capabilities: detectCapabilities(),
 
   patchDeck: (id, patch) =>
     set((s) => ({ decks: { ...s.decks, [id]: { ...s.decks[id], ...patch } } })),
