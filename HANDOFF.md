@@ -9,7 +9,9 @@
 - **גרסאות שהושלמו:** `v0.1.5 — Design Overhaul` ✅ · `v0.1.7 — Tag read` ✅ (2026-08-28) · `v0.1.6 — Seams` ✅ (2026-08-29)
 - **בעבודה:** `v0.2.0 — Jog wheels & scratching` — **v0.2.0a (מנוע) + v0.2.0b (פלטר/ויניל/ג'וג) נכתבו**. חסר: בדיקה מול חומרה
 - **branch:** `main` · **`npm run check`:** ירוק (tsc + oxlint + dependency-cruiser) · **`npm run build`:** ירוק ·
-  **דחוף ל‑origin:** ✅ הכל נדחף, `main` == `origin/main` == `f2025ad` (אומת ב‑`git ls-remote`, 2026-08-29)
+  **דחוף ל‑origin:** ✅ הכל נדחף (אומת 2026-08-29). **אל תקבע כאן SHA** — הוא מתיישן
+  בקומיט הבא ויוצר בדיוק את ההכרזה השקרית שהסעיף "חוב תשתית התיעוד" מזהיר מפניה.
+  לבדוק בפועל: `git fetch && git status -sb`
 - **מבנה חדש מ‑v0.1.6:** `core/` (TS טהור) · `platform/` (מימושים) · `app/` (React) ·
   `controls.ts` (choke point). imports דרך alias `@/*`. **לפני commit: `npm run check`.**
 - **הבא בתור:** ① **פיצול המסמכים + אינווריאנטים ברמת הריפו** — ראה "חוב תשתית התיעוד"
