@@ -54,7 +54,14 @@ const SUFFIX =
   /(?<![A-Za-z0-9_/.-])[A-Za-z0-9_][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_][A-Za-z0-9_.-]*)+\.(?:tsx?|cjs|js|css|json|md|html)(?![A-Za-z0-9_-])/g
 const LINK = /\]\(([^)\s]+)\)/g
 
-const FILES = git('ls-files').split('\n')
+/**
+ * Tracked files *and* untracked ones that are not ignored. Plain `ls-files`
+ * lists only what is committed, so a doc written in the same commit as the file
+ * it names was reported dead until the file happened to be staged — a false
+ * positive on the most ordinary case there is, and the fastest way to teach
+ * someone that this check cries wolf.
+ */
+const FILES = git('ls-files', '--cached', '--others', '--exclude-standard').split('\n')
 
 /** Trailing sentence punctuation is not part of the path. */
 const trim = (p: string): string => p.replace(/[.,:;]+$/, '')
