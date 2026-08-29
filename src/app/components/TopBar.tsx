@@ -9,6 +9,8 @@ export function TopBar() {
   const audioReady = useStore((s) => s.audioReady)
   const output = useStore((s) => s.output)
   const midiState = useStore((s) => s.midi)
+  const scratchReady = useStore((s) => s.scratchReady)
+  const scratchError = useStore((s) => s.scratchError)
   const setOutput = useStore((s) => s.setOutput)
   const [busy, setBusy] = useState(false)
 
@@ -77,6 +79,13 @@ export function TopBar() {
             tone={output.multichannel ? 'live' : 'warn'}
             label={output.multichannel ? '4-ch · master + cue split' : 'stereo · cue folded in'}
           />
+          {/* Silence here would be the bug. Without the worklet the decks still
+              play, but the read pointer cannot reverse or hold, so scratching
+              is gone — and a jog that quietly turns into a seek looks like a
+              working feature that just feels wrong. Name it, and say why. */}
+          {!scratchReady && (
+            <Pill tone="warn" label={`no scratch · ${scratchError ?? 'AudioWorklet unavailable'}`} />
+          )}
         </>
       )}
 

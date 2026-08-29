@@ -1,15 +1,18 @@
 import { EQ_DB, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/constants'
+import { BufferSourcePlayer, WorkletPlayer, type SourcePlayer } from '@/platform/audio-webaudio/players'
 import type { DeckId } from '@/core/types'
 
 /**
  * One playback deck. Owns its Web Audio graph:
  *
- *   BufferSource -> trim -> eqLow -> eqMid -> eqHigh -> filter -> channelGain
+ *   player -> trim -> eqLow -> eqMid -> eqHigh -> filter -> channelGain
  *        channelGain -> faderGain -> (master bus)
  *        channelGain -> cueGain   -> (cue bus)
  *
- * Position is derived from AudioContext.currentTime so it stays sample-accurate
- * regardless of the render-loop cadence.
+ * Everything from `trim` onwards is fixed. The head of the chain is swappable:
+ * a `WorkletPlayer` when the scratch worklet loaded, a `BufferSourcePlayer`
+ * when it did not. Position stays sample-accurate either way, so it never
+ * depends on the render loop's cadence.
  */
 export class Deck {
   readonly id: DeckId
@@ -25,14 +28,13 @@ export class Deck {
   readonly faderGain: GainNode
   readonly cueGain: GainNode
 
-  private source: AudioBufferSourceNode | null = null
-  private buffer: AudioBuffer | null = null
+  private player: SourcePlayer
+  /** set by the engine once `addModule` has resolved; null means no scratch */
+  private workletAvailable = false
 
   private _playing = false
   private _hasTrack = false
   private _durationSec = 0
-  private startCtxTime = 0
-  private startOffset = 0
   private _tempo = 0
   private _cueMonitor = false
 
@@ -71,6 +73,27 @@ export class Deck {
       .connect(this.channelGain)
     this.channelGain.connect(this.faderGain)
     this.channelGain.connect(this.cueGain)
+
+    this.player = new BufferSourcePlayer(ctx, this.trim)
+    this.player.onEnd = () => this.handleEnd()
+  }
+
+  /**
+   * Called by the engine after the worklet module resolves. The swap itself is
+   * deferred to the next `load`: a worklet player is handed the samples on
+   * load, so upgrading a deck that already holds a track would need a re-decode.
+   */
+  enableWorklet() {
+    this.workletAvailable = true
+  }
+
+  get canScratch() {
+    return this.player.canScratch
+  }
+
+  private handleEnd() {
+    this._playing = false
+    this.onEnded?.()
   }
 
   get playing() {
@@ -86,39 +109,34 @@ export class Deck {
   }
 
   load(buffer: AudioBuffer) {
-    this.stopSource()
-    this.buffer = buffer
+    if (this.workletAvailable && this.player.kind !== 'worklet') {
+      this.player.dispose()
+      this.player = new WorkletPlayer(this.ctx, this.trim)
+      this.player.onEnd = () => this.handleEnd()
+      this.player.setRate(this.rate)
+    }
+    this.player.load(buffer)
     // Duration and "is a track loaded" are captured as plain values rather than
-    // asked of the buffer each time. A player that takes ownership of the
-    // samples leaves a live AudioBuffer holding zero bytes behind it, so
-    // `buffer !== null` and `buffer.duration` both start lying while looking
-    // perfectly healthy. These two fields are the deck's own truth.
+    // asked of the buffer each time. The worklet player takes ownership of the
+    // samples, so an AudioBuffer that has been handed over goes on answering
+    // `!== null` and reporting a duration long after its bytes are gone. These
+    // two fields are the deck's own truth.
     this._durationSec = buffer.duration
     this._hasTrack = true
-    this.startOffset = 0
     this._playing = false
     this.loopStart = this.loopEnd = null
   }
 
   unload() {
-    this.stopSource()
-    this.buffer = null
+    this.player.unload()
     this._durationSec = 0
     this._hasTrack = false
-    this.startOffset = 0
     this._playing = false
   }
 
   get position(): number {
     if (!this._hasTrack) return 0
-    if (!this._playing) return clamp(this.startOffset, 0, this._durationSec)
-    const elapsed = (this.ctx.currentTime - this.startCtxTime) * this.rate
-    let pos = this.startOffset + elapsed
-    if (this.loopStart !== null && this.loopEnd !== null && pos >= this.loopEnd) {
-      const span = this.loopEnd - this.loopStart
-      pos = this.loopStart + ((pos - this.loopStart) % span)
-    }
-    return clamp(pos, 0, this._durationSec)
+    return clamp(this.player.positionSec, 0, this._durationSec)
   }
 
   private get rate() {
@@ -127,14 +145,13 @@ export class Deck {
 
   play() {
     if (!this._hasTrack || this._playing) return
-    this.startSource(this.position)
+    this.player.start(this.position)
     this._playing = true
   }
 
   pause() {
     if (!this._playing) return
-    this.startOffset = this.position
-    this.stopSource()
+    this.player.stop()
     this._playing = false
   }
 
@@ -144,10 +161,7 @@ export class Deck {
   }
 
   seek(sec: number) {
-    const wasPlaying = this._playing
-    this.stopSource()
-    this.startOffset = clamp(sec, 0, this.duration)
-    if (wasPlaying) this.startSource(this.startOffset)
+    this.player.seek(clamp(sec, 0, this.duration))
   }
 
   /** Serato-style CUE: jump to cue point; hold-to-play handled by caller. */
@@ -157,12 +171,7 @@ export class Deck {
 
   setTempo(tempo: number) {
     this._tempo = tempo
-    if (this.source) {
-      // keep position continuous across a rate change
-      this.startOffset = this.position
-      this.startCtxTime = this.ctx.currentTime
-      this.source.playbackRate.setValueAtTime(this.rate, this.ctx.currentTime)
-    }
+    this.player.setRate(this.rate)
   }
 
   setVolume(v: number) {
@@ -206,55 +215,14 @@ export class Deck {
   setLoop(startSec: number, endSec: number) {
     this.loopStart = startSec
     this.loopEnd = endSec
-    if (this.source) {
-      this.source.loopStart = startSec
-      this.source.loopEnd = endSec
-      this.source.loop = true
-    }
+    this.player.setLoop(startSec, endSec)
   }
 
   clearLoop() {
     this.loopStart = this.loopEnd = null
-    if (this.source) this.source.loop = false
+    this.player.clearLoop()
   }
 
-  private startSource(offset: number) {
-    if (!this.buffer) return
-    this.stopSource()
-    const src = this.ctx.createBufferSource()
-    src.buffer = this.buffer
-    src.playbackRate.value = this.rate
-    if (this.loopStart !== null && this.loopEnd !== null) {
-      src.loop = true
-      src.loopStart = this.loopStart
-      src.loopEnd = this.loopEnd
-    }
-    src.connect(this.trim)
-    src.onended = () => {
-      if (this.source === src && this._playing) {
-        this._playing = false
-        this.startOffset = this.duration
-        this.onEnded?.()
-      }
-    }
-    src.start(0, offset)
-    this.source = src
-    this.startCtxTime = this.ctx.currentTime
-    this.startOffset = offset
-  }
-
-  private stopSource() {
-    if (this.source) {
-      this.source.onended = null
-      try {
-        this.source.stop()
-      } catch {
-        /* already stopped */
-      }
-      this.source.disconnect()
-      this.source = null
-    }
-  }
 }
 
 function eqBand(ctx: AudioContext, type: BiquadFilterType, freq: number) {

@@ -67,6 +67,16 @@ export interface AppState {
 
   audioReady: boolean
 
+  /**
+   * Whether the deck's scratch engine is running. False means the AudioWorklet
+   * could not be loaded and the decks fell back to AudioBufferSourceNode, which
+   * plays correctly but cannot reverse or hold the read pointer. `scratchError`
+   * carries the reason, and the UI states both — a deck that answers a scratch
+   * with a seek and says nothing is the failure this project forbids.
+   */
+  scratchReady: boolean
+  scratchError: string | null
+
   /** what this machine supports, resolved once at boot (v0.1.6) */
   capabilities: Capabilities
 
@@ -101,6 +111,8 @@ export const useStore = create<AppState>((set) => ({
   midi: { status: 'idle', devices: [], lastMessage: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },
   audioReady: false,
+  scratchReady: false,
+  scratchError: null,
   capabilities: detectCapabilities(),
 
   patchDeck: (id, patch) =>

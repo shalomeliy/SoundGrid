@@ -1,4 +1,8 @@
 import { Deck } from '@/platform/audio-webaudio/deck'
+// Bundled and transpiled by Vite, handed to addModule as a URL. The processor
+// itself imports nothing: an AudioWorkletGlobalScope has no DOM, so a single
+// transitive DOM-touching import turns into an opaque addModule rejection.
+import scratchProcessorUrl from '@/platform/audio-webaudio/scratch-processor?worker&url'
 import type { DeckId } from '@/core/types'
 
 interface AudioContextWithSink extends AudioContext {
@@ -82,8 +86,67 @@ export class AudioEngine {
     return this.ctx.currentTime
   }
 
+  /**
+   * Loads the scratch worklet, once. Resolves to false when it cannot be had —
+   * the decks then stay on the AudioBufferSourceNode path, which plays
+   * correctly but cannot scratch. That difference must reach the UI: a deck
+   * that silently answers a scratch with a seek is the exact failure this
+   * project forbids, so `scratchError` records why and is surfaced, not logged.
+   */
+  private workletLoad: Promise<boolean> | null = null
+  private workletReady = false
+  scratchError: string | null = null
+
+  async ensureScratchEngine(): Promise<boolean> {
+    if (!this.workletLoad) {
+      this.workletLoad = (async () => {
+        if (typeof AudioWorkletNode === 'undefined') {
+          this.scratchError = 'this browser has no AudioWorklet'
+          return false
+        }
+        try {
+          await this.ctx.audioWorklet.addModule(scratchProcessorUrl)
+          // addModule resolving is NOT proof the processor exists. Measured:
+          // point it at a module that registers nothing and it still resolves
+          // "ok" — the failure only surfaces later, when constructing the node
+          // throws, by which time a deck already believes it can scratch. So
+          // construct one here and throw it away. A probe node on a context
+          // that is not connected to anything costs nothing and turns a
+          // deferred, confusing failure into an immediate, named one.
+          const probe = new AudioWorkletNode(this.ctx, 'scratch-player', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+          })
+          if (!probe.parameters.get('rate')) {
+            throw new Error("worklet loaded but exposes no 'rate' parameter")
+          }
+          probe.disconnect()
+          this.decks.A.enableWorklet()
+          this.decks.B.enableWorklet()
+          this.workletReady = true
+          return true
+        } catch (err) {
+          this.scratchError = err instanceof Error ? err.message : String(err)
+          return false
+        }
+      })()
+    }
+    return this.workletLoad
+  }
+
+  /**
+   * Whether the scratch engine loaded — not whether a deck is currently using
+   * it. A deck only swaps player on its next `load`, so asking the deck would
+   * answer "no" for every moment between boot and the first track.
+   */
+  get scratchAvailable() {
+    return this.workletReady
+  }
+
   async resume() {
     if (this.ctx.state !== 'running') await this.ctx.resume()
+    await this.ensureScratchEngine()
   }
 
   async listOutputs(): Promise<MediaDeviceInfo[]> {

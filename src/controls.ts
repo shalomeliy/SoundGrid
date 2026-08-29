@@ -23,7 +23,11 @@ export async function initAudio() {
       const ch = state.mixer.channels[id]
       engine.decks[id].setVolume(ch.volume)
     })
-    useStore.setState({ audioReady: true })
+    useStore.setState({
+      audioReady: true,
+      scratchReady: engine.scratchAvailable,
+      scratchError: engine.scratchError,
+    })
   }
 }
 
