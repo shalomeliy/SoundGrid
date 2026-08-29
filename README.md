@@ -39,6 +39,9 @@ npm run dev
 ```
 
 `npm run build` type-checks and produces a static bundle in `dist/`.
+`npm run check` is the gate before a commit: `tsc -b` + `oxlint` +
+`dependency-cruiser` (the layer rules) + `vitest run` (the repo invariants in
+`tests/repo/`).
 
 ## Controller mapping
 
