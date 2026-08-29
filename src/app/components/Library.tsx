@@ -4,6 +4,7 @@ import {
   ensureReadPermission,
   fileSystemAccessSupported,
   pickLibraryFolder,
+  pickTrackFiles,
   readLibraryTags,
   restoreLibraryFolder,
   scanLibrary,
@@ -134,7 +135,39 @@ export function Library() {
       selectedId: tracks[0]?.id ?? null,
     })
 
-    // second pass: BPM/key/artist straight out of the file headers (v0.1.7)
+    await applyTags(tracks, scan)
+  }
+
+  /**
+   * Add individual tracks without touching the ones already loaded. Folder scan
+   * replaces the library; this merges, so grabbing one song never costs you the
+   * folder you just imported.
+   */
+  async function addFiles() {
+    const picked = await pickTrackFiles()
+    if (!picked.length) return
+
+    const scan = { cancelled: false }
+    tagScan.current = scan
+
+    const current = useStore.getState().library.tracks
+    const known = new Set(current.map((t) => t.id))
+    const fresh = picked.filter((t) => !known.has(t.id))
+    if (!fresh.length) {
+      setLibrary({ scanMsg: `${picked.length} already in the library` })
+      return
+    }
+    setLibrary({
+      tracks: [...current, ...fresh].sort((a, b) => a.path.localeCompare(b.path)),
+      selectedId: fresh[0].id,
+      folderName: useStore.getState().library.folderName ?? 'Added files',
+      scanMsg: `+${fresh.length} · reading tags…`,
+    })
+    await applyTags(fresh, scan)
+  }
+
+  /** Second pass: BPM/key/artist straight out of the file headers (v0.1.7). */
+  async function applyTags(tracks: Track[], scan: { cancelled: boolean }) {
     await readLibraryTags(
       tracks,
       (patch, progress) => {
@@ -149,11 +182,12 @@ export function Library() {
             }),
           })
         }
+        const total = store.library.tracks.length
         store.setLibrary({
           scanMsg:
             progress.done < progress.total
-              ? `${progress.total} tracks · tags ${progress.done}/${progress.total}`
-              : `${progress.total} tracks · ${progress.tagged} with BPM`,
+              ? `${total} tracks · tags ${progress.done}/${progress.total}`
+              : `${total} tracks · ${progress.tagged} with BPM`,
         })
       },
       { signal: scan },
@@ -175,6 +209,15 @@ export function Library() {
           disabled={!library.supported}
         >
           {library.folderName ? 'Change folder' : 'Choose music folder'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={addFiles}
+          disabled={!library.supported}
+          title="Pick one or more individual tracks and add them to the list"
+        >
+          + Files
         </Button>
         {library.folderName && (
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
@@ -237,8 +280,8 @@ export function Library() {
         <EmptyState title="Scanning your folder…" body={library.scanMsg} pulse />
       ) : !library.folderName ? (
         <EmptyState
-          title="No music folder yet"
-          body="Choose a folder and SoundGrid indexes every audio file inside it. Nothing is uploaded — files stay on your machine."
+          title="No music loaded yet"
+          body="Choose a folder to index everything inside it, or use + Files to add individual tracks. Nothing is uploaded — files stay on your machine."
         />
       ) : list.length === 0 ? (
         <EmptyState

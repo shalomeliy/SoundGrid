@@ -64,6 +64,55 @@ export async function pickLibraryFolder(): Promise<LibraryFolder | null> {
   }
 }
 
+/**
+ * Pick individual tracks instead of a whole folder.
+ *
+ * The folder picker is the right default for a DJ library, but it is the wrong
+ * tool for "just add this one song" — it forces you to import a directory to
+ * reach a single file. Same File System Access API, different entry point.
+ *
+ * Returns tracks the caller merges into the existing list rather than replacing
+ * it, so adding a file never costs you the library you already scanned.
+ */
+export async function pickTrackFiles(): Promise<Track[]> {
+  const picker = (
+    window as unknown as {
+      showOpenFilePicker?: (o?: {
+        multiple?: boolean
+        id?: string
+        types?: { description: string; accept: Record<string, string[]> }[]
+      }) => Promise<FileSystemFileHandle[]>
+    }
+  ).showOpenFilePicker
+  if (typeof picker !== 'function') return []
+  try {
+    const handles = await picker({
+      multiple: true,
+      // shares the folder picker's id so the dialog opens where they last were
+      id: 'soundgrid-music',
+      types: [
+        {
+          description: 'Audio',
+          accept: { 'audio/*': [...AUDIO_EXT].map((e) => `.${e}`) },
+        },
+      ],
+    })
+    return handles.map((handle) => {
+      const name = handle.name
+      return {
+        id: `file:${name}`,
+        name: name.replace(/\.[^.]+$/, ''),
+        path: name,
+        kind: name.split('.').pop()?.toLowerCase() ?? '',
+        handle,
+      }
+    })
+  } catch (err) {
+    if ((err as DOMException)?.name === 'AbortError') return []
+    throw err
+  }
+}
+
 export async function restoreLibraryFolder(): Promise<LibraryFolder | null> {
   const handle = await get<FileSystemDirectoryHandle>(HANDLE_KEY)
   if (!handle) return null
