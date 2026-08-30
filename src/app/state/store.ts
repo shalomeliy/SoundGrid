@@ -57,6 +57,14 @@ export interface AppState {
     status: MidiStatus
     devices: MidiDeviceInfo[]
     lastMessage: string | null
+    /**
+     * What the app DID with the last jog message, including "nothing, because".
+     * The jog has three silent exits — no track, deck not playing, already
+     * scratching — and a rim that does nothing looks identical to a rim that is
+     * not connected. That ambiguity cost a whole debugging round on real
+     * hardware, which is exactly what "never skip silently" exists to prevent.
+     */
+    lastJog: string | null
     learning: string | null
   }
 
@@ -110,7 +118,7 @@ export const useStore = create<AppState>((set) => ({
     skipped: {},
     supported: true,
   },
-  midi: { status: 'idle', devices: [], lastMessage: null, learning: null },
+  midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },
   audioReady: false,
   scratchReady: false,

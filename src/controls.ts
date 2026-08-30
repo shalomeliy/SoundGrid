@@ -218,12 +218,28 @@ const JOG_MAX_RATE = 8
  */
 const BEND_PER_TICK = 0.05
 
+/** Say what the jog just did — including when it did nothing, and why. */
+function reportJog(deckId: DeckId, what: string) {
+  useStore.getState().setMidi({ lastJog: `${deckId}: ${what}` })
+}
+
 export function jogTurn(deckId: DeckId, ticks: number) {
   const deck = engine.decks[deckId]
-  if (!deck.hasTrack) return
+  if (!deck.hasTrack) {
+    reportJog(deckId, 'ignored — no track loaded')
+    return
+  }
 
   if (!deck.scratching) {
-    deck.pitchBend(Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK)))
+    const amount = Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK))
+    if (!deck.playing) {
+      // The decision (30/08, with the owner): a stopped deck does nothing on the
+      // rim — there is no speed to bend. It says so rather than looking broken.
+      reportJog(deckId, `bend ${(amount * 100).toFixed(0)}% ignored — deck stopped`)
+      return
+    }
+    deck.pitchBend(amount)
+    reportJog(deckId, `bend ${amount > 0 ? '+' : ''}${(amount * 100).toFixed(0)}% (${ticks} ticks)`)
     return
   }
 
@@ -240,6 +256,7 @@ export function jogTurn(deckId: DeckId, ticks: number) {
   const rate = Math.max(-JOG_MAX_RATE, Math.min(JOG_MAX_RATE, smoothed))
   jogState[deckId] = { time: now, rate }
   deck.scratchRate(rate)
+  reportJog(deckId, `scratch ${rate.toFixed(2)}x`)
 }
 
 /** Platter touch sensor: the hand landing on the record, and coming off it. */
