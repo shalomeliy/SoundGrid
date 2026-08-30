@@ -17,7 +17,7 @@
 | --- | --- |
 | **בעבודה** | אין. `v0.2.5` נסגרה ונדחפה, ו‑**`v0.2.0` נסגרה סופית**: ‏`JOG_TICKS_PER_REV` נמדד מול החומרה (713 · 715 · 710) וברירת המחדל היא 713 |
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 — ב‑[`docs/handoff/`](docs/handoff/) |
-| **branch** | ‏`v0.2.1` מוזג ל‑`main` (PR #1), ‏`v0.2.2`+`v0.2.3` (PR #2). ‏**`v0.2.4` ו‑`v0.2.5` עדיין לא ב‑`main`** — שתיהן על `claude/handoff-0ukbck`, ב‑[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) שממתין למיזוג. **שתי גרסאות שלמות מחוץ ל‑`main` — למזג לפני v0.2.6.** לאמת: `git fetch && git status -sb` — **לא לקבע כאן SHA** |
+| **branch** | ‏`v0.2.1` (PR #1) · `v0.2.2`+`v0.2.3` (PR #2) · `v0.2.4` (PR #3) — **כולן ב‑`main`.** ‏`v0.2.5` ב‑[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4). לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
 | **גרסה נוכחית** | `v0.2.5` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏122 בדיקות ב‑10 קבצים. להריץ לפני כל commit |
 | **הבא בתור** | **v0.2.6 — פתיחה עם הספרייה כבר טעונה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
