@@ -299,8 +299,8 @@ export const FIELDS: Field[] = [
   {
     kind: 'toggle',
     key: 'lockPlayingDeck',
-    label: 'Lock a playing deck',
-    help: 'Refuse to load over a deck that is playing. Off risks cutting a live track.',
+    label: 'Lock the deck that is playing',
+    help: 'Refuses a load onto that deck only — the other deck stays free, which is how you mix.',
     group: 'feel',
   },
 
