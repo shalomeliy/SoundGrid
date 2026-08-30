@@ -76,12 +76,24 @@ export function tempoToRate(tempo: number, range: number = TEMPO_RANGE): number 
  * Encoder ticks in one full turn of the jog wheel.
  *
  * A property of the controller, not of the software, which is why it is
- * settable at all. Three hand counts on the FLX4 gave 696 · 673 · 669 — all
- * lower bounds, because counting revolutions by hand tends to undercount. 600
- * is what shipped and is kept as the default so the Measure button, not a
- * guess, is what changes it.
+ * settable at all — and **measured, at last, on 2026-08-30**: 713 · 715 · 710
+ * from the Measure button on the owner's FLX4, mean 712.67, spread 5 ticks.
+ *
+ * The three hand counts it replaces were 696 · 673 · 669, a spread of 27, and
+ * every one of them a lower bound: counting revolutions by hand undercounts,
+ * and the wheel was driving the deck while being counted. The Measure button
+ * intercepts ticks before bend and scratch, so the deck stays still and the
+ * only human error left is where the eye says the revolution ended — which is
+ * symmetric, not a bias. That is why these three may be averaged and those
+ * three could not.
+ *
+ * **Not 720.** It was the standing suspicion, and it is 1% above every single
+ * measurement, so the evidence does not support it. 1% of a scratch rate is
+ * inaudible either way, so this is settled unless a controller other than the
+ * FLX4 says otherwise — and if one does, the Measure button is the answer, not
+ * an edit here.
  */
-export const JOG_TICKS_PER_REV = 600
+export const JOG_TICKS_PER_REV = 713
 
 /**
  * Playback-rate change per jog tick when the platter surface is not touched.
