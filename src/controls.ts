@@ -199,8 +199,24 @@ const JOG_TICKS_PER_REV = 600
 const JOG_SEC_PER_REV = 1.333
 const JOG_SMOOTHING = 0.4
 const JOG_MAX_RATE = 8
-/** Bend strength per tick when the platter is not held. */
-const BEND_PER_TICK = 0.012
+/**
+ * Bend strength per tick when the platter is not held.
+ *
+ * Recalibrated 30/08 after the FLX4's decode was fixed, because this number was
+ * silently tuned against the broken one. Every jog message used to arrive as
+ * `ticks = 63`, so `63 * 0.012 = 0.756` clamped to the 0.5 ceiling — **every
+ * touch of the rim jumped straight to the maximum ±50% bend**. It felt like it
+ * worked; it was the bug, at full volume. With one message now correctly worth
+ * one tick, the same constant gave 1.2% and the rim felt dead.
+ *
+ * Deliberately per-tick and not rate-based: `ticks` per message already grows
+ * with speed (the FLX4 sends 65/66/67 for 1/2/3 ticks), and a rate would have to
+ * divide by `JOG_TICKS_PER_REV`, which is still unmeasured. This value is
+ * independent of that one, so it does not move when that number is finally set.
+ *
+ * It is a **feel** value — the ceiling below is the real safety net. Tune it here.
+ */
+const BEND_PER_TICK = 0.05
 
 export function jogTurn(deckId: DeckId, ticks: number) {
   const deck = engine.decks[deckId]
