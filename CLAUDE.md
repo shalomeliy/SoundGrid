@@ -104,8 +104,9 @@ SoundGrid's hard invariant, and it outranks convenience:
 
 **`vitest` landed in v0.2.1** — `npm test`, and `npm run check` runs it. What lives in
 `tests/repo/` are invariants about the **repository as a system**: doc size, version
-drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together, and no
-file carrying conflict markers. The rule
+drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together, no
+file carrying conflict markers, and no calibration constant reaching the Settings
+screen. The rule
 they come from: **every bug caught once becomes a permanent check.** When you fix
 something a test could have caught, add the test in the same commit.
 
@@ -164,7 +165,7 @@ conversations must be allowed to end.
 
 - **`HANDOFF.md` is read first in every conversation**, and is the only source of truth
   between them.
-- **Run `python C:/Users/Shalom/.claude/tools/context_check.py` at the end of every
+- **Run `python ~/.claude/tools/context_check.py` at the end of every
   version / sub-version** — once the checks are green, `HANDOFF.md` is updated and the
   work is committed. Act on the verdict, and **never ask the user whether to continue
   here or open a new conversation**; that question is what this measurement replaces.
@@ -231,6 +232,12 @@ hiding work.
 - **No tracked file carries conflict markers** (v0.2.4). This file sat on `main` with two
   unresolved regions in it for three versions while `npm run check` stayed green: the five
   checks above all read the docs for *meaning*, and none read them for *damage*.
+- **No calibration constant reaches the Settings screen** (v0.2.5). `PLATTER_SIZE`,
+  `POSITION_EPSILON_SEC`, `DECLICK_SEC` and the rest each pin a bug that is already
+  fixed; a control for one is a polite way to let the user break the app for
+  themselves. That was a paragraph in `ROADMAP.md`, which is to say it was nothing.
+  The check strips comments first, so `core/settings.ts` can still *name* them in the
+  paragraph explaining the exclusion — a named exemption, not an omission.
 
 **Still a convention, because no check can express it: "the status line tells the truth."**
 The 2026-08-29 failure — a header announcing "v0.2.0b written" while four of the six items
@@ -252,8 +259,14 @@ npm test           # vitest alone — tests/repo/ invariants + tests/core/ unit 
 ```
 
 ```bash
-python C:/Users/Shalom/.claude/tools/context_check.py
+python ~/.claude/tools/context_check.py
 ```
+
+The tool lives in the **global** `.claude` directory, not in this repo, so it works
+from every project. Written with `~` rather than the absolute Windows path it used to
+carry, because v1.0 targets a Mac build too (`directions.md`) and `C:/Users/...` does
+not exist there. PowerShell, Git Bash and a Mac shell all expand `~`; plain `cmd.exe`
+does not, so spell the home directory out there.
 
 Dev server: `preview_start` with `soundgrid-dev` (port 5173) — **not** Bash.
 

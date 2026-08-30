@@ -11,6 +11,9 @@ import type {
 import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
+/** Who put a message on screen, so only they can take it down. */
+export type NoticeSource = 'load' | 'output'
+
 function emptyDeck(id: DeckId): DeckState {
   return {
     id,
@@ -90,6 +93,17 @@ export interface AppState {
   /** what this machine supports, resolved once at boot (v0.1.6) */
   capabilities: Capabilities
 
+  /**
+   * One line telling the user something the app just refused or changed on its
+   * own, and why.
+   *
+   * Added in v0.2.5 for the first setting that makes the app say no: "Lock a
+   * playing deck" turns a load into a refusal, and a load that silently does
+   * nothing is indistinguishable from a broken button. Anything that declines,
+   * degrades or substitutes belongs here rather than in a `console.warn`.
+   */
+  notice: { text: string; tone: 'warn' | 'info'; source: NoticeSource } | null
+
   patchDeck: (id: DeckId, patch: Partial<DeckState>) => void
   patchChannel: (id: DeckId, patch: Partial<ChannelState>) => void
   patchMixer: (patch: Partial<Omit<MixerState, 'channels'>>) => void
@@ -97,6 +111,16 @@ export interface AppState {
   setLibrary: (patch: Partial<AppState['library']>) => void
   setMidi: (patch: Partial<AppState['midi']>) => void
   setOutput: (patch: Partial<AppState['output']>) => void
+  setNotice: (notice: AppState['notice']) => void
+  /**
+   * Clear the notice only if it came from `source`.
+   *
+   * A plain `setNotice(null)` throws away whoever else's message is up there,
+   * and the one that was being lost is the one that matters most: "the audio
+   * device you last used is not connected" is set at startup and was wiped by
+   * the first track load, before it could be read.
+   */
+  clearNotice: (source: NoticeSource) => void
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -124,6 +148,7 @@ export const useStore = create<AppState>((set) => ({
   scratchReady: false,
   scratchError: null,
   capabilities: detectCapabilities(),
+  notice: null,
 
   patchDeck: (id, patch) =>
     set((s) => ({ decks: { ...s.decks, [id]: { ...s.decks[id], ...patch } } })),
@@ -139,4 +164,6 @@ export const useStore = create<AppState>((set) => ({
   setLibrary: (patch) => set((s) => ({ library: { ...s.library, ...patch } })),
   setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
   setOutput: (patch) => set((s) => ({ output: { ...s.output, ...patch } })),
+  setNotice: (notice) => set({ notice }),
+  clearNotice: (source) => set((s) => (s.notice?.source === source ? { notice: null } : {})),
 }))

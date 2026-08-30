@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { initAudio } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
+import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
 import { Button } from '@/app/components/controls'
 
-export function TopBar() {
+export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const audioReady = useStore((s) => s.audioReady)
   const output = useStore((s) => s.output)
   const midiState = useStore((s) => s.midi)
@@ -30,6 +31,24 @@ export function TopBar() {
       multichannel: engine.isMultichannel,
     })
     await midi.init()
+
+    // A remembered device that is never re-applied is a setting that pretends
+    // to work. Applied when the card is still here; named when it is not,
+    // because "the mix is coming out of the laptop speakers" is exactly the
+    // kind of silent fallback this project treats as a bug.
+    const wanted = settings.values.outputDeviceId
+    if (wanted) {
+      if (outs.some((d) => d.deviceId === wanted)) {
+        const res = await engine.setOutputDevice(wanted)
+        if (res === 'ok') setOutput({ currentId: wanted, multichannel: engine.isMultichannel })
+      } else {
+        useStore.getState().setNotice({
+          text: 'The audio device you last used is not connected — using the system default.',
+          tone: 'warn',
+          source: 'output',
+        })
+      }
+    }
     setBusy(false)
   }
 
@@ -38,6 +57,10 @@ export function TopBar() {
     const res = await engine.setOutputDevice(deviceId)
     if (res === 'ok') {
       setOutput({ currentId: deviceId, multichannel: engine.isMultichannel })
+      // Remembered from v0.2.5 on. Device ids are stable per browser profile,
+      // so this survives a reload; a card that is gone next time simply is not
+      // in the list, and the app stays on the system default.
+      void settings.set('outputDeviceId', deviceId || null)
     } else if (res === 'unsupported') {
       alert(
         'This browser cannot route audio to a specific device (setSinkId). ' +
@@ -113,6 +136,9 @@ export function TopBar() {
             Connect MIDI
           </Button>
         )}
+        <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+          Settings
+        </Button>
       </div>
     </header>
   )

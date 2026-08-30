@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import * as ctl from '@/controls'
-import { PLATTER_SIZE, TEMPO_RANGE } from '@/core/constants'
+import { PLATTER_SIZE } from '@/core/constants'
+import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 import { Button, Fader } from '@/app/components/controls'
@@ -31,9 +32,11 @@ export function Deck({ deckId }: { deckId: DeckId }) {
     const track = useStore.getState().library.tracks.find((t) => t.id === id)
     if (track) void ctl.loadTrackToDeck(deckId, track)
   }
-  const effectiveBpm =
-    deck.bpm != null ? deck.bpm * (1 + deck.tempo * TEMPO_RANGE) : null
-  const deltaPct = deck.tempo * TEMPO_RANGE * 100
+  // Tempo range and BPM precision are the user's from v0.2.5. The fader's
+  // -1..1 value is unchanged by the range; what it means in percent is not.
+  const { tempoRange, bpmDecimals } = useSettings()
+  const effectiveBpm = deck.bpm != null ? deck.bpm * (1 + deck.tempo * tempoRange) : null
+  const deltaPct = deck.tempo * tempoRange * 100
   const remain = deck.durationSec - deck.positionSec
 
   return (
@@ -94,7 +97,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             className="tnum text-xl font-semibold leading-none"
             style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
           >
-            {effectiveBpm ? effectiveBpm.toFixed(1) : '—'}
+            {effectiveBpm ? effectiveBpm.toFixed(bpmDecimals) : '—'}
           </div>
           <div className="tnum mt-0.5 text-2xs text-grid-muted">
             BPM
@@ -236,7 +239,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             length={160}
             detent
             format={(v) =>
-              `${v * TEMPO_RANGE * 100 > 0 ? '+' : ''}${(v * TEMPO_RANGE * 100).toFixed(1)}%`
+              `${v * tempoRange * 100 > 0 ? '+' : ''}${(v * tempoRange * 100).toFixed(1)}%`
             }
           />
         </div>

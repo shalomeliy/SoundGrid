@@ -3,6 +3,7 @@ import {
   MAX_RATE,
   POSITION_EPSILON_SEC,
   SEC_PER_REV,
+  SMOOTHING,
   pxPerRev,
   scratchRateFromDrag,
   shouldPushPosition,
@@ -90,5 +91,30 @@ describe('shouldPushPosition', () => {
 
   it('pushes a backwards scratch', () => {
     expect(shouldPushPosition(10 - 0.0008, 10, true)).toBe(true)
+  })
+})
+
+describe('platter speed and smoothing as parameters (v0.2.5)', () => {
+  it('scratches faster at 45 RPM than at 33 RPM for the same drag', () => {
+    // The bug this exists to prevent: the settings screen moved the MIDI jog
+    // and left the mouse platter on the old hard-coded 1.333s, so the same
+    // gesture meant two different things depending on which one you touched.
+    const at45 = scratchRateFromDrag(20, 1 / 60, 142, 0, 60 / 45, 1)
+    const at33 = scratchRateFromDrag(20, 1 / 60, 142, 0, 60 / 33.333, 1)
+    expect(Math.abs(at33)).toBeGreaterThan(Math.abs(at45))
+  })
+
+  it('follows the hand exactly at smoothing 1 and not at all at 0', () => {
+    expect(scratchRateFromDrag(20, 1 / 60, 142, 0, SEC_PER_REV, 0)).toBe(0)
+    const full = scratchRateFromDrag(20, 1 / 60, 142, 0, SEC_PER_REV, 1)
+    expect(full).toBeGreaterThan(0)
+  })
+
+  it('keeps its old behaviour when the new arguments are omitted', () => {
+    // Every existing caller and every case above this line passes four
+    // arguments. The defaults are what makes that still true.
+    expect(scratchRateFromDrag(20, 1 / 60, 142, 0)).toBe(
+      scratchRateFromDrag(20, 1 / 60, 142, 0, SEC_PER_REV, SMOOTHING),
+    )
   })
 })

@@ -44,6 +44,83 @@ export const HOT_CUE_COLORS = [
   '#ff5cf0',
 ]
 
-export function tempoToRate(tempo: number): number {
-  return 1 + tempo * TEMPO_RANGE
+/**
+ * Tempo fader value (-1..1) -> playback rate.
+ *
+ * The range is a parameter with a default rather than a captured import: it is
+ * a user setting from v0.2.5 on, and `core/` takes settings as data. Callers
+ * that have the live value pass it; `recommend` and the tests use the default.
+ */
+export function tempoToRate(tempo: number, range: number = TEMPO_RANGE): number {
+  return 1 + tempo * range
 }
+
+// ————————————————————————————————————————————————————————————————
+// Defaults the user may override from the Settings screen (v0.2.5)
+//
+// These moved here from the modules that used them — `controls.ts`, the deck
+// backend, the waveform component. Not tidying: a settable value needs exactly
+// one default, and while each lived beside its consumer the schema in
+// `core/settings.ts` would have had to restate it. Two numbers for one fact is
+// how the engine ends up using a value the screen never showed.
+//
+// The calibration constants deliberately did **not** move. `DECLICK_SEC`,
+// `SILENT_BELOW_RATE`, `ANCHOR_EVERY_QUANTA`, `STANDSTILL`, `HOLD_TIMEOUT_MS`,
+// `JOG_REPORT_MS`, `QUIET`, `POSITION_EPSILON_SEC` and `PLATTER_SIZE` stay
+// beside the code they calibrate, because each one pins a bug that is already
+// fixed — they are not preferences, and a control for one is a polite way to
+// let the user break the app for themselves.
+// ————————————————————————————————————————————————————————————————
+
+/**
+ * Encoder ticks in one full turn of the jog wheel.
+ *
+ * A property of the controller, not of the software, which is why it is
+ * settable at all — and **measured, at last, on 2026-08-30**: 713 · 715 · 710
+ * from the Measure button on the owner's FLX4, mean 712.67, spread 5 ticks.
+ *
+ * The three hand counts it replaces were 696 · 673 · 669, a spread of 27, and
+ * every one of them a lower bound: counting revolutions by hand undercounts,
+ * and the wheel was driving the deck while being counted. The Measure button
+ * intercepts ticks before bend and scratch, so the deck stays still and the
+ * only human error left is where the eye says the revolution ended — which is
+ * symmetric, not a bias. That is why these three may be averaged and those
+ * three could not.
+ *
+ * **Not 720.** It was the standing suspicion, and it is 1% above every single
+ * measurement, so the evidence does not support it. 1% of a scratch rate is
+ * inaudible either way, so this is settled unless a controller other than the
+ * FLX4 says otherwise — and if one does, the Measure button is the answer, not
+ * an edit here.
+ */
+export const JOG_TICKS_PER_REV = 713
+
+/**
+ * Playback-rate change per jog tick when the platter surface is not touched.
+ *
+ * 0.05 was too weak to hear on real hardware — the owner's verdict after three
+ * round trips, which is the round trip the Settings screen exists to end.
+ */
+export const BEND_PER_TICK = 0.1
+
+/** How hard the jog rate is smoothed. Low follows the hand later but calmer. */
+export const JOG_SMOOTHING = 0.4
+
+/** Vinyl mode: seconds for the stop ramp. */
+export const BRAKE_SEC = 0.55
+
+/** Vinyl mode: seconds for the start ramp. */
+export const SPIN_UP_SEC = 0.32
+
+/**
+ * Platter speed in RPM.
+ *
+ * 45, not 33⅓, because that is what the scratch maths already did:
+ * `SEC_PER_REV` shipped at 1.333s, which is 60/45. Defaulting to 33⅓ would
+ * have been the tidier number and would have silently changed how every
+ * existing scratch feels.
+ */
+export const PLATTER_RPM = 45
+
+/** Waveform zoom: CSS px of screen per second of audio. */
+export const WAVEFORM_PX_PER_SEC = 150
