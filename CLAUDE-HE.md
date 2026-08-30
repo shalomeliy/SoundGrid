@@ -194,7 +194,7 @@ Duration 100%, 0.6 שניות על 360 קבצים). ללוגיקה טהורה ב
 
 - **`HANDOFF.md` נקרא ראשון בכל שיחה** והוא מקור האמת היחיד בין שיחות.
 - **בסוף כל גרסה / תת‑גרסה להריץ:**
-  `python C:/Users/Shalom/.claude/tools/context_check.py`
+  `python ~/.claude/tools/context_check.py`
   אחרי שהבדיקות ירוקות, `HANDOFF.md` מעודכן והכל ב‑commit. **לפעול לפי
   התשובה, ולא לשאול את המשתמש אם להמשיך כאן או לפתוח שיחה חדשה** — המדידה
   הזו באה במקום השאלה הזו:
@@ -305,10 +305,15 @@ npm run build
 בדיקת טיפוסים + בנייה סטטית לתיקיית `dist/`.
 
 ```bash
-python C:/Users/Shalom/.claude/tools/context_check.py
+python ~/.claude/tools/context_check.py
 ```
 
 בסוף כל גרסה — אומר 🟢 להמשיך כאן / 🟡🔴 לסגור את השיחה.
+
+הכלי יושב בתיקיית `.claude` **הגלובלית**, לא בריפו הזה, ולכן הוא עובד מכל פרויקט.
+נכתב עם `~` במקום נתיב ה‑Windows המלא שהיה כאן, כי היעד ל‑v1.0 כולל גם בילד ל‑Mac
+(‏`directions.md`), ושם `C:/Users/...` פשוט לא קיים. ‏PowerShell, ‏Git Bash ו‑shell
+של מק כולם מרחיבים `~`; ‏`cmd.exe` נטו לא, אז שם צריך לכתוב את נתיב הבית במלואו.
 
 שרת פיתוח: `preview_start` עם `soundgrid-dev` (פורט 5173) — **לא** דרך Bash.
 

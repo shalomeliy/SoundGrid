@@ -165,7 +165,7 @@ conversations must be allowed to end.
 
 - **`HANDOFF.md` is read first in every conversation**, and is the only source of truth
   between them.
-- **Run `python C:/Users/Shalom/.claude/tools/context_check.py` at the end of every
+- **Run `python ~/.claude/tools/context_check.py` at the end of every
   version / sub-version** — once the checks are green, `HANDOFF.md` is updated and the
   work is committed. Act on the verdict, and **never ask the user whether to continue
   here or open a new conversation**; that question is what this measurement replaces.
@@ -259,8 +259,14 @@ npm test           # vitest alone — tests/repo/ invariants + tests/core/ unit 
 ```
 
 ```bash
-python C:/Users/Shalom/.claude/tools/context_check.py
+python ~/.claude/tools/context_check.py
 ```
+
+The tool lives in the **global** `.claude` directory, not in this repo, so it works
+from every project. Written with `~` rather than the absolute Windows path it used to
+carry, because v1.0 targets a Mac build too (`directions.md`) and `C:/Users/...` does
+not exist there. PowerShell, Git Bash and a Mac shell all expand `~`; plain `cmd.exe`
+does not, so spell the home directory out there.
 
 Dev server: `preview_start` with `soundgrid-dev` (port 5173) — **not** Bash.
 
