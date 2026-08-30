@@ -45,6 +45,7 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         useStore.getState().setNotice({
           text: 'The audio device you last used is not connected — using the system default.',
           tone: 'warn',
+          source: 'output',
         })
       }
     }

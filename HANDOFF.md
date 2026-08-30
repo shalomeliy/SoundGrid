@@ -19,7 +19,7 @@
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 — ב‑[`docs/handoff/`](docs/handoff/) |
 | **branch** | ‏`v0.2.1` מוזג ל‑`main` (PR #1), ‏`v0.2.2`+`v0.2.3` (PR #2). ‏**`v0.2.4` ו‑`v0.2.5` עדיין לא מוזגו ל‑`main`** — v0.2.5 על `claude/handoff-0ukbck`. לאמת: `git fetch && git status -sb` — **לא לקבע כאן SHA** |
 | **גרסה נוכחית** | `v0.2.5` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
-| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏117 בדיקות ב‑10 קבצים. להריץ לפני כל commit |
+| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏122 בדיקות ב‑10 קבצים. להריץ לפני כל commit |
 | **הבא בתור** | **v0.2.6 — פתיחה עם הספרייה כבר טעונה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
 ---
@@ -105,6 +105,10 @@
 ---
 
 ## החלטות פתוחות — להחליט מול המשתמש
+
+- **`onLoadPlayhead` — להשאיר או להוריד?** פקד שאינו יכול לפעול: אין cue נשמר לפני
+  v0.4, אז "מנקודת ה‑Cue הראשונה" מתנהג כמו "מההתחלה". מסומן `pending` ואומר את זה
+  מתחת לעצמו, אז זה לא כשל שקט — אבל תנאי הקבלה לא התקיים. עלה בסקירת v0.2.5.
 
 - `AIProvider` — מודל מקומי (WebGPU/WASM) מול BYO‑key מול self‑hosted? איזה מודל? (v0.5.5)
 - key‑lock (master tempo): phase‑vocoder ב‑`AudioWorklet` — לבנות עצמאית או WASM? (v0.9)

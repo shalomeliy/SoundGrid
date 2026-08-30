@@ -6,6 +6,7 @@ import {
   coerce,
   migrate,
   secPerRev,
+  shouldRepaint,
 } from '@/core/settings.ts'
 import { PLATTER_RPM } from '@/core/constants.ts'
 import { SEC_PER_REV } from '@/core/scratch.ts'
@@ -35,6 +36,23 @@ describe('the schema and its defaults', () => {
         f.options.map((o) => o.value),
         `${f.key} default is not among its options`,
       ).toContain(DEFAULTS[f.key])
+    }
+  })
+
+  it('puts every numeric default on its own control\u2019s step grid', () => {
+    // An <input type=range> snaps its value to min + n*step. spinUpSec shipped
+    // at 0.32 against a 0.05 step, so the slider sat at 0.30 while the readout
+    // beside it said 0.32s and Reset was greyed out as "already default" — a
+    // control showing a value it is not set to. The range check above passes
+    // happily on that; only reachability catches it.
+    for (const f of FIELDS) {
+      if (f.kind !== 'number') continue
+      const v = DEFAULTS[f.key] as number
+      const steps = (v - f.min) / f.step
+      expect(
+        Math.abs(steps - Math.round(steps)),
+        `${f.key} default ${v} is not reachable from min ${f.min} in steps of ${f.step}`,
+      ).toBeLessThan(1e-9)
     }
   })
 
@@ -190,5 +208,62 @@ describe('platter speed', () => {
     // 45, not the tidier 33⅓: SEC_PER_REV shipped at 1.333s, and a "cleaner"
     // default would have quietly changed how every existing scratch feels.
     expect(secPerRev(PLATTER_RPM)).toBeCloseTo(SEC_PER_REV, 3)
+  })
+})
+
+describe('shouldRepaint', () => {
+  const FRAME_60 = 1000 / 60
+
+  it('does not drop frames when the cap equals the display rate', () => {
+    // The bug this exists for: the gap for a 60fps cap is 16.667ms and rAF on a
+    // 60Hz screen delivers 16.667 +/- jitter, so a bare `>=` dropped about half
+    // the frames — at the DEFAULT setting, silently halving the repaint rate
+    // that shipped in v0.2.4, with nothing on screen to say so.
+    let last = 0
+    let painted = 0
+    for (let i = 1; i <= 60; i++) {
+      // A hair under the nominal interval, which is the case that failed.
+      const now = i * FRAME_60 - 0.4
+      if (shouldRepaint(now, last, 60, false)) {
+        painted++
+        last = now
+      }
+    }
+    expect(painted).toBe(60)
+  })
+
+  it('still enforces a cap the user actually asked for', () => {
+    let last = 0
+    let painted = 0
+    for (let i = 1; i <= 60; i++) {
+      const now = i * FRAME_60
+      if (shouldRepaint(now, last, 30, false)) {
+        painted++
+        last = now
+      }
+    }
+    // 60 display frames, capped at 30 — every other one.
+    expect(painted).toBe(30)
+  })
+
+  it('lets a 120Hz display be capped to 60', () => {
+    let last = 0
+    let painted = 0
+    for (let i = 1; i <= 120; i++) {
+      const now = i * (1000 / 120)
+      if (shouldRepaint(now, last, 60, false)) {
+        painted++
+        last = now
+      }
+    }
+    expect(painted).toBe(60)
+  })
+
+  it('never withholds a frame from a hand on the platter', () => {
+    // v0.2.0 learned this with the position epsilon: a dropped frame under a
+    // moving finger reads as the scratch not working. A display preference must
+    // not become an audio-feel decision.
+    expect(shouldRepaint(0, 0, 15, true)).toBe(true)
+    expect(shouldRepaint(0.001, 0, 15, true)).toBe(true)
   })
 })

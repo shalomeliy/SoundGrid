@@ -79,7 +79,7 @@ engine.onScratchStateChange = syncScratchState
 
 export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   await initAudio()
-  const { patchDeck, setNotice } = useStore.getState()
+  const { patchDeck, setNotice, clearNotice } = useStore.getState()
 
   // Loading over a deck that is playing cuts a live track mid-set, and the
   // gesture that does it — double-click, or a LOAD button — is one keystroke
@@ -96,10 +96,15 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       // notice ever names a field that is not in the schema.
       text: `Deck ${deckId} is playing — load refused. Settings › Feel › ${FIELD_BY_KEY.get('lockPlayingDeck')?.label} turns this off.`,
       tone: 'warn',
+      source: 'load',
     })
     return
   }
-  setNotice(null)
+  // Only this function's own message is cleared. It used to clear the notice
+  // outright, which threw away whatever else was up there — the
+  // "your audio device is not connected" warning is set at startup and was
+  // wiped by the first track load, before the owner could read it.
+  clearNotice('load')
   patchDeck(deckId, { loading: true })
   try {
     const data = await readTrackData(track)
@@ -320,13 +325,21 @@ function reportJog(deckId: DeckId, what: string) {
  * and not the deck — a wheel that scratched while being measured would be
  * counted through a moving track, which is how the earlier counts went wrong.
  */
-let jogMeasure: { deckId: DeckId; ticks: number; onTick: (total: number) => void } | null = null
+let jogMeasure: {
+  deckId: DeckId
+  ticks: number
+  onTick: (total: number) => void
+  lastPaint: number
+} | null = null
 
 export function beginJogMeasure(deckId: DeckId, onTick: (total: number) => void): () => number {
-  jogMeasure = { deckId, ticks: 0, onTick }
+  jogMeasure = { deckId, ticks: 0, onTick, lastPaint: 0 }
   return () => {
     const total = jogMeasure?.ticks ?? 0
     jogMeasure = null
+    // The exact count comes from here, not from the throttled readout, so the
+    // saved value is never the one a dropped repaint happened to show.
+    onTick(total)
     return total
   }
 }
@@ -336,7 +349,15 @@ export function jogTurn(deckId: DeckId, ticks: number) {
     // Absolute value: a hand that wobbles back a tick mid-turn has still
     // travelled that tick, and signed accumulation would quietly subtract it.
     jogMeasure.ticks += Math.abs(ticks)
-    jogMeasure.onTick(jogMeasure.ticks)
+    // Throttled for the same reason the jog readout is (see JOG_REPORT_MS): the
+    // FLX4 sends ~670 messages a second and each one arrives in its own MIDI
+    // event, so an unthrottled setState here is ~670 React renders a second
+    // during the one gesture whose smoothness the measurement depends on.
+    const now = performance.now()
+    if (now - jogMeasure.lastPaint >= JOG_REPORT_MS) {
+      jogMeasure.lastPaint = now
+      jogMeasure.onTick(jogMeasure.ticks)
+    }
     reportJog(deckId, `measuring — ${jogMeasure.ticks} ticks`)
     return
   }
@@ -378,6 +399,13 @@ export function jogTurn(deckId: DeckId, ticks: number) {
 
 /** Platter touch sensor: the hand landing on the record, and coming off it. */
 export function jogTouch(deckId: DeckId, down: boolean) {
+  // The Settings screen promises "the wheel will not move the deck while
+  // measuring", and `jogTurn` alone did not keep it: the natural way to turn an
+  // FLX4 wheel is by the top plate, which is the capacitive sensor, so a
+  // measuring turn entered scratch mode at rate 0 and froze a live track for
+  // the whole revolution. The ticks were counted correctly and the audio
+  // stopped — the promise on screen has to cover the touch sensor too.
+  if (jogMeasure && jogMeasure.deckId === deckId) return
   if (down) {
     jogState[deckId] = { time: performance.now(), rate: 0 }
     beginScratch(deckId)
@@ -562,3 +590,4 @@ export function filteredTracks(): Track[] {
       t.title?.toLowerCase().includes(q),
   )
 }
+

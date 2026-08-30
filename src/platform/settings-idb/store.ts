@@ -37,6 +37,15 @@ class IdbSettingsStore implements SettingsStore {
   private _migrated: string[] = []
   private listeners = new Set<(v: Settings) => void>()
   private started = false
+  /**
+   * Keys the user changed before the stored values finished loading.
+   *
+   * The Settings button is live from the first paint, and `init()` used to
+   * assign `this._values` wholesale when IndexedDB answered — so a setting
+   * changed inside that window was overwritten by the older stored value, and
+   * the change looked like it had not saved. The user's newer intent wins.
+   */
+  private dirty = new Set<keyof Settings>()
 
   get values(): Settings {
     return this._values
@@ -70,6 +79,7 @@ class IdbSettingsStore implements SettingsStore {
       return
     }
     const result = migrate(stored, { keyMode: readLegacyKeyMode() })
+    for (const key of this.dirty) (result.values[key] as unknown) = this._values[key]
     this._values = result.values
     this._issues = result.issues
     this._migrated = result.migrated
@@ -83,6 +93,7 @@ class IdbSettingsStore implements SettingsStore {
   }
 
   async set<K extends keyof Settings>(key: K, value: Settings[K]): Promise<void> {
+    if (!this.started) this.dirty.add(key)
     this._values = { ...this._values, [key]: value }
     if (key === 'latency') writeBootLatency(this._values.latency)
     this.emit()
@@ -105,6 +116,15 @@ class IdbSettingsStore implements SettingsStore {
   private async persist(): Promise<void> {
     try {
       await set(KEY, { version: SCHEMA_VERSION, ...this._values })
+      // Clearing it matters as much as raising it. The issue used to be
+      // append-only, so one failed write left "change applied but NOT saved" on
+      // screen for the rest of the session — and a banner that reports a
+      // failure which has stopped happening teaches the user to stop believing
+      // the banner that exists to be believed.
+      if (this._issues.some((i) => i.key === '(storage)')) {
+        this._issues = this._issues.filter((i) => i.key !== '(storage)')
+        this.emit()
+      }
     } catch (err) {
       // The value is already live in memory and on screen. What the user must
       // not believe is that it was saved.

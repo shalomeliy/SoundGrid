@@ -11,6 +11,9 @@ import type {
 import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
+/** Who put a message on screen, so only they can take it down. */
+export type NoticeSource = 'load' | 'output'
+
 function emptyDeck(id: DeckId): DeckState {
   return {
     id,
@@ -99,7 +102,7 @@ export interface AppState {
    * nothing is indistinguishable from a broken button. Anything that declines,
    * degrades or substitutes belongs here rather than in a `console.warn`.
    */
-  notice: { text: string; tone: 'warn' | 'info' } | null
+  notice: { text: string; tone: 'warn' | 'info'; source: NoticeSource } | null
 
   patchDeck: (id: DeckId, patch: Partial<DeckState>) => void
   patchChannel: (id: DeckId, patch: Partial<ChannelState>) => void
@@ -109,6 +112,15 @@ export interface AppState {
   setMidi: (patch: Partial<AppState['midi']>) => void
   setOutput: (patch: Partial<AppState['output']>) => void
   setNotice: (notice: AppState['notice']) => void
+  /**
+   * Clear the notice only if it came from `source`.
+   *
+   * A plain `setNotice(null)` throws away whoever else's message is up there,
+   * and the one that was being lost is the one that matters most: "the audio
+   * device you last used is not connected" is set at startup and was wiped by
+   * the first track load, before it could be read.
+   */
+  clearNotice: (source: NoticeSource) => void
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -153,4 +165,5 @@ export const useStore = create<AppState>((set) => ({
   setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
   setOutput: (patch) => set((s) => ({ output: { ...s.output, ...patch } })),
   setNotice: (notice) => set({ notice }),
+  clearNotice: (source) => set((s) => (s.notice?.source === source ? { notice: null } : {})),
 }))

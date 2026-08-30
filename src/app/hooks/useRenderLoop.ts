@@ -4,6 +4,7 @@ import { clock } from '@/platform/clock-audio'
 import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
 import { shouldPushPosition } from '@/core/scratch'
+import { shouldRepaint } from '@/core/settings'
 import type { DeckId } from '@/core/types'
 
 /**
@@ -28,14 +29,10 @@ export function useRenderLoop() {
   useEffect(() => {
     let lastPush = 0
     return clock.subscribe(() => {
-        const minGapMs = 1000 / settings.values.maxFps
-        const now = performance.now()
-        // A scratching hand is the one case where a dropped frame is felt as
-        // the scratch not working — v0.2.0 already learned that with the
-        // position epsilon. The cap yields to it.
         const { decks, patchDeck } = useStore.getState()
-        const anyScratching = engine.decks.A.scratching || engine.decks.B.scratching
-        if (!anyScratching && now - lastPush < minGapMs) return
+        const now = performance.now()
+        const scratching = engine.decks.A.scratching || engine.decks.B.scratching
+        if (!shouldRepaint(now, lastPush, settings.values.maxFps, scratching)) return
         lastPush = now
         ;(['A', 'B'] as DeckId[]).forEach((id) => {
           const d = engine.decks[id]

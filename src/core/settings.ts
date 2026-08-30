@@ -249,7 +249,11 @@ export const FIELDS: Field[] = [
     group: 'feel',
     min: 0.05,
     max: 3,
-    step: 0.05,
+    // 0.01, not 0.05: an <input type=range> snaps its value to min + n*step,
+    // and the spin-up default of 0.32 is not on a 0.05 grid — the slider sat
+    // at 0.30 while the number beside it read 0.32s and Reset was greyed out
+    // as "already default". A control has to be able to show the value it has.
+    step: 0.01,
     unit: 's',
   },
   {
@@ -260,7 +264,7 @@ export const FIELDS: Field[] = [
     group: 'feel',
     min: 0.05,
     max: 3,
-    step: 0.05,
+    step: 0.01,
     unit: 's',
   },
   {
@@ -523,3 +527,35 @@ export function migrate(stored: unknown, legacy: LegacyKeys = {}): MigrationResu
 
 /** One revolution of the platter, in seconds of audio at normal speed. */
 export const secPerRev = (rpm: number): number => 60 / rpm
+
+/**
+ * Slack allowed when comparing a frame gap against the cap, in milliseconds.
+ *
+ * Under any real frame interval — 120Hz is 8.3ms — so a cap the user actually
+ * asked for still bites, and above the jitter rAF delivers, so a cap set to the
+ * display's own rate stops fighting it.
+ */
+export const FRAME_JITTER_MS = 2
+
+/**
+ * Whether the render loop should push a new frame.
+ *
+ * Pure, and in `core/`, because the arithmetic here was wrong in a way no type
+ * checker could see: the gap for a 60fps cap is 16.667ms and rAF on a 60Hz
+ * screen delivers frames at 16.667ms ± jitter, so a bare `<` comparison dropped
+ * roughly every other frame — **at the default setting**, silently halving the
+ * repaint rate that shipped in v0.2.4. A hook cannot be tested; this can.
+ *
+ * A scratching hand always paints: v0.2.0 already learned that a dropped frame
+ * under a moving finger reads as the scratch not working, and a display
+ * preference must not become an audio-feel decision.
+ */
+export function shouldRepaint(
+  now: number,
+  lastPaint: number,
+  maxFps: number,
+  scratching: boolean,
+): boolean {
+  if (scratching) return true
+  return now - lastPaint >= 1000 / maxFps - FRAME_JITTER_MS
+}
