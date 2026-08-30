@@ -250,12 +250,38 @@ export class Deck {
     if (!this._playing || this._scratching) return
     const bent = this.rate * (1 + amount)
     this.player.setRate(bent)
-    if (this.bendTimer) window.clearTimeout(this.bendTimer)
+    this.clearBendTimer()
     this.bendTimer = window.setTimeout(() => {
       this.bendTimer = 0
       if (this._scratching || !this._playing) return
       this.player.rampRate(this.rate, BEND_RELEASE_SEC)
     }, BEND_HOLD_MS)
+  }
+
+  /**
+   * A bend held open until it is released, for a key or a button that has a
+   * down and an up. `pitchBend` decays on a timer because a jog tick has no
+   * end; a held key does, and letting the timer win under it would make the
+   * bend expire while the finger is still down.
+   */
+  holdBend(amount: number) {
+    if (!this._playing || this._scratching) return
+    this.clearBendTimer()
+    this.player.setRate(this.rate * (1 + amount))
+  }
+
+  /** Ease back to grid speed. Safe to call when no bend is open. */
+  releaseBend() {
+    this.clearBendTimer()
+    if (this._scratching || !this._playing) return
+    this.player.rampRate(this.rate, BEND_RELEASE_SEC)
+  }
+
+  private clearBendTimer() {
+    if (this.bendTimer) {
+      window.clearTimeout(this.bendTimer)
+      this.bendTimer = 0
+    }
   }
 
   /** Rate in playback multiples: 1 = normal forward, negative = backwards. */

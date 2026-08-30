@@ -58,6 +58,8 @@ the MIDI monitor in the top bar and the Learn action to correct any control.
 | `A` / `;` | cue deck A / B |
 | `↑` / `↓` | move library selection |
 | `[` / `]` | load selected track to deck A / B |
+| `S` / `D` | pitch-bend deck A back / forward while held |
+| `K` / `L` | pitch-bend deck B back / forward while held |
 
 ## Status
 

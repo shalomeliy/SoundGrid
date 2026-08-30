@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as ctl from '@/controls'
-import { TEMPO_RANGE } from '@/core/constants'
+import { PLATTER_SIZE, TEMPO_RANGE } from '@/core/constants'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 import { Button, Fader } from '@/app/components/controls'
@@ -182,16 +182,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               ×2
             </Button>
             <Button
-              variant="toggle"
-              active={deck.vinylMode}
-              tone={color}
               className="ml-auto"
-              onClick={() => ctl.toggleVinylMode(deckId)}
-              title="Vinyl mode: stop and start spin down and up instead of cutting"
-            >
-              Vinyl
-            </Button>
-            <Button
               variant="toggle"
               active={deck.cueMonitor}
               tone="var(--color-live)"
@@ -204,18 +195,37 @@ export function Deck({ deckId }: { deckId: DeckId }) {
           <PadGrid deckId={deckId} hotCues={deck.hotCues} />
         </div>
 
-        {/* right: platter + tempo ------------------------------------- */}
-        <div className="flex w-[76px] shrink-0 flex-col items-center gap-2">
-          <Platter
-            deckId={deckId}
-            positionSec={deck.positionSec}
-            durationSec={deck.durationSec}
-            playing={deck.playing}
-            scratching={deck.scratching}
-            hasTrack={!!deck.track}
-            color={color}
-            size={54}
-          />
+        {/* right: platter + vinyl, tempo beside them ------------------- */}
+        {/* Side by side, not stacked. Stacking is what forced the platter down
+            to 54px: the column had to hold both. Beside each other, the platter
+            gets the column's full 178px height and the layout does not grow. */}
+        <div className="flex shrink-0 items-start gap-2">
+          {/* Vinyl keeps its natural width rather than filling the platter:
+              stretched to 142px it became the largest coloured area on the deck
+              — louder than PLAY — and it is on by default, so it would be lit
+              almost always. Moving the control is the change here; its weight
+              stays what it was. */}
+          <div className="flex flex-col items-center gap-1">
+            <Platter
+              deckId={deckId}
+              positionSec={deck.positionSec}
+              durationSec={deck.durationSec}
+              playing={deck.playing}
+              scratching={deck.scratching}
+              hasTrack={!!deck.track}
+              color={color}
+              size={PLATTER_SIZE}
+            />
+            <Button
+              variant="toggle"
+              active={deck.vinylMode}
+              tone={color}
+              onClick={() => ctl.toggleVinylMode(deckId)}
+              title="Vinyl mode: stop and start spin down and up instead of cutting"
+            >
+              Vinyl
+            </Button>
+          </div>
           <Fader
             label="Tempo"
             value={deck.tempo}
@@ -223,7 +233,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             max={1}
             onChange={(v) => ctl.setTempo(deckId, v)}
             color={color}
-            length={92}
+            length={160}
             detent
             format={(v) =>
               `${v * TEMPO_RANGE * 100 > 0 ? '+' : ''}${(v * TEMPO_RANGE * 100).toFixed(1)}%`

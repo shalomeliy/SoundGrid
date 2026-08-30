@@ -244,6 +244,23 @@ export function toggleVinylMode(deckId: DeckId) {
   useStore.getState().patchDeck(deckId, { vinylMode: on })
 }
 
+/**
+ * Pitch bend held down and then let go — the keyboard's version of a hand on
+ * the rim. Kept separate from `jogTurn`'s bend, which is per-tick and decays on
+ * its own because a wheel tick has no release.
+ *
+ * No FLX4 control is bound to this: on the hardware the jog does the job. If a
+ * button is ever mapped to it, it needs a `ControlAction` pair and a case in
+ * `dispatch` — down and up, not one message.
+ */
+export function bendDeck(deckId: DeckId, amount: number) {
+  engine.decks[deckId].holdBend(amount)
+}
+
+export function releaseBend(deckId: DeckId) {
+  engine.decks[deckId].releaseBend()
+}
+
 export function nudgeDeck(deckId: DeckId, deltaSec: number) {
   const deck = engine.decks[deckId]
   seekDeck(deckId, deck.position + deltaSec)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as ctl from '@/controls'
+import { SEC_PER_REV, scratchRateFromDrag } from '@/core/scratch'
 import type { DeckId } from '@/core/types'
 
 interface Props {
@@ -13,20 +14,6 @@ interface Props {
   size?: number
 }
 
-/** One revolution of the platter equals this much audio at normal speed. */
-const SEC_PER_REV = 1.333
-/** Therefore normal speed is this many degrees per second. */
-const DEG_PER_SEC = 360 / SEC_PER_REV
-
-/** A flick should not command an absurd rate. */
-const MAX_RATE = 8
-
-/**
- * Pointer samples are jittery, so the rate is smoothed. Low enough to follow a
- * fast scratch, high enough that a steady drag does not shimmer.
- */
-const SMOOTHING = 0.4
-
 /**
  * If the finger stops moving we stop getting events — but a finger resting on a
  * record holds it still, it does not let it run. Without this the last non-zero
@@ -37,10 +24,10 @@ const HOLD_TIMEOUT_MS = 60
 /**
  * Circular platter: a progress ring, a spinning marker, and a grab handle.
  *
- * Dragging it scratches. The angle the pointer sweeps maps to playback rate at
- * the same ratio a real deck uses — sweep it at the speed the marker turns on
- * its own and the rate is 1, so the track plays forward at normal speed and the
- * platter feels connected rather than scaled.
+ * Dragging it sideways scratches — horizontal travel, not swept angle. Cover
+ * the rim's circumference in one `SEC_PER_REV` and the rate is 1, so the track
+ * plays forward at normal speed and the platter feels connected. The maths and
+ * the reason the angle was wrong are in `core/scratch.ts`.
  */
 export function Platter({
   deckId,
@@ -58,19 +45,9 @@ export function Platter({
   const circ = 2 * Math.PI * ring
   const spin = ((positionSec / SEC_PER_REV) % 1) * 360
 
-  const svgRef = useRef<SVGSVGElement>(null)
-  const drag = useRef<{ angle: number; time: number; rate: number } | null>(null)
+  const drag = useRef<{ x: number; time: number; rate: number } | null>(null)
   const holdTimer = useRef(0)
   const [grabbed, setGrabbed] = useState(false)
-
-  // Angle of a pointer around the platter centre, in degrees.
-  const angleOf = (clientX: number, clientY: number) => {
-    const box = svgRef.current?.getBoundingClientRect()
-    if (!box) return 0
-    const dx = clientX - (box.left + box.width / 2)
-    const dy = clientY - (box.top + box.height / 2)
-    return (Math.atan2(dy, dx) * 180) / Math.PI
-  }
 
   const stopHoldTimer = () => {
     if (holdTimer.current) {
@@ -85,7 +62,7 @@ export function Platter({
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!hasTrack) return
     e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { angle: angleOf(e.clientX, e.clientY), time: performance.now(), rate: 0 }
+    drag.current = { x: e.clientX, time: performance.now(), rate: 0 }
     setGrabbed(true)
     ctl.beginScratch(deckId)
     ctl.scratchRate(deckId, 0)
@@ -96,17 +73,12 @@ export function Platter({
     if (!d) return
     const now = performance.now()
     const dt = (now - d.time) / 1000
+    // Leave the anchor alone when dt is unusable — two events can share a
+    // millisecond, and resetting `x` would drop that travel instead of letting
+    // it count toward the next event.
     if (dt <= 0) return
-
-    const angle = angleOf(e.clientX, e.clientY)
-    // Unwrap across the ±180° seam, or crossing it reads as a full spin.
-    let delta = angle - d.angle
-    if (delta > 180) delta -= 360
-    else if (delta < -180) delta += 360
-
-    const instant = delta / dt / DEG_PER_SEC
-    const rate = Math.max(-MAX_RATE, Math.min(MAX_RATE, d.rate + (instant - d.rate) * SMOOTHING))
-    drag.current = { angle, time: now, rate }
+    const rate = scratchRateFromDrag(e.clientX - d.x, dt, size, d.rate)
+    drag.current = { x: e.clientX, time: now, rate }
     ctl.scratchRate(deckId, rate)
 
     stopHoldTimer()
@@ -129,7 +101,6 @@ export function Platter({
 
   return (
     <svg
-      ref={svgRef}
       width={size}
       height={size}
       onPointerDown={onPointerDown}
