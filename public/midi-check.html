@@ -109,12 +109,15 @@
           <li><b>חבר את ה‑FLX4 לפני שאתה טוען את הדף</b>, ואשר את בקשת ההרשאה של Chrome.</li>
           <li>למעלה אמור להופיע שם המכשיר. אם כתוב שם אדום — זה לא עבד, ומה שכתוב שם הוא הסיבה.</li>
           <li><b>הנח יד על הפלטר</b> של דק שמאל. הריבוע "מגע ג'וג" אמור להידלק ולהראות מספר תו.</li>
-          <li><b>לחץ "אפס מונים"</b>, ואז סובב את הג'וג <b>סיבוב שלם אחד בדיוק</b> קדימה, לאט.</li>
-          <li>המספר הגדול בטבלה למטה, בעמודת <b>סה"כ טיקים</b>, הוא ה‑<code>JOG_TICKS_PER_REV</code> האמיתי. תגיד לי אותו.</li>
+          <li><b>לחץ "אפס מונים"</b>, ואז סובב את הג'וג <b>עשרה סיבובים</b> קדימה, ברצף ולאט.
+            לא צריך דיוק — רק לספור כמה סיבובים עשית.</li>
+          <li>הקלד את המספר שספרת בתיבה <b>"סיבובים"</b>. העמודה <b>טיקים לסיבוב</b>
+            היא ה‑<code>JOG_TICKS_PER_REV</code> האמיתי. תגיד לי אותה.</li>
         </ol>
         <p class="note">
-          כדאי לחזור על שלב 4‑5 שלוש פעמים ולקחת ממוצע — סיבוב "שלם בדיוק" ביד הוא
-          תמיד בערך. אם שלוש המדידות רחוקות מאוד זו מזו, זה עצמו ממצא.
+          <b>למה עשרה ולא אחד:</b> טעות של רבע סיבוב על סיבוב אחד היא שגיאה של 25%.
+          אותה טעות בדיוק על עשרה סיבובים היא 2.5%. ככל שתסובב יותר, פחות משנה כמה
+          מדויק עצרת — אז אל תילחם בגלגל, פשוט תספור.
         </p>
       </details>
 
@@ -123,6 +126,12 @@
           <h2>Jog wheels — ticks counted</h2>
           <p style="margin: 0 0 8px">
             <button id="reset">אפס מונים</button>
+            <label style="margin-inline-start: 10px">
+              סיבובים:
+              <input id="revs" type="number" min="1" step="1" value="1"
+                style="width: 68px; background: var(--panel-2); color: var(--text);
+                       border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit" />
+            </label>
             <span class="note" style="margin-inline-start: 8px">
               currently in <code>controls.ts:197</code>: <b>JOG_TICKS_PER_REV = 600</b>
             </span>
@@ -133,18 +142,23 @@
                 <th>CC</th>
                 <th>ערוץ</th>
                 <th>הודעות</th>
-                <th>סה"כ טיקים</th>
                 <th>נטו</th>
+                <th>טיקים לסיבוב</th>
+                <th>ערכים גולמיים</th>
               </tr>
             </thead>
             <tbody id="cc-rows">
-              <tr><td colspan="5" class="miss">עדיין לא הגיע כלום. סובב את הג'וג.</td></tr>
+              <tr><td colspan="6" class="miss">עדיין לא הגיע כלום. סובב את הג'וג.</td></tr>
             </tbody>
           </table>
           <p class="note">
-            "סה"כ טיקים" הוא סכום הערכים המוחלטים, "נטו" הוא הסכום עם הסימן. סיבוב שלם
-            קדימה: השניים אמורים להיות זהים. אם הם שונים — הג'וג שלח גם אחורה, כלומר
-            הסיבוב לא היה חלק.
+            <b>הודעה אחת = טיק אחד</b> — נמדד ב‑30/08. "טיקים לסיבוב" מחושב מ<b>נטו</b>
+            חלקי הסיבובים, לא מכמות ההודעות: טיק אחורה הוא גם הודעה, אז יד שמתנדנדת
+            מנפחת את ההודעות אבל לא את הנטו. "ערכים גולמיים" מראה אילו בתים הבקר
+            שלח בפועל ובכמה: אם כולם 63 ו‑65, זה קידוד `offset-64` וכל בית הוא טיק
+            אחד. שורות שאין עליהן <span class="hit">✓ jog</span> הן פקדים מוחלטים
+            (קרוסייפדר, כפתורים) — הדף סופר אותן כאילו הן יחסיות, וזו מגבלה ידועה
+            שלו; התעלם מהן.
           </p>
         </section>
 
@@ -171,9 +185,11 @@
         <h2>Raw messages — newest first</h2>
         <div id="log">waiting…</div>
         <p class="note">
-          Decoded with the app's own rule, so a number read here transfers directly:
-          <code>relativeDelta(v) = v &lt; 64 ? v : v - 128</code>
-          (<code>src/core/mapping/mapping.ts:75</code>). Clock and active-sensing bytes
+          <code>raw=</code> is the byte the controller sent; <code>Δ</code> is the old
+          two's-complement reading, left in place because it is what exposed the bug —
+          the FLX4 sends 63/65 around 64, so every tick came through as ±63. The app
+          now decodes this controller as <code>offset-64</code>
+          (<code>src/core/mapping/mapping.ts</code>), where 65 is +1 and 63 is -1. Clock and active-sensing bytes
           (<code>0xF8</code>/<code>0xFE</code>) are dropped — named here rather than
           silently, because they would otherwise flood the log at hundreds per second.
         </p>
@@ -181,10 +197,13 @@
     </main>
 
     <script>
-      // Mirrors src/core/mapping/mapping.ts:75. Kept as a copy on purpose: this
-      // page must work with no build step, and a wrong copy would be worse than
-      // no page at all — so if that function ever changes, change it here too.
-      const relativeDelta = (v) => (v < 64 ? v : v - 128)
+      // offset-64, matching what this page measured on the FLX4 and what the app
+      // now uses for it: 64 is still, 65 is +1, 63 is -1. Kept as a copy on purpose
+      // — the page must work with no build step — so if the app's decode changes,
+      // change it here too. For a controller whose scheme is NOT this one, the raw
+      // histogram column is the thing to read; it is encoding-independent by
+      // construction, which is what let this bug be found in the first place.
+      const relativeDelta = (v) => v - 64
 
       const MAPPED_JOG_TOUCH_NOTE = 0x36
       const MAPPED_JOG_CCS = [0x21, 0x22]
@@ -192,7 +211,7 @@
       const hex = (n) => '0x' + n.toString(16).padStart(2, '0')
       const el = (id) => document.getElementById(id)
 
-      const ccStats = new Map() // "ch:cc" -> {ch, cc, count, abs, net}
+      const ccStats = new Map() // "ch:cc" -> {ch, cc, count, abs, net, raw: Map}
       const noteStats = new Map() // "ch:note" -> {ch, note, on}
       const lines = []
 
@@ -202,20 +221,43 @@
         s.innerHTML = html
       }
 
+      const revs = () => Math.max(1, Number(el('revs').value) || 1)
+
+      /** The three or four most common raw bytes, with counts — "63×167, 65×230". */
+      function rawSummary(map) {
+        const top = [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4)
+        const rest = map.size - top.length
+        return top.map(([v, n]) => `${v}×${n}`).join(', ') + (rest > 0 ? ` +${rest} עוד` : '')
+      }
+
       function renderCC() {
-        const rows = [...ccStats.values()].sort((a, b) => b.abs - a.abs)
+        // Jog rows first regardless of traffic: the mixer's absolute controls can
+        // easily out-count the wheels, and the row being measured should not have
+        // to be hunted for.
+        const rows = [...ccStats.values()].sort((a, b) => {
+          const j = MAPPED_JOG_CCS.includes(b.cc) - MAPPED_JOG_CCS.includes(a.cc)
+          return j || b.count - a.count
+        })
         if (!rows.length) return
+        const n = revs()
         el('cc-rows').innerHTML = rows
           .map((r) => {
             const known = MAPPED_JOG_CCS.includes(r.cc)
             const deck = r.ch === 0 ? 'A' : r.ch === 1 ? 'B' : null
+            // |net|, not the message count. A tick backwards is still a message,
+            // so a hand that wobbles inflates the count while leaving net correct:
+            // injecting 7200 forward and 20 backward ticks over 10 turns read 722
+            // per turn by count and 718 by net, against a true 720. Net is what
+            // "how far did the wheel actually go" means.
+            const perRev = Math.round(Math.abs(r.net) / n)
             return (
-              '<tr>' +
+              `<tr${known ? '' : ' class="miss"'}>` +
               `<td class="mono">${hex(r.cc)}${known ? ' <span class="hit">✓ jog</span>' : ''}</td>` +
               `<td>${r.ch}${deck ? ` <span class="deck${deck}">deck ${deck}</span>` : ''}</td>` +
               `<td>${r.count}</td>` +
-              `<td class="big">${r.abs}</td>` +
               `<td>${r.net > 0 ? '+' : ''}${r.net}</td>` +
+              `<td class="${known ? 'big' : ''}">${known ? perRev : '—'}</td>` +
+              `<td class="mono" style="font-size: 11.5px">${rawSummary(r.raw)}</td>` +
               '</tr>'
             )
           })
@@ -266,11 +308,12 @@
 
         if (type === 0xb0) {
           const key = ch + ':' + d1
-          const s = ccStats.get(key) || { ch, cc: d1, count: 0, abs: 0, net: 0 }
+          const s = ccStats.get(key) || { ch, cc: d1, count: 0, abs: 0, net: 0, raw: new Map() }
           const delta = relativeDelta(d2)
           s.count++
           s.abs += Math.abs(delta)
           s.net += delta
+          s.raw.set(d2, (s.raw.get(d2) || 0) + 1)
           ccStats.set(key, s)
           renderCC()
           log(`${t}  CC   ch${ch}  ${hex(d1)}  raw=${String(d2).padStart(3)}  Δ=${delta > 0 ? '+' : ''}${delta}`)
@@ -289,8 +332,12 @@
 
       el('reset').addEventListener('click', () => {
         ccStats.clear()
-        el('cc-rows').innerHTML = '<tr><td colspan="5" class="miss">אופס. סובב סיבוב שלם אחד.</td></tr>'
+        el('cc-rows').innerHTML =
+          '<tr><td colspan="6" class="miss">אופס. סובב, ואז הקלד כמה סיבובים עשית.</td></tr>'
       })
+      // Recompute rather than requiring another turn: the count is already banked,
+      // so correcting a miscounted number of revolutions must not cost a re-measure.
+      el('revs').addEventListener('input', renderCC)
 
       if (!navigator.requestMIDIAccess) {
         // Degrade visibly, never silently: this is the project's hard rule, and a
