@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SoundGrid — MIDI check</title>
+    <link rel="icon" href="/favicon.svg" />
+    <style>
+      /* Palette copied from src/index.css rather than imported: this page is
+         served straight out of public/ and never goes through Vite's pipeline,
+         so it must stand alone even if the app fails to build. That is the
+         point of it — a diagnostic you can still open when the app is broken. */
+      :root {
+        --bg: #08090d;
+        --panel: #101218;
+        --panel-2: #171a22;
+        --line: rgba(255, 255, 255, 0.07);
+        --text: #eef0f5;
+        --muted: #969ba8;
+        --a: #2ac7ff;
+        --b: #ff8f2e;
+        --live: #34e39b;
+        --warn: #ffcb47;
+        --danger: #ff4d6d;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      }
+      main { max-width: 1400px; margin: 0 auto; padding: 12px 16px 24px; }
+      h1 { font-size: 15px; margin: 0 0 2px; letter-spacing: 0.02em; }
+      .sub { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      .panel > h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+      .rtl { direction: rtl; text-align: right; }
+      .rtl ol { margin: 0; padding-inline-start: 20px; }
+      .rtl li { margin-bottom: 4px; }
+      .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+      @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+      table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+      code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+      button {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 12px;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { border-color: rgba(255, 255, 255, 0.25); }
+      #log {
+        height: 210px;
+        overflow: auto;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+      .status { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid; }
+      .status.ok { border-color: rgba(52, 227, 155, 0.4); background: rgba(52, 227, 155, 0.08); }
+      .status.bad { border-color: rgba(255, 77, 109, 0.5); background: rgba(255, 77, 109, 0.1); }
+      .status.wait { border-color: rgba(255, 203, 71, 0.4); background: rgba(255, 203, 71, 0.08); }
+      .big { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .hit { color: var(--live); }
+      .miss { color: var(--muted); }
+      .warn { color: var(--warn); }
+      .deckA { color: var(--a); }
+      .deckB { color: var(--b); }
+      .note { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>SoundGrid — MIDI check</h1>
+      <p class="sub">
+        Read-only MIDI monitor. It never sends to the controller and never touches your
+        files. Nothing here is part of the app — it exists to turn three guesses in
+        <code>controls.ts</code> / <code>flx4.ts</code> into measurements.
+      </p>
+
+      <div id="status" class="status wait">מבקש הרשאת MIDI…</div>
+
+      <details class="panel rtl" open>
+        <summary style="cursor: pointer; color: var(--muted); font-size: 12px; letter-spacing: 0.06em">
+          איך מודדים — לפי הסדר (לחץ כדי לקפל)
+        </summary>
+        <ol style="margin-top: 8px">
+          <li><b>חבר את ה‑FLX4 לפני שאתה טוען את הדף</b>, ואשר את בקשת ההרשאה של Chrome.</li>
+          <li>למעלה אמור להופיע שם המכשיר. אם כתוב שם אדום — זה לא עבד, ומה שכתוב שם הוא הסיבה.</li>
+          <li><b>הנח יד על הפלטר</b> של דק שמאל. הריבוע "מגע ג'וג" אמור להידלק ולהראות מספר תו.</li>
+          <li><b>לחץ "אפס מונים"</b>, ואז סובב את הג'וג <b>סיבוב שלם אחד בדיוק</b> קדימה, לאט.</li>
+          <li>המספר הגדול בטבלה למטה, בעמודת <b>סה"כ טיקים</b>, הוא ה‑<code>JOG_TICKS_PER_REV</code> האמיתי. תגיד לי אותו.</li>
+        </ol>
+        <p class="note">
+          כדאי לחזור על שלב 4‑5 שלוש פעמים ולקחת ממוצע — סיבוב "שלם בדיוק" ביד הוא
+          תמיד בערך. אם שלוש המדידות רחוקות מאוד זו מזו, זה עצמו ממצא.
+        </p>
+      </details>
+
+      <div class="cols">
+        <section class="panel">
+          <h2>Jog wheels — ticks counted</h2>
+          <p style="margin: 0 0 8px">
+            <button id="reset">אפס מונים</button>
+            <span class="note" style="margin-inline-start: 8px">
+              currently in <code>controls.ts:197</code>: <b>JOG_TICKS_PER_REV = 600</b>
+            </span>
+          </p>
+          <table id="cc-table">
+            <thead>
+              <tr>
+                <th>CC</th>
+                <th>ערוץ</th>
+                <th>הודעות</th>
+                <th>סה"כ טיקים</th>
+                <th>נטו</th>
+              </tr>
+            </thead>
+            <tbody id="cc-rows">
+              <tr><td colspan="5" class="miss">עדיין לא הגיע כלום. סובב את הג'וג.</td></tr>
+            </tbody>
+          </table>
+          <p class="note">
+            "סה"כ טיקים" הוא סכום הערכים המוחלטים, "נטו" הוא הסכום עם הסימן. סיבוב שלם
+            קדימה: השניים אמורים להיות זהים. אם הם שונים — הג'וג שלח גם אחורה, כלומר
+            הסיבוב לא היה חלק.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Jog touch — which note?</h2>
+          <div id="touch" class="big miss">— אין מגע —</div>
+          <p class="note">
+            The app binds jog touch to note <code>0x36</code> per deck
+            (<code>flx4.ts:26</code>), which has never been verified against the hardware.
+            Rest a hand on the platter: whatever note lights up here is the real one.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Note</th><th>ערוץ</th><th>מצב</th><th>תואם למיפוי?</th></tr>
+            </thead>
+            <tbody id="note-rows">
+              <tr><td colspan="4" class="miss">עדיין לא נלחץ כלום.</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      <section class="panel">
+        <h2>Raw messages — newest first</h2>
+        <div id="log">waiting…</div>
+        <p class="note">
+          Decoded with the app's own rule, so a number read here transfers directly:
+          <code>relativeDelta(v) = v &lt; 64 ? v : v - 128</code>
+          (<code>src/core/mapping/mapping.ts:75</code>). Clock and active-sensing bytes
+          (<code>0xF8</code>/<code>0xFE</code>) are dropped — named here rather than
+          silently, because they would otherwise flood the log at hundreds per second.
+        </p>
+      </section>
+    </main>
+
+    <script>
+      // Mirrors src/core/mapping/mapping.ts:75. Kept as a copy on purpose: this
+      // page must work with no build step, and a wrong copy would be worse than
+      // no page at all — so if that function ever changes, change it here too.
+      const relativeDelta = (v) => (v < 64 ? v : v - 128)
+
+      const MAPPED_JOG_TOUCH_NOTE = 0x36
+      const MAPPED_JOG_CCS = [0x21, 0x22]
+
+      const hex = (n) => '0x' + n.toString(16).padStart(2, '0')
+      const el = (id) => document.getElementById(id)
+
+      const ccStats = new Map() // "ch:cc" -> {ch, cc, count, abs, net}
+      const noteStats = new Map() // "ch:note" -> {ch, note, on}
+      const lines = []
+
+      function setStatus(kind, html) {
+        const s = el('status')
+        s.className = 'status ' + kind
+        s.innerHTML = html
+      }
+
+      function renderCC() {
+        const rows = [...ccStats.values()].sort((a, b) => b.abs - a.abs)
+        if (!rows.length) return
+        el('cc-rows').innerHTML = rows
+          .map((r) => {
+            const known = MAPPED_JOG_CCS.includes(r.cc)
+            const deck = r.ch === 0 ? 'A' : r.ch === 1 ? 'B' : null
+            return (
+              '<tr>' +
+              `<td class="mono">${hex(r.cc)}${known ? ' <span class="hit">✓ jog</span>' : ''}</td>` +
+              `<td>${r.ch}${deck ? ` <span class="deck${deck}">deck ${deck}</span>` : ''}</td>` +
+              `<td>${r.count}</td>` +
+              `<td class="big">${r.abs}</td>` +
+              `<td>${r.net > 0 ? '+' : ''}${r.net}</td>` +
+              '</tr>'
+            )
+          })
+          .join('')
+      }
+
+      function renderNotes() {
+        const rows = [...noteStats.values()]
+        if (!rows.length) return
+        const held = rows.filter((r) => r.on)
+        el('touch').innerHTML = held.length
+          ? held
+              .map((r) => {
+                const ok = r.note === MAPPED_JOG_TOUCH_NOTE
+                return `<span class="${ok ? 'hit' : 'warn'}">${hex(r.note)} · ch ${r.ch}</span>`
+              })
+              .join(' , ')
+          : '— אין מגע —'
+        el('touch').className = 'big ' + (held.length ? '' : 'miss')
+        el('note-rows').innerHTML = rows
+          .map((r) => {
+            const ok = r.note === MAPPED_JOG_TOUCH_NOTE
+            return (
+              '<tr>' +
+              `<td class="mono">${hex(r.note)}</td><td>${r.ch}</td>` +
+              `<td class="${r.on ? 'hit' : 'miss'}">${r.on ? 'לחוץ' : 'משוחרר'}</td>` +
+              `<td>${ok ? '<span class="hit">כן — 0x36</span>' : '<span class="warn">לא</span>'}</td>` +
+              '</tr>'
+            )
+          })
+          .join('')
+      }
+
+      function log(text) {
+        lines.unshift(text)
+        if (lines.length > 300) lines.length = 300
+        el('log').textContent = lines.join('\n')
+      }
+
+      function onMessage(e) {
+        const [status, d1, d2] = e.data
+        // Real-time bytes: clock (0xF8) and active sensing (0xFE) arrive constantly
+        // and would bury everything else. Dropped, and said so on the page.
+        if (status >= 0xf8) return
+        const type = status & 0xf0
+        const ch = status & 0x0f
+        const t = new Date().toLocaleTimeString('en-GB', { hour12: false })
+
+        if (type === 0xb0) {
+          const key = ch + ':' + d1
+          const s = ccStats.get(key) || { ch, cc: d1, count: 0, abs: 0, net: 0 }
+          const delta = relativeDelta(d2)
+          s.count++
+          s.abs += Math.abs(delta)
+          s.net += delta
+          ccStats.set(key, s)
+          renderCC()
+          log(`${t}  CC   ch${ch}  ${hex(d1)}  raw=${String(d2).padStart(3)}  Δ=${delta > 0 ? '+' : ''}${delta}`)
+        } else if (type === 0x90 || type === 0x80) {
+          // Note-on with velocity 0 is a note-off; the app's parseMessage does the
+          // same, so the two must not disagree about whether a hand is on the platter.
+          const on = type === 0x90 && d2 > 0
+          const key = ch + ':' + d1
+          noteStats.set(key, { ch, note: d1, on })
+          renderNotes()
+          log(`${t}  NOTE ch${ch}  ${hex(d1)}  vel=${String(d2).padStart(3)}  ${on ? 'ON' : 'off'}`)
+        } else {
+          log(`${t}  0x${status.toString(16)} ch${ch}  ${d1} ${d2}`)
+        }
+      }
+
+      el('reset').addEventListener('click', () => {
+        ccStats.clear()
+        el('cc-rows').innerHTML = '<tr><td colspan="5" class="miss">אופס. סובב סיבוב שלם אחד.</td></tr>'
+      })
+
+      if (!navigator.requestMIDIAccess) {
+        // Degrade visibly, never silently: this is the project's hard rule, and a
+        // blank page here would read exactly like "the controller is broken".
+        setStatus(
+          'bad',
+          '<b>אין Web MIDI בדפדפן הזה.</b> ‏Web MIDI קיים ב‑Chrome/Edge בלבד, ורק על ' +
+            'חיבור מאובטח — כלומר <code>localhost</code> או HTTPS. אם פתחת את הקובץ ' +
+            'ישירות מהדיסק (<code>file://</code>) זו הסיבה: הרץ <code>npm run dev</code> ' +
+            'ופתח <code>http://localhost:5173/midi-check.html</code>.',
+        )
+      } else {
+        // A permission prompt nobody answers leaves the promise pending forever, and
+        // "מבקש הרשאת MIDI…" then reads exactly like a page that is working. Measured
+        // in headless Chromium, where the call never settles at all. Degrade visibly.
+        let settled = false
+        setTimeout(() => {
+          if (!settled) {
+            setStatus(
+              'wait',
+              '<b>עדיין מחכה להרשאת MIDI.</b> חפש את בקשת ההרשאה של Chrome ליד שורת ' +
+                'הכתובת ואשר אותה. אם כבר דחית פעם — לחץ על האייקון שמשמאל לכתובת, ' +
+                'החזר את ההרשאה ל‑MIDI ורענן.',
+            )
+          }
+        }, 4000)
+
+        navigator.requestMIDIAccess({ sysex: false }).then(
+          (access) => {
+            settled = true
+            const attach = () => {
+              const inputs = [...access.inputs.values()]
+              inputs.forEach((i) => (i.onmidimessage = onMessage))
+              if (!inputs.length) {
+                setStatus(
+                  'bad',
+                  '<b>ההרשאה ניתנה, אבל לא נמצא אף מכשיר MIDI.</b> חבר את ה‑FLX4, ' +
+                    'הדלק אותו, ורענן את הדף. אם הוא מחובר — סגור את rekordbox/Serato: ' +
+                    'הם תופסים את המכשיר בבלעדיות.',
+                )
+              } else {
+                setStatus(
+                  'ok',
+                  '<b>מחובר:</b> ' +
+                    inputs.map((i) => `${i.name || 'unnamed'} <span class="miss">(${i.manufacturer || '?'})</span>`).join(' · '),
+                )
+              }
+            }
+            attach()
+            // A controller switched on after the page loaded shows up here rather
+            // than requiring a reload — and, more to the point, one that is
+            // unplugged mid-measurement stops looking connected.
+            access.onstatechange = attach
+          },
+          (err) => {
+            settled = true
+            setStatus('bad', `<b>ההרשאה ל‑MIDI נדחתה או נכשלה:</b> <code>${err && err.message ? err.message : err}</code>`)
+          },
+        )
+      }
+    </script>
+  </body>
+</html>
