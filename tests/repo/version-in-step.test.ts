@@ -40,12 +40,17 @@ describe('the declared version is the version', () => {
    */
   it('package-lock.json carries the same version', () => {
     const lock = JSON.parse(read('package-lock.json')) as {
-      version: string
-      packages: Record<string, { version?: string }>
+      version?: string
+      packages?: Record<string, { version?: string } | undefined>
     }
+    // The container is optional-chained, not just the value: `lockfileVersion: 1`
+    // has no `packages` key at all, and `lock.packages['']` would throw a raw
+    // TypeError instead of the named failure `requireGit` sets as the standard
+    // here. npm >= 7 always writes it, so this is about failing legibly if the
+    // format ever moves — not about a case the repo is in.
     for (const [where, version] of [
       ['package-lock.json → version', lock.version],
-      ['package-lock.json → packages[""].version', lock.packages['']?.version],
+      ['package-lock.json → packages[""].version', lock.packages?.['']?.version],
     ] as const) {
       expect(
         version,

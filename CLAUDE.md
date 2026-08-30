@@ -104,13 +104,16 @@ SoundGrid's hard invariant, and it outranks convenience:
 
 **`vitest` landed in v0.2.1** — `npm test`, and `npm run check` runs it. What lives in
 `tests/repo/` are invariants about the **repository as a system**: doc size, version
-drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together. The rule
+drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together, and no
+file carrying conflict markers. The rule
 they come from: **every bug caught once becomes a permanent check.** When you fix
 something a test could have caught, add the test in the same commit.
 
-**There are still no tests of application behaviour**, and a runner does not conjure
-them: the audio engine needs an `AudioContext`, the library needs the user's real files,
-and faking either would test the fake. So "a check that fails without the change" still
+**The audio engine and the library still have no automated tests**, and a runner does
+not conjure them: the engine needs an `AudioContext`, the library needs the user's real
+files, and faking either would test the fake. (`tests/core/` is the counter-example and
+the pattern to copy — v0.2.2 pulled the scratch maths out into `core/scratch.ts` and got
+12 real cases out of it. The rule below is what that move was for.) So "a check that fails without the change" still
 usually means an explicit, recorded verification. The v0.1.7 pattern is the standard: a
 small Node script run directly against `C:\Users\Shalom\Music\Tracks` with a minimal
 `File` shim, numbers written down (BPM 96.9%, Key 97.2%, Duration 100%, 0.6s over 360
@@ -245,7 +248,7 @@ npm run check      # tsc -b + oxlint + depcruise + vitest — the gate before ev
 npm run build      # type-check + static bundle into dist/
 npm run lint       # oxlint alone
 npm run arch       # dependency-cruiser alone — the layer rules
-npm test           # vitest alone — the repo invariants in tests/repo/
+npm test           # vitest alone — tests/repo/ invariants + tests/core/ unit tests
 ```
 
 ```bash
