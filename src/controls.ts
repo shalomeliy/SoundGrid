@@ -218,9 +218,25 @@ const JOG_MAX_RATE = 8
  */
 const BEND_PER_TICK = 0.05
 
-/** Say what the jog just did — including when it did nothing, and why. */
+/**
+ * Say what the jog just did — including when it did nothing, and why.
+ *
+ * Throttled, and that is not a nicety. The FLX4 sends ~670 jog messages per
+ * revolution, so a store write per message is hundreds of React re-renders a
+ * second, all of them to retype one line of text in the top bar. The first
+ * version of this readout did exactly that and could plausibly have starved the
+ * render loop that draws the playhead — a diagnostic that breaks the thing it
+ * is diagnosing is worse than none. 10 Hz is faster than anyone reads.
+ */
+const JOG_REPORT_MS = 100
+let lastJogReport = { at: 0, text: '' }
+
 function reportJog(deckId: DeckId, what: string) {
-  useStore.getState().setMidi({ lastJog: `${deckId}: ${what}` })
+  const text = `${deckId}: ${what}`
+  const now = performance.now()
+  if (text === lastJogReport.text && now - lastJogReport.at < JOG_REPORT_MS) return
+  lastJogReport = { at: now, text }
+  useStore.getState().setMidi({ lastJog: text })
 }
 
 export function jogTurn(deckId: DeckId, ticks: number) {
