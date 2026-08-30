@@ -55,6 +55,15 @@ describe('the schema and its defaults', () => {
     }
   })
 
+  it('can be pointed at by name from a message elsewhere in the app', () => {
+    // controls.ts tells the user which setting turns the refusal off, by
+    // looking the label up here rather than repeating it. The first version
+    // repeated it, the label was reworded, and the message went on naming a
+    // control that no longer existed. Reading it through the map is the fix;
+    // this asserts the key it reads still exists.
+    expect(FIELD_BY_KEY.get('lockPlayingDeck')?.label).toBeTruthy()
+  })
+
   it('states a version for every field whose data does not exist yet', () => {
     // A `pending` note is the honest alternative to hiding a control that
     // cannot work yet. A note that does not say *when* is just an apology.

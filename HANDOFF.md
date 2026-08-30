@@ -19,7 +19,7 @@
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 — ב‑[`docs/handoff/`](docs/handoff/) |
 | **branch** | ‏`v0.2.1` מוזג ל‑`main` (PR #1), ‏`v0.2.2`+`v0.2.3` (PR #2). ‏**`v0.2.4` ו‑`v0.2.5` עדיין לא מוזגו ל‑`main`** — v0.2.5 על `claude/handoff-0ukbck`. לאמת: `git fetch && git status -sb` — **לא לקבע כאן SHA** |
 | **גרסה נוכחית** | `v0.2.5` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
-| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏122 בדיקות. להריץ לפני כל commit |
+| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏117 בדיקות ב‑10 קבצים. להריץ לפני כל commit |
 | **הבא בתור** | **v0.2.6 — פתיחה עם הספרייה כבר טעונה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
 ---

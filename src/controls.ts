@@ -3,7 +3,7 @@ import { engine } from '@/platform/audio-webaudio/engine'
 import { HOT_CUE_COLORS } from '@/core/constants'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
-import { DEFAULTS, secPerRev, type Settings } from '@/core/settings'
+import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { useStore } from '@/app/state/store'
 import type { DeckId, Track } from '@/core/types'
 
@@ -88,7 +88,13 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // button, which is the failure mode this project treats as a bug.
   if (settings.values.lockPlayingDeck && engine.decks[deckId].playing) {
     setNotice({
-      text: `Deck ${deckId} is playing — load refused. Settings › Lock a playing deck turns this off.`,
+      // The field's own label, not a copy of it. The first version of this
+      // message hard-coded "Lock a playing deck"; the label was then reworded
+      // and the message went on pointing at a control that no longer had that
+      // name — a direction that sends the user looking for something they will
+      // not find is its own small lie. tests/core/settings.test.ts fails if a
+      // notice ever names a field that is not in the schema.
+      text: `Deck ${deckId} is playing — load refused. Settings › Feel › ${FIELD_BY_KEY.get('lockPlayingDeck')?.label} turns this off.`,
       tone: 'warn',
     })
     return
