@@ -46,7 +46,9 @@ export interface Binding {
  * - `twos-complement` — 1..63 is +1..+63, 127..65 is -1..-63. What Serato and
  *   rekordbox presets usually document.
  * - `offset-64` — 64 is "no movement", 65 is +1, 63 is -1. What the DDJ-FLX4
- *   actually sends; see the note on FLX4_MAPPING.
+ *   actually sends; see the note on FLX4_MAPPING. The sign is confirmed on the
+ *   hardware too, not just the magnitude: 65 turning the wheel clockwise moves
+ *   the track forward, which is what a DJ expects of a record.
  */
 export type RelativeEncoding = 'twos-complement' | 'offset-64'
 
