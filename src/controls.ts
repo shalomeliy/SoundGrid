@@ -215,8 +215,14 @@ const JOG_MAX_RATE = 8
  * independent of that one, so it does not move when that number is finally set.
  *
  * It is a **feel** value — the ceiling below is the real safety net. Tune it here.
+ *
+ * 0.05 -> 0.10 on the owner's verdict after trying it on the FLX4: "very slow".
+ * That lands the useful range where the commercial tools sit, because ticks per
+ * message already scale with how hard the wheel is turned — the FLX4 sends
+ * 65/66/67 for 1/2/3 ticks, so an easy nudge is ~10% and a hard shove ~30%,
+ * with the ±0.5 clamp still catching a genuine spin.
  */
-const BEND_PER_TICK = 0.05
+const BEND_PER_TICK = 0.1
 
 /**
  * Say what the jog just did — including when it did nothing, and why.
