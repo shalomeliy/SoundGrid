@@ -1,15 +1,36 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Deck } from '@/app/components/Deck'
 import { Library } from '@/app/components/Library'
 import { Mixer } from '@/app/components/Mixer'
+import { SettingsScreen } from '@/app/components/Settings'
 import { TopBar } from '@/app/components/TopBar'
 import * as ctl from '@/controls'
-import { KEYBOARD_BEND } from '@/core/constants'
+import { settings } from '@/platform/settings-idb/store'
 import { useRenderLoop } from '@/app/hooks/useRenderLoop'
+import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 
 export default function App() {
   useRenderLoop()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const notice = useStore((s) => s.notice)
+  const setNotice = useStore((s) => s.setNotice)
+  /**
+   * Read inside the key handler rather than listed as a dependency: the handler
+   * owns a Set of physically-held bend keys, and re-registering the listener
+   * would drop it — a key held across the toggle would then never get its
+   * release and the deck would stay bent with nothing on screen saying why.
+   */
+  const settingsOpenRef = useRef(false)
+  useEffect(() => {
+    settingsOpenRef.current = settingsOpen
+  }, [settingsOpen])
+
+  // Loads the stored settings once. Until it resolves the app runs on the
+  // built-in defaults, which is the same thing it did before there were any.
+  useEffect(() => {
+    void settings.init()
+  }, [])
 
   useEffect(() => {
     /**
@@ -20,11 +41,14 @@ export default function App() {
      * continuous gesture with a speed, and a key has no speed; a "scratch key"
      * would look like the feature and not be it.
      */
+    // Direction only — the strength is read at press time from Settings, so a
+    // change on the screen is felt on the very next key, with no listener to
+    // rebuild and no stale closure holding the old number.
     const bendKeys: Record<string, [DeckId, number]> = {
-      KeyS: ['A', -KEYBOARD_BEND],
-      KeyD: ['A', KEYBOARD_BEND],
-      KeyK: ['B', -KEYBOARD_BEND],
-      KeyL: ['B', KEYBOARD_BEND],
+      KeyS: ['A', -1],
+      KeyD: ['A', 1],
+      KeyK: ['B', -1],
+      KeyL: ['B', 1],
     }
     /**
      * Which bend keys are physically down. Needed because two of them can be
@@ -35,6 +59,9 @@ export default function App() {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
+      // The Settings screen has its own keyboard; a stray D there must not
+      // bend a deck that is playing to the room.
+      if (settingsOpenRef.current) return
 
       const bend = bendKeys[e.code]
       if (bend) {
@@ -43,7 +70,7 @@ export default function App() {
         // repeat, so the decay never gets to run.
         if (e.repeat || bending.has(e.code)) return
         bending.add(e.code)
-        ctl.bendDeck(bend[0], bend[1])
+        ctl.bendDeck(bend[0], bend[1] * settings.values.keyboardBend)
         return
       }
 
@@ -115,8 +142,26 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <TopBar />
+    <div className="relative flex h-full flex-col overflow-hidden">
+      <TopBar onOpenSettings={() => setSettingsOpen(true)} />
+      {/* Anything the app refused or quietly substituted says so here. It sits
+          under the top bar rather than in a corner toast because a refusal the
+          user misses is the same as no refusal at all. */}
+      {notice && (
+        <div
+          className={`flex shrink-0 items-center gap-2 px-4 py-1.5 text-2xs ${
+            notice.tone === 'warn' ? 'bg-warn/12 text-warn' : 'bg-surface-2 text-grid-muted'
+          }`}
+        >
+          <span className="min-w-0 flex-1">{notice.text}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded-[var(--radius-xs)] px-1.5 py-0.5 hover:bg-surface-3"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <main className="grid shrink-0 grid-cols-[1fr_auto_1fr] gap-3 p-3">
         <Deck deckId="A" />
         <Mixer />
@@ -125,6 +170,7 @@ export default function App() {
       <div className="min-h-[200px] flex-1 px-3 pb-3">
         <Library />
       </div>
+      {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

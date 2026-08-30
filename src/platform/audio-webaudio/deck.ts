@@ -1,11 +1,17 @@
-import { EQ_DB, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/constants'
+import { EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/constants'
 import { BufferSourcePlayer, WorkletPlayer, type SourcePlayer } from '@/platform/audio-webaudio/players'
+import { settings } from '@/platform/settings-idb/store'
 import type { DeckId } from '@/core/types'
 
-/** Turntable spin-down and spin-up times. Roughly a 1200's, which is the
- *  feel DJs expect; short enough that a stop still reads as deliberate. */
-const BRAKE_SEC = 0.55
-const SPIN_UP_SEC = 0.32
+/**
+ * Spin-down, spin-up, tempo range and EQ depth are the user's now (Settings ›
+ * brakeSec / spinUpSec / tempoRange / eqDb). The defaults still describe a
+ * 1200: the feel DJs expect, and short enough that a stop reads as deliberate.
+ *
+ * Read at the moment of use, not cached in the deck. These fire on a button
+ * press or a knob turn — human-rate events, not the 670-a-second jog path — so
+ * there is nothing to gain from a local copy and a stale ramp time to lose.
+ */
 
 /** How long a pitch bend lingers after the last jog tick before easing back. */
 const BEND_HOLD_MS = 90
@@ -165,7 +171,7 @@ export class Deck {
   }
 
   private get rate() {
-    return tempoToRate(this._tempo)
+    return tempoToRate(this._tempo, settings.values.tempoRange)
   }
 
   play() {
@@ -292,14 +298,14 @@ export class Deck {
 
   /**
    * Release the platter. In vinyl mode the record spins back up to speed over
-   * `SPIN_UP_SEC` rather than snapping, which is what makes a release sound
+   * the spin-up time rather than snapping, which is what makes a release sound
    * like a turntable instead of an edit.
    */
   endScratch() {
     if (!this._scratching) return
     this._scratching = false
     if (this._resumePlaying) {
-      if (this._vinylMode) this.player.rampRate(this.rate, SPIN_UP_SEC)
+      if (this._vinylMode) this.player.rampRate(this.rate, settings.values.spinUpSec)
       else this.player.setRate(this.rate)
     } else {
       this.player.stop()
@@ -313,7 +319,7 @@ export class Deck {
    * platter has actually stopped, not when the command was issued — otherwise
    * the audio would cut mid-spin and the whole point is lost.
    */
-  brakeToStop(seconds = BRAKE_SEC) {
+  brakeToStop(seconds = settings.values.brakeSec) {
     if (!this._playing) return
     this.player.rampRate(0, seconds)
     this._playing = false
@@ -327,7 +333,7 @@ export class Deck {
   }
 
   /** Vinyl start: from a standstill up to speed. */
-  spinUpToPlay(seconds = SPIN_UP_SEC) {
+  spinUpToPlay(seconds = settings.values.spinUpSec) {
     if (!this._hasTrack || this._playing) return
     this.player.setRate(0)
     this.player.start(this.position)
@@ -341,7 +347,7 @@ export class Deck {
 
   setEq(band: 'low' | 'mid' | 'high', knob: number) {
     const node = band === 'low' ? this.eqLow : band === 'mid' ? this.eqMid : this.eqHigh
-    const db = knob >= 0 ? knob * EQ_DB : knob * 70 // full cut at -1
+    const db = knob >= 0 ? knob * settings.values.eqDb : knob * 70 // full cut at -1
     node.gain.setTargetAtTime(db, this.ctx.currentTime, 0.01)
   }
 

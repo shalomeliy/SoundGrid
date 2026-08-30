@@ -1,4 +1,5 @@
 import { Deck } from '@/platform/audio-webaudio/deck'
+import { bootLatencyHint } from '@/platform/settings-idb/boot-latency'
 // Bundled and transpiled by Vite, handed to addModule as a URL. The processor
 // itself imports nothing: an AudioWorkletGlobalScope has no DOM, so a single
 // transitive DOM-touching import turns into an opaque addModule rejection.
@@ -28,7 +29,12 @@ export class AudioEngine {
   private multichannel = false
 
   constructor() {
-    this.ctx = new AudioContext({ latencyHint: 'interactive' }) as AudioContextWithSink
+    // Fixed for the life of the context — AudioContext takes latencyHint at
+    // construction and offers no way to change it afterwards. That is why the
+    // Settings field is marked `requiresReload` instead of appearing to apply,
+    // and why this one value is read from the synchronous mirror rather than
+    // from the settings store: see `boot-latency.ts`.
+    this.ctx = new AudioContext({ latencyHint: bootLatencyHint() }) as AudioContextWithSink
     this.masterBus = this.ctx.createGain()
     this.cueBus = this.ctx.createGain()
     this.decks = {

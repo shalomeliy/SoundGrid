@@ -2,6 +2,8 @@ import { analyzeWaveform, detectBpm } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { HOT_CUE_COLORS } from '@/core/constants'
 import { readTrackData } from '@/platform/source-fsaccess/library'
+import { settings } from '@/platform/settings-idb/store'
+import { DEFAULTS, secPerRev, type Settings } from '@/core/settings'
 import { useStore } from '@/app/state/store'
 import type { DeckId, Track } from '@/core/types'
 
@@ -10,6 +12,39 @@ import type { DeckId, Track } from '@/core/types'
  * Every user-facing action goes through here so a knob turn and a mouse drag
  * stay in sync.
  */
+
+/**
+ * The user's settings, held in a plain local and refreshed on change.
+ *
+ * **Not read from the store per call, and that is a performance decision with
+ * a scar behind it.** The FLX4 sends ~670 jog messages a second and every one
+ * lands in `jogTurn`; the first version of the jog readout did per-message work
+ * and could plausibly have starved the render loop that draws the playhead.
+ * A subscription costs one assignment per *change* instead of a lookup per
+ * *tick*, and the port is documented to be used exactly this way.
+ */
+let cfg: Settings = DEFAULTS
+settings.subscribe((v) => {
+  const prev = cfg
+  cfg = v
+  // Two of these values are baked into an audio node the moment a knob or a
+  // fader is moved, so changing them on the screen would otherwise do nothing
+  // until the user happened to touch that control again — a setting that
+  // appears to apply and does not. Re-apply from the store's current knob
+  // positions instead. Only on an actual change: this runs on every write.
+  if (v.eqDb !== prev.eqDb || v.tempoRange !== prev.tempoRange) {
+    const { decks, mixer } = useStore.getState()
+    for (const id of ['A', 'B'] as DeckId[]) {
+      const deck = engine.decks[id]
+      if (v.eqDb !== prev.eqDb) {
+        deck.setEq('low', mixer.channels[id].eqLow)
+        deck.setEq('mid', mixer.channels[id].eqMid)
+        deck.setEq('high', mixer.channels[id].eqHigh)
+      }
+      if (v.tempoRange !== prev.tempoRange) deck.setTempo(decks[id].tempo)
+    }
+  }
+})
 
 export async function initAudio() {
   await engine.resume()
@@ -44,7 +79,21 @@ engine.onScratchStateChange = syncScratchState
 
 export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   await initAudio()
-  const { patchDeck } = useStore.getState()
+  const { patchDeck, setNotice } = useStore.getState()
+
+  // Loading over a deck that is playing cuts a live track mid-set, and the
+  // gesture that does it — double-click, or a LOAD button — is one keystroke
+  // away from the one that loads the other deck. Refusing is the default, and
+  // the refusal is spoken: a load that quietly does nothing looks like a dead
+  // button, which is the failure mode this project treats as a bug.
+  if (settings.values.lockPlayingDeck && engine.decks[deckId].playing) {
+    setNotice({
+      text: `Deck ${deckId} is playing — load refused. Settings › Lock a playing deck turns this off.`,
+      tone: 'warn',
+    })
+    return
+  }
+  setNotice(null)
   patchDeck(deckId, { loading: true })
   try {
     const data = await readTrackData(track)
@@ -78,17 +127,22 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
           : t,
       ),
     })
+    // `firstCue` has nothing to read yet — cue points are not persisted with a
+    // track until v0.4, so there is no stored cue at load time and the answer
+    // is 0 either way. The Settings field carries that limitation in its own
+    // `pending` line rather than the app pretending the choice took effect.
+    const startSec = 0
     patchDeck(deckId, {
       track: { ...track, bpm: bpm ?? undefined, durationSec },
       loading: false,
       playing: false,
-      positionSec: 0,
+      positionSec: startSec,
       durationSec,
       bpm,
       peaks,
       bands,
       hotCues: [],
-      cuePointSec: 0,
+      cuePointSec: startSec,
       loopActive: false,
     })
   } catch (err) {
@@ -193,11 +247,13 @@ export function endScratch(deckId: DeckId) {
  */
 const jogState: Record<string, { time: number; rate: number }> = {}
 
-/** Jog ticks in one full revolution. Best-effort for the FLX4 — tune here. */
-const JOG_TICKS_PER_REV = 600
-/** One revolution equals this much audio at normal speed (matches the platter). */
-const JOG_SEC_PER_REV = 1.333
-const JOG_SMOOTHING = 0.4
+/**
+ * Ticks per revolution, smoothing and platter speed all live in Settings now
+ * (`jogTicksPerRev`, `jogSmoothing`, `platterRpm`). They were hard-coded here
+ * through v0.2.4, and changing one cost a full code -> commit -> push -> pull
+ * -> restart round trip on hardware only the owner has. That round trip is what
+ * v0.2.5 exists to remove.
+ */
 const JOG_MAX_RATE = 8
 /**
  * Bend strength per tick when the platter is not held.
@@ -221,8 +277,11 @@ const JOG_MAX_RATE = 8
  * message already scale with how hard the wheel is turned — the FLX4 sends
  * 65/66/67 for 1/2/3 ticks, so an easy nudge is ~10% and a hard shove ~30%,
  * with the ±0.5 clamp still catching a genuine spin.
+ *
+ * The default is `BEND_PER_TICK` in `core/constants.ts`; the live value is
+ * `cfg.bendPerTick`, and the ±0.5 clamp below stays in code because it is the
+ * safety net, not the preference.
  */
-const BEND_PER_TICK = 0.1
 
 /**
  * Say what the jog just did — including when it did nothing, and why.
@@ -245,7 +304,37 @@ function reportJog(deckId: DeckId, what: string) {
   useStore.getState().setMidi({ lastJog: text })
 }
 
+/**
+ * Jog measurement, for the Settings screen's "Measure" button.
+ *
+ * `JOG_TICKS_PER_REV` is a property of the controller and was never measurable
+ * from here: three hand counts on the FLX4 gave 696 / 673 / 669, all lower
+ * bounds, because counting revolutions by hand undercounts. This intercepts the
+ * tick stream **before** bend and scratch, so a measuring turn moves the number
+ * and not the deck — a wheel that scratched while being measured would be
+ * counted through a moving track, which is how the earlier counts went wrong.
+ */
+let jogMeasure: { deckId: DeckId; ticks: number; onTick: (total: number) => void } | null = null
+
+export function beginJogMeasure(deckId: DeckId, onTick: (total: number) => void): () => number {
+  jogMeasure = { deckId, ticks: 0, onTick }
+  return () => {
+    const total = jogMeasure?.ticks ?? 0
+    jogMeasure = null
+    return total
+  }
+}
+
 export function jogTurn(deckId: DeckId, ticks: number) {
+  if (jogMeasure && jogMeasure.deckId === deckId) {
+    // Absolute value: a hand that wobbles back a tick mid-turn has still
+    // travelled that tick, and signed accumulation would quietly subtract it.
+    jogMeasure.ticks += Math.abs(ticks)
+    jogMeasure.onTick(jogMeasure.ticks)
+    reportJog(deckId, `measuring — ${jogMeasure.ticks} ticks`)
+    return
+  }
+
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) {
     reportJog(deckId, 'ignored — no track loaded')
@@ -253,7 +342,7 @@ export function jogTurn(deckId: DeckId, ticks: number) {
   }
 
   if (!deck.scratching) {
-    const amount = Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK))
+    const amount = Math.max(-0.5, Math.min(0.5, ticks * cfg.bendPerTick))
     if (!deck.playing) {
       // The decision (30/08, with the owner): a stopped deck does nothing on the
       // rim — there is no speed to bend. It says so rather than looking broken.
@@ -272,9 +361,9 @@ export function jogTurn(deckId: DeckId, ticks: number) {
     jogState[deckId] = { time: now, rate: prev?.rate ?? 0 }
     return
   }
-  const revs = ticks / JOG_TICKS_PER_REV
-  const instant = (revs * JOG_SEC_PER_REV) / dt
-  const smoothed = (prev?.rate ?? 0) + (instant - (prev?.rate ?? 0)) * JOG_SMOOTHING
+  const revs = ticks / cfg.jogTicksPerRev
+  const instant = (revs * secPerRev(cfg.platterRpm)) / dt
+  const smoothed = (prev?.rate ?? 0) + (instant - (prev?.rate ?? 0)) * cfg.jogSmoothing
   const rate = Math.max(-JOG_MAX_RATE, Math.min(JOG_MAX_RATE, smoothed))
   jogState[deckId] = { time: now, rate }
   deck.scratchRate(rate)

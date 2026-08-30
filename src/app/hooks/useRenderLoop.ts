@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { clock } from '@/platform/clock-audio'
+import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
 import { shouldPushPosition } from '@/core/scratch'
 import type { DeckId } from '@/core/types'
@@ -12,12 +13,30 @@ import type { DeckId } from '@/core/types'
  * Subscribes to the Clock rather than owning a rAF loop of its own: everything
  * that needs per-frame time now reads the same authority, which is what keeps
  * sync, quantize and beat-timed effects from drifting apart later (v0.1.6).
+ *
+ * **The frame cap lives here, not in the canvas.** Every repaint downstream —
+ * both waveforms, both platters, the time readouts — is caused by a position
+ * push out of this loop, so one gate here bounds all of them. Capping inside
+ * each canvas would leave the store writes and the React renders happening at
+ * full rate, which is most of the cost.
+ *
+ * The clock itself is deliberately not throttled: it is the shared time
+ * authority that sync and quantize will read, and slowing it to suit the screen
+ * would make a display preference into an audio-timing decision.
  */
 export function useRenderLoop() {
-  useEffect(
-    () =>
-      clock.subscribe(() => {
+  useEffect(() => {
+    let lastPush = 0
+    return clock.subscribe(() => {
+        const minGapMs = 1000 / settings.values.maxFps
+        const now = performance.now()
+        // A scratching hand is the one case where a dropped frame is felt as
+        // the scratch not working — v0.2.0 already learned that with the
+        // position epsilon. The cap yields to it.
         const { decks, patchDeck } = useStore.getState()
+        const anyScratching = engine.decks.A.scratching || engine.decks.B.scratching
+        if (!anyScratching && now - lastPush < minGapMs) return
+        lastPush = now
         ;(['A', 'B'] as DeckId[]).forEach((id) => {
           const d = engine.decks[id]
           if (!d.hasTrack) return
@@ -28,7 +47,6 @@ export function useRenderLoop() {
             patchDeck(id, { playing: d.playing })
           }
         })
-      }),
-    [],
-  )
+      })
+  }, [])
 }

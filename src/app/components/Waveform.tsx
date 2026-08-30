@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSettings } from '@/app/hooks/useSettings'
 import type { DeckId, HotCue } from '@/core/types'
 
 interface Props {
@@ -14,7 +15,6 @@ interface Props {
   onSeek: (sec: number) => void
 }
 
-const PX_PER_SEC = 150
 
 /*
  * Spectrum colours. The band mix at each column picks a colour, so the shape
@@ -54,6 +54,9 @@ export function Waveform({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [size, setSize] = useState(0)
+  // Zoom, pixel density and band colouring are the user's from v0.2.5. The
+  // default is WAVEFORM_PX_PER_SEC in core/constants.ts.
+  const { waveformPxPerSec: PX_PER_SEC, hiResCanvas, waveformColorByEq } = useSettings()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -66,7 +69,9 @@ export function Waveform({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const dpr = window.devicePixelRatio || 1
+    // Off, the canvas is one device pixel per CSS pixel: blurrier on a
+    // high-density screen and roughly a quarter of the pixels to fill.
+    const dpr = hiResCanvas ? window.devicePixelRatio || 1 : 1
     const w = canvas.clientWidth
     const h = canvas.clientHeight
     canvas.width = w * dpr
@@ -160,7 +165,7 @@ export function Waveform({
         const p1 = peaks[b * 2 + 1]
         if (p0 < mn) mn = p0
         if (p1 > mx) mx = p1
-        if (bands) {
+        if (bands && waveformColorByEq) {
           lo += bands[b * 3]
           md += bands[b * 3 + 1]
           hi += bands[b * 3 + 2]
@@ -168,7 +173,7 @@ export function Waveform({
       }
 
       let style: string
-      if (bands) {
+      if (bands && waveformColorByEq) {
         const total = lo + md + hi
         if (total < QUIET) {
           style = 'rgba(150,160,180,0.3)'
@@ -234,7 +239,7 @@ export function Waveform({
     ctx.closePath()
     ctx.fillStyle = '#fff'
     ctx.fill()
-  }, [peaks, bands, positionSec, durationSec, bpm, hotCues, color, loading, size])
+  }, [peaks, bands, positionSec, durationSec, bpm, hotCues, color, loading, size, PX_PER_SEC, hiResCanvas, waveformColorByEq])
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current

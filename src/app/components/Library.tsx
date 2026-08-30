@@ -11,22 +11,22 @@ import {
 } from '@/platform/source-fsaccess/library'
 import { useShallow } from 'zustand/react/shallow'
 import { mixRecommendations, type MixMatch } from '@/core/recommend'
+import { settings } from '@/platform/settings-idb/store'
+import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
+import type { KeyMode } from '@/core/settings'
 import type { Track } from '@/core/types'
 import { Button } from '@/app/components/controls'
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
-type KeyMode = 'musical' | 'camelot'
-const KEY_MODE_STORAGE = 'soundgrid:keyMode'
-
-function loadKeyMode(): KeyMode {
-  try {
-    return localStorage.getItem(KEY_MODE_STORAGE) === 'camelot' ? 'camelot' : 'musical'
-  } catch {
-    return 'musical'
-  }
-}
+/**
+ * The key spelling was this component's own `localStorage` entry until v0.2.5 —
+ * one of the three settings the app saved with no schema, no version and no
+ * owner. It lives in the settings port now; the header button and the Settings
+ * screen are two views of the same value, and the old key is migrated once on
+ * first load (`core/settings.ts`, `migrate`).
+ */
 
 /** Camelot when asked for and known, musical otherwise — never an empty cell. */
 function keyLabel(track: Track, mode: KeyMode): string | undefined {
@@ -64,7 +64,7 @@ export function Library() {
   const [mixOnly, setMixOnly] = useState(false)
   // Which key notation to show. DJs are split between musical and Camelot and
   // nobody wants to relearn theirs, so it's a preference that sticks.
-  const [keyMode, setKeyMode] = useState<KeyMode>(loadKeyMode)
+  const { keyMode, libraryTextScale } = useSettings()
   const skippedTotal = Object.values(library.skipped).reduce((a, b) => a + b, 0)
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
@@ -300,7 +300,15 @@ export function Library() {
             of small text. Rows are 36px with 14px type — you see more tracks
             than before and read them at a glance.
           */}
-          <table className="w-full border-collapse text-sm">
+          {/* The scale rides on the table's own font-size and everything inside
+              is in `em`-equivalent Tailwind steps, so rows, headers and the key
+              cell grow together. On the owner's 157-PPI panel every CSS pixel
+              renders at ~0.76 of its nominal size, which is why this is a
+              legibility control and not a cosmetic one. */}
+          <table
+            className="w-full border-collapse text-sm"
+            style={libraryTextScale === 1 ? undefined : { fontSize: `${libraryTextScale * 0.875}rem` }}
+          >
             <thead className="sticky top-0 z-10 bg-surface-1">
               <tr className="border-b border-hairline">
                 {/* explicit widths: the title/artist cells use max-w-0 to truncate,
@@ -312,13 +320,7 @@ export function Library() {
                 <Th className="w-20 text-right">
                   <button
                     onClick={() => {
-                      const next = keyMode === 'musical' ? 'camelot' : 'musical'
-                      setKeyMode(next)
-                      try {
-                        localStorage.setItem(KEY_MODE_STORAGE, next)
-                      } catch {
-                        // private mode — the preference just won't outlive the session
-                      }
+                      void settings.set('keyMode', keyMode === 'musical' ? 'camelot' : 'musical')
                     }}
                     title={
                       keyMode === 'musical'

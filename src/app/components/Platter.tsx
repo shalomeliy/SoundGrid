@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import * as ctl from '@/controls'
-import { SEC_PER_REV, scratchRateFromDrag } from '@/core/scratch'
+import { scratchRateFromDrag } from '@/core/scratch'
+import { secPerRev } from '@/core/settings'
+import { useSettings } from '@/app/hooks/useSettings'
 import type { DeckId } from '@/core/types'
 
 interface Props {
@@ -25,7 +27,7 @@ const HOLD_TIMEOUT_MS = 60
  * Circular platter: a progress ring, a spinning marker, and a grab handle.
  *
  * Dragging it sideways scratches — horizontal travel, not swept angle. Cover
- * the rim's circumference in one `SEC_PER_REV` and the rate is 1, so the track
+ * the rim's circumference in one revolution's worth of audio and the rate is 1, so the track
  * plays forward at normal speed and the platter feels connected. The maths and
  * the reason the angle was wrong are in `core/scratch.ts`.
  */
@@ -43,7 +45,9 @@ export function Platter({
   const ring = r - 4
   const progress = durationSec > 0 ? Math.min(1, positionSec / durationSec) : 0
   const circ = 2 * Math.PI * ring
-  const spin = ((positionSec / SEC_PER_REV) % 1) * 360
+  const { platterRpm, jogSmoothing } = useSettings()
+  const secPerRevolution = secPerRev(platterRpm)
+  const spin = ((positionSec / secPerRevolution) % 1) * 360
 
   const drag = useRef<{ x: number; time: number; rate: number } | null>(null)
   const holdTimer = useRef(0)
@@ -77,7 +81,7 @@ export function Platter({
     // millisecond, and resetting `x` would drop that travel instead of letting
     // it count toward the next event.
     if (dt <= 0) return
-    const rate = scratchRateFromDrag(e.clientX - d.x, dt, size, d.rate)
+    const rate = scratchRateFromDrag(e.clientX - d.x, dt, size, d.rate, secPerRevolution, jogSmoothing)
     drag.current = { x: e.clientX, time: now, rate }
     ctl.scratchRate(deckId, rate)
 

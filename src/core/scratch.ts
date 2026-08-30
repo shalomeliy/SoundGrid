@@ -39,17 +39,26 @@ export const pxPerRev = (platterSize: number): number => Math.PI * platterSize
  * `dtSec <= 0` and a non-positive `platterSize` return the previous rate rather
  * than dividing by zero: two pointer events can share a millisecond, and a
  * platter with no size is a caller bug that must not become an infinite rate.
+ *
+ * `secPerRev` and `smoothing` are parameters with defaults from v0.2.5, because
+ * both became user settings (platter speed, jog smoothing). Taking them as data
+ * is what keeps `core/` pure — and it is what keeps the mouse platter and the
+ * hardware jog obeying the same two numbers. A setting that moved the wheel but
+ * not the on-screen platter would be worse than no setting: it would look like
+ * the mouse path was broken.
  */
 export function scratchRateFromDrag(
   dxPx: number,
   dtSec: number,
   platterSize: number,
   prevRate: number,
+  secPerRev: number = SEC_PER_REV,
+  smoothing: number = SMOOTHING,
 ): number {
   if (dtSec <= 0 || platterSize <= 0) return prevRate
   const revs = dxPx / pxPerRev(platterSize)
-  const instant = (revs * SEC_PER_REV) / dtSec
-  const smoothed = prevRate + (instant - prevRate) * SMOOTHING
+  const instant = (revs * secPerRev) / dtSec
+  const smoothed = prevRate + (instant - prevRate) * smoothing
   return Math.max(-MAX_RATE, Math.min(MAX_RATE, smoothed))
 }
 
