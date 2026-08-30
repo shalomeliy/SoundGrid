@@ -30,6 +30,31 @@ describe('the declared version is the version', () => {
     ).toBe(pkg.version)
   })
 
+  /**
+   * A third copy of the same number, found while bumping to v0.2.4: the lockfile
+   * still read `"version": "0.0.0"` — the value `package.json` was corrected away
+   * from back in v0.2.1 — because a version bump edits `package.json` by hand and
+   * the lockfile only catches up the next time someone happens to run `npm
+   * install`. It is the same fact in a third place, so it belongs in the same
+   * check. `npm install` (or `npm install --package-lock-only`) rewrites it.
+   */
+  it('package-lock.json carries the same version', () => {
+    const lock = JSON.parse(read('package-lock.json')) as {
+      version: string
+      packages: Record<string, { version?: string }>
+    }
+    for (const [where, version] of [
+      ['package-lock.json → version', lock.version],
+      ['package-lock.json → packages[""].version', lock.packages['']?.version],
+    ] as const) {
+      expect(
+        version,
+        `${where} is ${version} but package.json is ${pkg.version}.\n` +
+          'Run `npm install --package-lock-only` to bring the lockfile back in step.',
+      ).toBe(pkg.version)
+    }
+  })
+
   it('ROADMAP.md has a row for it', () => {
     const roadmap = read('ROADMAP.md')
     expect(
