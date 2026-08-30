@@ -21,9 +21,17 @@ function deck(ch: number) {
     [bindingKey('cc', ch, 0x00)]: { action: 'tempo' as const, deck: idx(ch), mode: 'absolute' as const, invert: true },
     // Jog wheel. The touch sensor is what tells scratch apart from bend, so it
     // is bound separately: note 0x36 goes high while a hand rests on the platter
-    // top, and the CCs report rotation either way. Best-effort like the rest of
-    // this preset — correct it with Learn if the FLX4 reports something else.
+    // top, and the CCs report rotation either way. **0x36 is confirmed on real
+    // hardware** (2026-08-30, both decks) — it was a guess until then, and the
+    // rest of this preset still is.
     [bindingKey('note', ch, 0x36)]: { action: 'jogTouch' as const, deck: idx(ch), mode: 'button' as const },
+    //
+    // **The two jog CCs are complementary, not duplicates — measured 30/08.**
+    // 0x22 is the touch-sensitive top platter and 0x21 is the outer rim, and the
+    // controller sends whichever one the hand is on: turning by the rim alone
+    // produced 3188 messages on 0x21 and **not one** on 0x22, with note 0x36 never
+    // firing. Binding both to `jog` is therefore right, and the deck sees one
+    // continuous stream. Do not "fix" this by dropping one of them.
     [bindingKey('cc', ch, 0x22)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     [bindingKey('cc', ch, 0x21)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     // loop
@@ -46,6 +54,12 @@ function idx(ch: number): 'A' | 'B' {
 
 export const FLX4_MAPPING: MidiMapping = {
   name: 'Pioneer DDJ-FLX4',
+  /**
+   * Measured on the hardware (2026-08-30), not assumed: the jogs send 63 and 65,
+   * one either side of 64, one message per tick. The preset shipped reading those
+   * as two's-complement, which turned every tick into 63 the wrong way round.
+   */
+  relativeEncoding: 'offset-64',
   bindings: {
     ...deck(0),
     ...deck(1),

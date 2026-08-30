@@ -124,7 +124,7 @@ class MidiManager {
         if (deck) ctl.setTempo(deck, bipolar(value, b.invert))
         break
       case 'jog':
-        if (deck) ctl.jogTurn(deck, relativeDelta(value))
+        if (deck) ctl.jogTurn(deck, relativeDelta(value, this.mapping.relativeEncoding))
         break
       case 'jogTouch':
         if (deck) ctl.jogTouch(deck, value > 0)
@@ -174,7 +174,7 @@ class MidiManager {
         if (value > 0 && deck) ctl.toggleCueMonitor(deck)
         break
       case 'browse':
-        ctl.moveSelection(relativeDelta(value))
+        ctl.moveSelection(relativeDelta(value, this.mapping.relativeEncoding))
         break
       case 'browseEnter': {
         if (value > 0) {
@@ -193,6 +193,13 @@ class MidiManager {
       this.learnResolver = ({ key, mode }) => {
         const [act, deck, param] = action.split(':')
         this.mapping = {
+          // Spread the whole mapping, not just name + bindings. Learn used to
+          // rebuild those two fields by hand, so `relativeEncoding` — added once
+          // the FLX4's jogs were measured — would have been dropped the first
+          // time anyone learned a control, and the wheels would have silently
+          // gone back to reading 63 ticks per tick, backwards. A field added
+          // later must not depend on someone remembering this line.
+          ...this.mapping,
           name: `${this.mapping.name} (custom)`,
           bindings: {
             ...this.mapping.bindings,

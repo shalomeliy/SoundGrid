@@ -96,6 +96,18 @@ export function TopBar() {
             {midiState.lastMessage}
           </span>
         )}
+        {/* Deliberately next to the raw MIDI line: together they answer "did it
+            arrive" and "what did it do", which is the pair you need when a
+            control appears dead. */}
+        {midiState.lastJog && (
+          <span
+            className={`tnum hidden max-w-[16rem] truncate text-2xs sm:inline ${
+              midiState.lastJog.includes('ignored') ? 'text-warn' : 'text-live'
+            }`}
+          >
+            {midiState.lastJog}
+          </span>
+        )}
         {midiState.status === 'idle' && audioReady && (
           <Button variant="ghost" size="sm" onClick={() => midi.init()}>
             Connect MIDI

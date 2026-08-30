@@ -199,15 +199,69 @@ const JOG_TICKS_PER_REV = 600
 const JOG_SEC_PER_REV = 1.333
 const JOG_SMOOTHING = 0.4
 const JOG_MAX_RATE = 8
-/** Bend strength per tick when the platter is not held. */
-const BEND_PER_TICK = 0.012
+/**
+ * Bend strength per tick when the platter is not held.
+ *
+ * Recalibrated 30/08 after the FLX4's decode was fixed, because this number was
+ * silently tuned against the broken one. Every jog message used to arrive as
+ * `ticks = 63`, so `63 * 0.012 = 0.756` clamped to the 0.5 ceiling — **every
+ * touch of the rim jumped straight to the maximum ±50% bend**. It felt like it
+ * worked; it was the bug, at full volume. With one message now correctly worth
+ * one tick, the same constant gave 1.2% and the rim felt dead.
+ *
+ * Deliberately per-tick and not rate-based: `ticks` per message already grows
+ * with speed (the FLX4 sends 65/66/67 for 1/2/3 ticks), and a rate would have to
+ * divide by `JOG_TICKS_PER_REV`, which is still unmeasured. This value is
+ * independent of that one, so it does not move when that number is finally set.
+ *
+ * It is a **feel** value — the ceiling below is the real safety net. Tune it here.
+ *
+ * 0.05 -> 0.10 on the owner's verdict after trying it on the FLX4: "very slow".
+ * That lands the useful range where the commercial tools sit, because ticks per
+ * message already scale with how hard the wheel is turned — the FLX4 sends
+ * 65/66/67 for 1/2/3 ticks, so an easy nudge is ~10% and a hard shove ~30%,
+ * with the ±0.5 clamp still catching a genuine spin.
+ */
+const BEND_PER_TICK = 0.1
+
+/**
+ * Say what the jog just did — including when it did nothing, and why.
+ *
+ * Throttled, and that is not a nicety. The FLX4 sends ~670 jog messages per
+ * revolution, so a store write per message is hundreds of React re-renders a
+ * second, all of them to retype one line of text in the top bar. The first
+ * version of this readout did exactly that and could plausibly have starved the
+ * render loop that draws the playhead — a diagnostic that breaks the thing it
+ * is diagnosing is worse than none. 10 Hz is faster than anyone reads.
+ */
+const JOG_REPORT_MS = 100
+let lastJogReport = { at: 0, text: '' }
+
+function reportJog(deckId: DeckId, what: string) {
+  const text = `${deckId}: ${what}`
+  const now = performance.now()
+  if (text === lastJogReport.text && now - lastJogReport.at < JOG_REPORT_MS) return
+  lastJogReport = { at: now, text }
+  useStore.getState().setMidi({ lastJog: text })
+}
 
 export function jogTurn(deckId: DeckId, ticks: number) {
   const deck = engine.decks[deckId]
-  if (!deck.hasTrack) return
+  if (!deck.hasTrack) {
+    reportJog(deckId, 'ignored — no track loaded')
+    return
+  }
 
   if (!deck.scratching) {
-    deck.pitchBend(Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK)))
+    const amount = Math.max(-0.5, Math.min(0.5, ticks * BEND_PER_TICK))
+    if (!deck.playing) {
+      // The decision (30/08, with the owner): a stopped deck does nothing on the
+      // rim — there is no speed to bend. It says so rather than looking broken.
+      reportJog(deckId, `bend ${(amount * 100).toFixed(0)}% ignored — deck stopped`)
+      return
+    }
+    deck.pitchBend(amount)
+    reportJog(deckId, `bend ${amount > 0 ? '+' : ''}${(amount * 100).toFixed(0)}% (${ticks} ticks)`)
     return
   }
 
@@ -224,6 +278,7 @@ export function jogTurn(deckId: DeckId, ticks: number) {
   const rate = Math.max(-JOG_MAX_RATE, Math.min(JOG_MAX_RATE, smoothed))
   jogState[deckId] = { time: now, rate }
   deck.scratchRate(rate)
+  reportJog(deckId, `scratch ${rate.toFixed(2)}x`)
 }
 
 /** Platter touch sensor: the hand landing on the record, and coming off it. */

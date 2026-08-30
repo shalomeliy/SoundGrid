@@ -104,13 +104,16 @@ SoundGrid's hard invariant, and it outranks convenience:
 
 **`vitest` landed in v0.2.1** — `npm test`, and `npm run check` runs it. What lives in
 `tests/repo/` are invariants about the **repository as a system**: doc size, version
-drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together. The rule
+drift, dead paths, unresolvable SHAs, the two `CLAUDE` files moving together, and no
+file carrying conflict markers. The rule
 they come from: **every bug caught once becomes a permanent check.** When you fix
 something a test could have caught, add the test in the same commit.
 
-**There are still no tests of application behaviour**, and a runner does not conjure
-them: the audio engine needs an `AudioContext`, the library needs the user's real files,
-and faking either would test the fake. So "a check that fails without the change" still
+**The audio engine and the library still have no automated tests**, and a runner does
+not conjure them: the engine needs an `AudioContext`, the library needs the user's real
+files, and faking either would test the fake. (`tests/core/` is the counter-example and
+the pattern to copy — v0.2.2 pulled the scratch maths out into `core/scratch.ts` and got
+12 real cases out of it. The rule below is what that move was for.) So "a check that fails without the change" still
 usually means an explicit, recorded verification. The v0.1.7 pattern is the standard: a
 small Node script run directly against `C:\Users\Shalom\Music\Tracks` with a minimal
 `File` shim, numbers written down (BPM 96.9%, Key 97.2%, Duration 100%, 0.6s over 360
@@ -174,12 +177,8 @@ conversations must be allowed to end.
   file, so it does **not** reset `context_check.py`'s counters — keep clearing and it
   reads 🔴 while context is actually empty. One transcript per version also keeps
   `--resume` and `/rewind` usable. `/clear` is only for throwaway exploration with no
-<<<<<<< ours
-  record worth keeping.
-=======
   record worth keeping. (The old "קריטריון CLEAR" section in `HANDOFF.md` was superseded
   by this rule and removed in the 2026-08-29 doc split.)
->>>>>>> theirs
 - Prefer a subagent for read-only exploration ("where is X used", "does Y exist") so its
   reading stays out of this conversation's context.
 - Don't dump whole files or full command output into the transcript when a targeted
@@ -200,47 +199,47 @@ Each doc answers one question and stays out of the others' way:
 | What the app is, for someone who just found the repo | `README.md` |
 | What's allowed while working | this file (Hebrew: `CLAUDE-HE.md`) |
 
-<<<<<<< ours
-**The docs are checked, not trusted** (v0.2.1). Three pieces of debt that used to sit
-here — an append-only `HANDOFF.md`, paths pointing at the pre-v0.1.6 layout, and a
-`package.json` stuck on `"version": "0.0.0"` — are fixed, and each one now has a test in
-`tests/repo/` so it cannot come back quietly. What that means while working:
+**The docs are checked, not trusted.** The split of 2026-08-29 came first: `HANDOFF.md`
+had reached 43.9KB and `ROADMAP.md` 34.6KB — both append-only, both read at the start of
+every conversation, so together the largest standing context cost in the repo. Worse than
+the size, the file had gone false: its header announced "v0.2.0b written" while **four of
+the six items in its own plan had never been done**, buried in one block out of twenty. A
+file that grows stops being read, and a file that isn't read starts to lie.
 
-- **`HANDOFF.md` holds the present only.** When a version closes, its block **moves** to
-  `docs/handoff/<version>.md` and the root file keeps a link. There is a byte budget on
-  the root file; when it fails, move a block out — never raise the budget.
-- **A path named in a doc must exist.** If you deliberately name a dead path to explain a
-  move, mark the line `<!-- dead-path -->`. Named exemption, not omission — the same rule
-  as `COMPANION_EXT`.
+So `HANDOFF.md` holds **the present only**, under a **15,000-byte budget** stated at the
+top of the file. When a version closes, its block **moves** to `docs/handoff/<version>.md`,
+which carries both the original scope and the outcome, and the root file keeps a link.
+**Anything still open stays in `HANDOFF.md`** — the archive is for the record, not for
+hiding work.
+
+### These are checks now, not conventions (v0.2.1)
+
+`tests/repo/` runs inside `npm run check`, so the docs fail the gate exactly like the code:
+
+- **The 15,000-byte budget is enforced.** When it fails, move a closed block out to
+  `docs/handoff/<version>.md`. **Never raise the budget.**
+- **A path named in a doc must exist**, in both forms the docs write it: a full `src/…`
+  path, or a bare `dir/name` as in the tree map. If you deliberately name a dead path to
+  explain a move, mark the line `<!-- dead-path -->`. Named exemption, not omission — the
+  same rule as `COMPANION_EXT`.
 - **`package.json`'s version and `HANDOFF.md`'s "גרסה נוכחית" line are one fact.** Change
   them together, and give the version a row in `ROADMAP.md`.
 - **A commit SHA quoted in a doc must resolve.** The docs argue from history; a SHA that
   resolves to nothing reads as evidence and is not.
+- **The two `CLAUDE` files must move in the same commit** — the rule at the top of this
+  file finally has something behind it.
+- **No tracked file carries conflict markers** (v0.2.4). This file sat on `main` with two
+  unresolved regions in it for three versions while `npm run check` stayed green: the five
+  checks above all read the docs for *meaning*, and none read them for *damage*.
 
-Still open: `ROADMAP.md` is ~35KB and append-only, and was left alone on purpose — the
-version specs in it are read *selectively*, one section at a time, so it does not carry
-the same per-conversation cost. It has no budget test yet.
-=======
-**The split (2026-08-29).** `HANDOFF.md` had reached 43.9KB and `ROADMAP.md` 34.6KB — both
-append-only, both read at the start of every conversation, so together the largest standing
-context cost in the repo. Worse than the size: the file had gone false. Its header announced
-"v0.2.0b written" while **four of the six items in its own plan had never been done**, buried
-in one block out of twenty. A file that grows stops being read, and a file that isn't read
-starts to lie.
+**Still a convention, because no check can express it: "the status line tells the truth."**
+The 2026-08-29 failure — a header announcing "v0.2.0b written" while four of the six items
+in its own plan were never done — needs a human reading the plan against the code. The
+split is what makes that reading possible; it is not a substitute for it.
 
-Now: `HANDOFF.md` holds **the present only**, under a **15,000-byte budget** stated at the
-top of the file. When a version closes its block moves to `docs/handoff/<version>.md`, which
-carries both the original scope and the outcome. **Anything still open stays in `HANDOFF.md`**
-— the archive is for the record, not for hiding work.
-
-**Open debt in the docs themselves:**
-
-- **Nothing enforces any of this.** The size budget, the version field, and "the status line
-  is true" are all conventions right now. They become checks only when a test runner exists;
-  there is none (see `HANDOFF.md`, "חוב תשתית התיעוד", item ②).
-- **`package.json` says `"version": "0.0.0"`** while `main` is at v0.2.0. Either keep it in
-  step with `ROADMAP.md` or state explicitly that the field is unused.
->>>>>>> theirs
+`ROADMAP.md` is ~32KB and append-only, and was left alone on purpose — its version specs
+are read *selectively*, one section at a time, so it does not carry the same
+per-conversation cost. It has no budget test yet.
 
 ## Useful commands
 
@@ -249,7 +248,7 @@ npm run check      # tsc -b + oxlint + depcruise + vitest — the gate before ev
 npm run build      # type-check + static bundle into dist/
 npm run lint       # oxlint alone
 npm run arch       # dependency-cruiser alone — the layer rules
-npm test           # vitest alone — the repo invariants in tests/repo/
+npm test           # vitest alone — tests/repo/ invariants + tests/core/ unit tests
 ```
 
 ```bash
