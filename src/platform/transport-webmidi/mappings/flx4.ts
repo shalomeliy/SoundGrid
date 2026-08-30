@@ -25,6 +25,13 @@ function deck(ch: number) {
     // hardware** (2026-08-30, both decks) — it was a guess until then, and the
     // rest of this preset still is.
     [bindingKey('note', ch, 0x36)]: { action: 'jogTouch' as const, deck: idx(ch), mode: 'button' as const },
+    //
+    // **The two jog CCs are complementary, not duplicates — measured 30/08.**
+    // 0x22 is the touch-sensitive top platter and 0x21 is the outer rim, and the
+    // controller sends whichever one the hand is on: turning by the rim alone
+    // produced 3188 messages on 0x21 and **not one** on 0x22, with note 0x36 never
+    // firing. Binding both to `jog` is therefore right, and the deck sees one
+    // continuous stream. Do not "fix" this by dropping one of them.
     [bindingKey('cc', ch, 0x22)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     [bindingKey('cc', ch, 0x21)]: { action: 'jog' as const, deck: idx(ch), mode: 'relative' as const },
     // loop

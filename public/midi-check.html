@@ -111,13 +111,20 @@
           <li><b>הנח יד על הפלטר</b> של דק שמאל. הריבוע "מגע ג'וג" אמור להידלק ולהראות מספר תו.</li>
           <li><b>לחץ "אפס מונים"</b>, ואז סובב את הג'וג <b>עשרה סיבובים</b> קדימה, ברצף ולאט.
             לא צריך דיוק — רק לספור כמה סיבובים עשית.</li>
-          <li>הקלד את המספר שספרת בתיבה <b>"סיבובים"</b>. העמודה <b>טיקים לסיבוב</b>
-            היא ה‑<code>JOG_TICKS_PER_REV</code> האמיתי. תגיד לי אותה.</li>
+          <li>הקלד את המספר שספרת בתיבה <b>"סיבובים"</b>, וקרא את <b>הסכום לדק</b>
+            שמעל הטבלה — <b>זה</b> ה‑<code>JOG_TICKS_PER_REV</code>, לא שורה בודדת.</li>
         </ol>
+        <p class="note">
+          <b>למה הסכום ולא שורה אחת:</b> הגלגל מדווח בשני CC שמתחלקים ביניהם בסיבוב,
+          ביחס שמשתנה בין ניסיון לניסיון. שניהם מוזנים לדק, אז רק הסכום יציב.
+        </p>
         <p class="note">
           <b>למה עשרה ולא אחד:</b> טעות של רבע סיבוב על סיבוב אחד היא שגיאה של 25%.
           אותה טעות בדיוק על עשרה סיבובים היא 2.5%. ככל שתסובב יותר, פחות משנה כמה
           מדויק עצרת — אז אל תילחם בגלגל, פשוט תספור.
+          <br /><b>ולדיוק אמיתי:</b> הדבק פיסת נייר דביק על הפלטר, יישר אותה לנקודה
+          קבועה (נניח "12 בשעון"), סובב 20 סיבובים, ועצור כשהיא חוזרת לאותה נקודה.
+          ככה גם טעות העצירה נעלמת, ולא רק מתחלקת.
         </p>
       </details>
 
@@ -136,6 +143,9 @@
               currently in <code>controls.ts:197</code>: <b>JOG_TICKS_PER_REV = 600</b>
             </span>
           </p>
+          <div id="totals" class="miss" style="margin: 0 0 10px; font-size: 12.5px">
+            הסכום לכל דק יופיע כאן.
+          </div>
           <table id="cc-table">
             <thead>
               <tr>
@@ -240,6 +250,27 @@
         })
         if (!rows.length) return
         const n = revs()
+        // The two jog CCs are complementary, not duplicates: measured on the FLX4,
+        // 0x21 and 0x22 split one rotation between them in a ratio that moves from
+        // turn to turn (5.06 in one capture, 3.74 in the next) while their SUM stays
+        // put. Both are bound to `jog`, so the sum is what the deck actually gets —
+        // and adding two numbers by hand is exactly where a measurement goes wrong.
+        const perDeck = new Map()
+        for (const r of rows) {
+          if (!MAPPED_JOG_CCS.includes(r.cc)) continue
+          const d = r.ch === 0 ? 'A' : r.ch === 1 ? 'B' : `ch${r.ch}`
+          perDeck.set(d, (perDeck.get(d) || 0) + Math.abs(r.net))
+        }
+        el('totals').className = perDeck.size ? '' : 'miss'
+        el('totals').innerHTML = perDeck.size
+          ? [...perDeck.entries()]
+              .map(
+                ([d, net]) =>
+                  `<span class="deck${d}">deck ${d}</span> — <b class="big">${Math.round(net / n)}</b> ` +
+                  `<span class="miss">טיקים לסיבוב (‏0x21 + 0x22 יחד — זה המספר)</span>`,
+              )
+              .join(' &nbsp;·&nbsp; ')
+          : 'הסכום לכל דק יופיע כאן.'
         el('cc-rows').innerHTML = rows
           .map((r) => {
             const known = MAPPED_JOG_CCS.includes(r.cc)
