@@ -201,7 +201,10 @@ DJ מותקנת. היום כל רענון דורש בחירת תיקייה מח�
 - זיהוי downbeat ראשוני, שמירת beatgrid (offset + BPM) לטראק
 - עריכת רשת ידנית: הזזה, half/double, "set downbeat here", tap‑tempo
 - Phase‑align ב‑SYNC: יישור הביט הקרוב לדק המאסטר
-- Quantize ל‑hot cues, loops, ו‑beat‑jump
+- Quantize ל‑hot cues, loops, ו‑beat‑jump — **וגם לנקודת ה‑CUE הראשית.**
+  המשתמש דיווח (30/08) ש‑CUE נחתם באמצע בית. זה נכון והוא צודק: `cue()`
+  שומר את `deck.position` המדויק, ובלי רשת ביט אין למה להצמיד. הסעיף הזה
+  הוא התשובה — לא באג נפרד
 - בורר "master deck" ידני/אוטומטי
 - **הושלם כאשר:** שני טראקים באותו BPM נשארים בפאזה אחרי SYNC לאורך 2 דקות.
 
