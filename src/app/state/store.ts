@@ -13,7 +13,7 @@ import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output'
+export type NoticeSource = 'load' | 'output' | 'quantize'
 
 function emptyDeck(id: DeckId): DeckState {
   return {

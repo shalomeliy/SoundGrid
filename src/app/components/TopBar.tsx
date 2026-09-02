@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { initAudio } from '@/controls'
+import { initAudio, toggleQuantize } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
 import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
@@ -8,6 +8,7 @@ import { Button, Pill, type PillTone } from '@/app/components/controls'
 
 export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const audioReady = useStore((s) => s.audioReady)
+  const quantize = useStore((s) => s.quantize)
   const output = useStore((s) => s.output)
   const midiState = useStore((s) => s.midi)
   const scratchReady = useStore((s) => s.scratchReady)
@@ -109,6 +110,11 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           {!scratchReady && (
             <Pill tone="warn" label={`no scratch · ${scratchError ?? 'AudioWorklet unavailable'}`} />
           )}
+          {/* Off by default (v0.3.0 decision) — CUE/hot cues/loops stay exactly
+              as precise as before until the user opts in. */}
+          <Button variant="toggle" active={quantize} tone="var(--color-accent)" onClick={toggleQuantize}>
+            Quantize
+          </Button>
         </>
       )}
 

@@ -1,7 +1,14 @@
 import { analyzeWaveform, detectBeatGrid } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
-import { bpmFromTaps, doubleGrid, halveGrid, setDownbeatAt, shiftGrid } from '@/core/beatgrid'
+import {
+  bpmFromTaps,
+  doubleGrid,
+  halveGrid,
+  quantizeToGrid,
+  setDownbeatAt,
+  shiftGrid,
+} from '@/core/beatgrid'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
@@ -211,7 +218,7 @@ export function cue(deckId: DeckId) {
     deck.seek(st.cuePointSec)
     useStore.getState().patchDeck(deckId, { positionSec: st.cuePointSec })
   } else {
-    useStore.getState().patchDeck(deckId, { cuePointSec: deck.position })
+    useStore.getState().patchDeck(deckId, { cuePointSec: quantizeIfOn(deckId, deck.position) })
   }
 }
 
@@ -478,7 +485,7 @@ export function setHotCue(deckId: DeckId, index: number) {
       ...cues,
       {
         index,
-        positionSec: deck.position,
+        positionSec: quantizeIfOn(deckId, deck.position),
         label: `${index + 1}`,
         color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length],
       },
@@ -505,7 +512,7 @@ export function toggleLoop(deckId: DeckId) {
   } else {
     const bpm = st.bpm ?? 120
     const beatSec = 60 / bpm
-    const start = deck.position
+    const start = quantizeIfOn(deckId, deck.position)
     deck.setLoop(start, start + beatSec * st.loopBeats)
     patchDeck(deckId, { loopActive: true })
   }
@@ -580,6 +587,31 @@ export function setCueMix(v: number) {
 /** Mark the grid as looked at, edit or not — clears the "unconfirmed" pill. */
 export function confirmBeatGrid(deckId: DeckId) {
   useStore.getState().patchDeck(deckId, { beatGridConfirmed: true })
+}
+
+export function toggleQuantize() {
+  useStore.setState((s) => ({ quantize: !s.quantize }))
+}
+
+/**
+ * `sec` snapped to `deckId`'s beat grid when quantize is on, unchanged when
+ * it's off or the deck has no grid to snap to. The no-grid case is never a
+ * silent no-op — the user asked for quantize and didn't get it, so they're
+ * told, once, via the notice line (CLAUDE.md's central rule again).
+ */
+function quantizeIfOn(deckId: DeckId, sec: number): number {
+  const { quantize, decks, setNotice } = useStore.getState()
+  if (!quantize) return sec
+  const grid = decks[deckId].beatGrid
+  if (!grid) {
+    setNotice({
+      text: `Quantize is on but deck ${deckId} has no beat grid yet — this point was set exactly, not snapped.`,
+      tone: 'warn',
+      source: 'quantize',
+    })
+    return sec
+  }
+  return quantizeToGrid(sec, grid)
 }
 
 export function nudgeBeatGrid(deckId: DeckId, deltaSec: number = BEATGRID_NUDGE_SEC) {
