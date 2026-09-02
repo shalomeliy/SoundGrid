@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as ctl from '@/controls'
-import { PLATTER_SIZE } from '@/core/constants'
+import { LONG_PRESS_MS, PLATTER_SIZE } from '@/core/constants'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
@@ -41,6 +41,25 @@ export function Deck({ deckId }: { deckId: DeckId }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridPanelOpen])
+
+  // SYNC: a tap toggles phase-lock to the master deck; a long-press makes
+  // this deck the master instead (v0.3.0). Mirrors Platter.tsx's hold-timer
+  // idiom — a ref, not state, because the timer firing shouldn't re-render.
+  const syncHoldTimer = useRef(0)
+  const syncLongFired = useRef(false)
+  useEffect(() => () => window.clearTimeout(syncHoldTimer.current), [])
+  const onSyncDown = () => {
+    syncLongFired.current = false
+    window.clearTimeout(syncHoldTimer.current)
+    syncHoldTimer.current = window.setTimeout(() => {
+      syncLongFired.current = true
+      ctl.setMasterDeck(deckId)
+    }, LONG_PRESS_MS)
+  }
+  const onSyncUp = () => {
+    window.clearTimeout(syncHoldTimer.current)
+    if (!syncLongFired.current) ctl.syncDeck(deckId)
+  }
 
   const TRACK_MIME = 'application/x-soundgrid-track'
   const onDrop = (e: React.DragEvent) => {
@@ -195,7 +214,15 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             >
               {deck.playing ? 'Pause' : 'Play'}
             </Button>
-            <Button variant="transport" onClick={() => ctl.syncDeck(deckId)} disabled={!loaded}>
+            <Button
+              variant="transport"
+              active={deck.syncActive}
+              tone={color}
+              onPointerDown={onSyncDown}
+              onPointerUp={onSyncUp}
+              disabled={!loaded}
+              title="Tap: sync to master. Hold: make this deck master."
+            >
               Sync
             </Button>
           </div>

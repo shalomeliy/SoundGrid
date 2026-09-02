@@ -5,10 +5,12 @@ import {
   bpmFromTaps,
   doubleGrid,
   halveGrid,
+  phaseDeltaSec,
   quantizeToGrid,
   setDownbeatAt,
   shiftGrid,
 } from '@/core/beatgrid'
+import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
@@ -184,11 +186,23 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   }
 }
 
+/**
+ * First deck to start playing becomes master by default (v0.3.0) — the
+ * automatic half of "auto + manual override". A no-op once a master already
+ * exists, whether set this way or by an explicit long-press. Deliberately not
+ * wired to `cuePlayPreview`'s hold-to-preview: a momentary CUE-hold is not
+ * "starting to play" in the sense a DJ means it.
+ */
+function maybeAutoMaster(deckId: DeckId) {
+  if (useStore.getState().masterDeckId == null) useStore.setState({ masterDeckId: deckId })
+}
+
 export function togglePlay(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) return
   deck.togglePlay()
   useStore.getState().patchDeck(deckId, { playing: deck.playing })
+  if (deck.playing) maybeAutoMaster(deckId)
 }
 
 export function play(deckId: DeckId) {
@@ -196,6 +210,7 @@ export function play(deckId: DeckId) {
   if (!deck.hasTrack || deck.playing) return
   deck.play()
   useStore.getState().patchDeck(deckId, { playing: true })
+  maybeAutoMaster(deckId)
 }
 
 export function pause(deckId: DeckId) {
@@ -465,10 +480,17 @@ export function nudgeDeck(deckId: DeckId, deltaSec: number) {
   seekDeck(deckId, deck.position + deltaSec)
 }
 
+/**
+ * Touching the tempo fader breaks an active phase-lock (v0.3.0) — matches
+ * real hardware, where grabbing the fader is how a DJ takes tempo back from
+ * SYNC. `syncDeck`/`setMasterDeck` call this to *set* the matched tempo and
+ * then set `syncActive: true` themselves right after, so that path is not
+ * affected — only a caller that patches `tempo` alone, i.e. a manual touch.
+ */
 export function setTempo(deckId: DeckId, tempo: number) {
   const t = Math.max(-1, Math.min(1, tempo))
   engine.decks[deckId].setTempo(t)
-  useStore.getState().patchDeck(deckId, { tempo: t })
+  useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
 }
 
 export function setHotCue(deckId: DeckId, index: number) {
@@ -680,16 +702,129 @@ export function tapTempo(deckId: DeckId) {
   patchDeck(deckId, { beatGrid: { bpm, offsetSec }, bpm, beatGridConfirmed: true })
 }
 
-/** Beat-match deck to the other deck's tempo (simple BPM match, no phase align yet). */
+// ————————————————————————————————————————————————————————————————
+// Phase-align SYNC + master deck (v0.3.0)
+//
+// Why an ongoing correction loop and not a one-shot nudge on the SYNC press:
+// once tempo faders match, both decks share one AudioContext clock, so there
+// is no drift *source* between them except that each deck's detected bpm has
+// finite precision (rounded to 0.1, core/beatgrid.ts). A ~0.1bpm error at 128
+// bpm is ~0.08% — over two minutes that is up to ~0.1s of accumulated drift,
+// enough to fail the "stays in phase" bar. A single correction at press-time
+// cannot chase an error that only reveals itself gradually.
+//
+// Why this lives here and not in platform/: it needs engine.decks (rate
+// control) and useStore (grid/master/quantize state) together, which is
+// exactly what every other function in this file already does. Putting it in
+// platform/audio-webaudio/ would mean platform/ reaching into
+// @/app/state/store — a second copy of the one documented, deliberate
+// boundary violation (.dependency-cruiser.cjs) that transport-webmidi/
+// manager.ts already carries, which CLAUDE.md is explicit must not happen.
+// ————————————————————————————————————————————————————————————————
+
+const SYNC_LOOP_INTERVAL_SEC = 1
+/** Below this phase gap, a correction would be smaller than it's worth firing. */
+const SYNC_PHASE_DEADBAND_SEC = 0.004
+
+let syncLoopStarted = false
+/** Subscribed once, ever — same lifetime as useRenderLoop's clock subscription. Each deck's own `syncActive` flag is what turns correction on and off, not this. */
+function ensureSyncLoop() {
+  if (syncLoopStarted) return
+  syncLoopStarted = true
+  let last = 0
+  clock.subscribe((t) => {
+    if (t - last < SYNC_LOOP_INTERVAL_SEC) return
+    last = t
+    runSyncCorrection()
+  })
+}
+
+function runSyncCorrection() {
+  const { decks, masterDeckId } = useStore.getState()
+  if (!masterDeckId) return
+  const master = decks[masterDeckId]
+  for (const id of ['A', 'B'] as DeckId[]) {
+    if (id === masterDeckId) continue
+    const st = decks[id]
+    if (!st.syncActive || !st.playing || !master.playing) continue
+    if (!st.beatGrid || !master.beatGrid) continue
+    const deck = engine.decks[id]
+    const masterDeck = engine.decks[masterDeckId]
+    const delta = phaseDeltaSec(deck.position, st.beatGrid, masterDeck.position, master.beatGrid)
+    if (Math.abs(delta) < SYNC_PHASE_DEADBAND_SEC) continue
+    deck.syncNudge(delta, SYNC_LOOP_INTERVAL_SEC)
+  }
+}
+
+/**
+ * SYNC: match tempo to the master deck (auto-resolved to the other deck if
+ * none is set yet), then keep phase-locked to it until pressed again, the
+ * tempo fader is touched (setTempo), or a new track loads (loadTrackToDeck) —
+ * all three already patch `syncActive: false`. Pressing SYNC on the deck
+ * that is already master is a no-op with a notice, not a silent nothing:
+ * there is nothing beneath the master to lock to.
+ */
 export function syncDeck(deckId: DeckId) {
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
-  const { decks } = useStore.getState()
-  const src = decks[other].bpm
-  const mine = decks[deckId].bpm
-  if (!src || !mine) return
-  const ratio = src / mine
-  const tempo = (ratio - 1) / 0.08
+  const { decks, masterDeckId, patchDeck, setNotice } = useStore.getState()
+  const st = decks[deckId]
+
+  if (st.syncActive) {
+    patchDeck(deckId, { syncActive: false })
+    return
+  }
+
+  const resolvedMaster = masterDeckId ?? other
+  if (resolvedMaster === deckId) {
+    setNotice({
+      text: `Deck ${deckId} is already master — long-press SYNC on deck ${other} to make it master instead.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  const master = decks[resolvedMaster]
+  const mine = st.bpm
+  if (!master.bpm || !master.beatGrid || !mine) {
+    setNotice({
+      text: `Deck ${resolvedMaster} has no tempo/grid yet — nothing to sync to.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+
+  if (masterDeckId == null) useStore.setState({ masterDeckId: resolvedMaster })
+  const ratio = master.bpm / mine
+  const tempo = (ratio - 1) / settings.values.tempoRange
   setTempo(deckId, tempo)
+  patchDeck(deckId, { syncActive: true })
+  ensureSyncLoop()
+}
+
+/**
+ * Explicit master override — SYNC long-press (v0.3.0). Always wins over the
+ * automatic pick. A deck already phase-locked (syncActive) to the old master
+ * is re-engaged against the new one rather than dropped: the point of
+ * overriding master mid-mix is to keep mixing, not to have to press SYNC
+ * again. The deck being promoted can't stay locked to what it used to follow.
+ */
+export function setMasterDeck(deckId: DeckId) {
+  const { decks, patchDeck } = useStore.getState()
+  useStore.setState({ masterDeckId: deckId })
+  if (decks[deckId].syncActive) patchDeck(deckId, { syncActive: false })
+
+  const other: DeckId = deckId === 'A' ? 'B' : 'A'
+  const st = decks[other]
+  if (!st.syncActive) return
+  const master = decks[deckId]
+  const mine = st.bpm
+  if (!master.bpm || !mine) return
+  const ratio = master.bpm / mine
+  const tempo = (ratio - 1) / settings.values.tempoRange
+  setTempo(other, tempo)
+  patchDeck(other, { syncActive: true })
+  ensureSyncLoop()
 }
 
 export function selectedTrack(): Track | undefined {

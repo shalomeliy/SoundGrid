@@ -17,6 +17,16 @@ import type { DeckId } from '@/core/types'
 const BEND_HOLD_MS = 90
 /** And how long the ease back to grid speed takes. */
 const BEND_RELEASE_SEC = 0.12
+/**
+ * Ceiling on `syncNudge`'s rate correction (v0.3.0), as a fraction of the
+ * current playback rate. Bigger than `KEYBOARD_BEND` (a hand-driven bend the
+ * DJ is actively watching, so 4% is plenty) because this one has to actually
+ * converge on its own; smaller than the jog's bend ceiling because nobody's
+ * hand is explaining why the pitch just moved, so it has to stay clearly
+ * inaudible. Provisional — tuned against those two existing ceilings, not
+ * measured on real hardware yet (see HANDOFF.md).
+ */
+const MAX_SYNC_BEND = 0.06
 
 /**
  * One playback deck. Owns its Web Audio graph:
@@ -281,6 +291,34 @@ export class Deck {
     this.clearBendTimer()
     if (this._scratching || !this._playing) return
     this.player.rampRate(this.rate, BEND_RELEASE_SEC)
+  }
+
+  /**
+   * Phase-align correction for SYNC (v0.3.0): closes `deltaSec` of measured
+   * phase error via a bounded rate ramp — up (or down) then back to grid
+   * speed over `windowSec` — never a seek. Seeking moves the playhead and
+   * would tear the beat grid the same way `pitchBend`'s own doc comment
+   * warns against; this is the same family of correction, just computed from
+   * a measured gap (core/beatgrid.ts's `phaseDeltaSec`) instead of a jog tick,
+   * so it takes an explicit window rather than the jog's fixed decay.
+   *
+   * A symmetric ramp of amplitude `k`, up for `windowSec/2` then back down for
+   * the other half, covers `~ (windowSec/2) * rate * k` extra seconds versus
+   * holding grid speed the whole window — solved for `k` and clamped to
+   * `MAX_SYNC_BEND` so a large gap just takes more correction cycles to close
+   * rather than ever becoming one audible snap.
+   */
+  syncNudge(deltaSec: number, windowSec: number) {
+    if (!this._playing || this._scratching) return
+    const half = windowSec / 2
+    const k = clamp(deltaSec / (half * this.rate), -MAX_SYNC_BEND, MAX_SYNC_BEND)
+    this.player.rampRate(this.rate * (1 + k), half)
+    this.clearBendTimer()
+    this.bendTimer = window.setTimeout(() => {
+      this.bendTimer = 0
+      if (this._scratching || !this._playing) return
+      this.player.rampRate(this.rate, half)
+    }, half * 1000)
   }
 
   private clearBendTimer() {

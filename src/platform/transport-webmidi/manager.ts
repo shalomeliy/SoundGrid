@@ -1,5 +1,6 @@
 import * as ctl from '@/controls'
 import { useStore } from '@/app/state/store'
+import { LONG_PRESS_MS } from '@/core/constants'
 import type { DeckId } from '@/core/types'
 import { FLX4_MAPPING } from '@/platform/transport-webmidi/mappings/flx4'
 import {
@@ -28,6 +29,8 @@ class MidiManager {
   private access: MIDIAccess | null = null
   private mapping: MidiMapping = FLX4_MAPPING
   private cueHeld = new Map<DeckId, () => void>()
+  /** SYNC press timestamps (v0.3.0) — held past LONG_PRESS_MS promotes master. */
+  private syncDownAt = new Map<DeckId, number>()
   private learnResolver: ((b: Omit<Binding, 'action'> & { key: string }) => void) | null =
     null
 
@@ -112,7 +115,19 @@ class MidiManager {
         }
         break
       case 'sync':
-        if (value > 0 && deck) ctl.syncDeck(deck)
+        // A tap toggles phase-lock to the master deck; a press held past
+        // LONG_PRESS_MS makes this deck the master instead (v0.3.0), checked
+        // at release rather than a live timer — robust to a dropped note-off
+        // and consistent with cueHeld's own release-driven pattern above.
+        if (!deck) break
+        if (value > 0) {
+          this.syncDownAt.set(deck, performance.now())
+        } else {
+          const downAt = this.syncDownAt.get(deck)
+          this.syncDownAt.delete(deck)
+          if (downAt != null && performance.now() - downAt >= LONG_PRESS_MS) ctl.setMasterDeck(deck)
+          else ctl.syncDeck(deck)
+        }
         break
       case 'load':
         if (value > 0 && deck) {
