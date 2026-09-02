@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import * as ctl from '@/controls'
 import { PLATTER_SIZE } from '@/core/constants'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 import { Button, Fader, Pill } from '@/app/components/controls'
+import { BeatGridPanel } from '@/app/components/BeatGridPanel'
 import { PadGrid } from '@/app/components/PadGrid'
 import { Platter } from '@/app/components/Platter'
 import { Waveform } from '@/app/components/Waveform'
@@ -23,6 +24,23 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
   const [dropActive, setDropActive] = useState(false)
+  const [gridPanelOpen, setGridPanelOpen] = useState(false)
+  const closeGridPanel = () => {
+    setGridPanelOpen(false)
+    // Closing without an edit still counts as "the user checked it."
+    ctl.confirmBeatGrid(deckId)
+  }
+  useEffect(() => {
+    if (!gridPanelOpen) return
+    const onDocClick = () => closeGridPanel()
+    // Next tick: otherwise the same click that opened it closes it right back.
+    const id = window.setTimeout(() => document.addEventListener('click', onDocClick), 0)
+    return () => {
+      window.clearTimeout(id)
+      document.removeEventListener('click', onDocClick)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridPanelOpen])
 
   const TRACK_MIME = 'application/x-soundgrid-track'
   const onDrop = (e: React.DragEvent) => {
@@ -92,22 +110,35 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             )}
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <div
-            className="tnum text-xl font-semibold leading-none"
-            style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            className="text-right disabled:cursor-not-allowed"
+            onClick={() => {
+              if (!loaded) return
+              if (gridPanelOpen) closeGridPanel()
+              else setGridPanelOpen(true)
+            }}
+            disabled={!loaded}
+            aria-label="Edit beat grid"
+            aria-expanded={gridPanelOpen}
           >
-            {effectiveBpm ? effectiveBpm.toFixed(bpmDecimals) : '—'}
-          </div>
-          <div className="tnum mt-0.5 text-2xs text-grid-muted">
-            BPM
-            {deltaPct !== 0 && (
-              <span className="ml-1 text-grid-dim">
-                {deltaPct > 0 ? '+' : ''}
-                {deltaPct.toFixed(1)}%
-              </span>
-            )}
-          </div>
+            <div
+              className="tnum text-xl font-semibold leading-none"
+              style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
+            >
+              {effectiveBpm ? effectiveBpm.toFixed(bpmDecimals) : '—'}
+            </div>
+            <div className="tnum mt-0.5 text-2xs text-grid-muted">
+              BPM
+              {deltaPct !== 0 && (
+                <span className="ml-1 text-grid-dim">
+                  {deltaPct > 0 ? '+' : ''}
+                  {deltaPct.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          </button>
           {/* A grid detection wasn't confident about, or found nothing at all,
               is shown — never silently trusted (CLAUDE.md's central rule).
               Cleared once the user checks or edits it (BeatGridPanel). */}
@@ -115,6 +146,9 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             <div className="mt-1 flex justify-end">
               <Pill tone="warn" label="unconfirmed grid" />
             </div>
+          )}
+          {gridPanelOpen && (
+            <BeatGridPanel deckId={deckId} beatGrid={deck.beatGrid} onClose={closeGridPanel} />
           )}
         </div>
       </header>

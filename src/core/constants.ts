@@ -124,3 +124,10 @@ export const PLATTER_RPM = 45
 
 /** Waveform zoom: CSS px of screen per second of audio. */
 export const WAVEFORM_PX_PER_SEC = 150
+
+/**
+ * Beat grid nudge per click of the manual +/- correction in BeatGridPanel
+ * (v0.3.0). 10ms — small enough that a few clicks close a by-ear phase error
+ * without overshooting, big enough to be worth a click instead of ten.
+ */
+export const BEATGRID_NUDGE_SEC = 0.01

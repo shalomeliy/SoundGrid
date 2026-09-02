@@ -1,6 +1,7 @@
 import { analyzeWaveform, detectBeatGrid } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { HOT_CUE_COLORS } from '@/core/constants'
+import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
+import { bpmFromTaps, doubleGrid, halveGrid, setDownbeatAt, shiftGrid } from '@/core/beatgrid'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
@@ -564,6 +565,87 @@ export function setCueVolume(v: number) {
 export function setCueMix(v: number) {
   engine.setCueMix(v)
   useStore.getState().patchMixer({ cueMix: v })
+}
+
+// ————————————————————————————————————————————————————————————————
+// Manual beat-grid correction (v0.3.0). No FLX4 control is bound to any of
+// these: discovering which physical buttons are actually free needs the real
+// hardware this remote session doesn't have, so guessing here would risk
+// breaking a working mapping for no verifiable benefit. If one is ever
+// mapped, it needs a `ControlAction` pair and a case in `dispatch`, the same
+// as any other control — nothing here is exempt from the choke point, it is
+// just not reachable from it yet.
+// ————————————————————————————————————————————————————————————————
+
+/** Mark the grid as looked at, edit or not — clears the "unconfirmed" pill. */
+export function confirmBeatGrid(deckId: DeckId) {
+  useStore.getState().patchDeck(deckId, { beatGridConfirmed: true })
+}
+
+export function nudgeBeatGrid(deckId: DeckId, deltaSec: number = BEATGRID_NUDGE_SEC) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = shiftGrid(grid, deltaSec)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Corrects an octave-low guess — see core/beatgrid.ts's halveGrid. */
+export function halveBeatGrid(deckId: DeckId) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = halveGrid(grid)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Corrects an octave-high guess — see core/beatgrid.ts's doubleGrid. */
+export function doubleBeatGrid(deckId: DeckId) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = doubleGrid(grid)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/**
+ * Beat 0 is wherever the playhead sits right now, at the grid's current bpm
+ * (or the plain tag/detected bpm if there was no grid yet at all — this is
+ * also how a track with no detectable periodicity gets a first grid).
+ */
+export function setDownbeatHere(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const { patchDeck, decks } = useStore.getState()
+  const bpm = decks[deckId].beatGrid?.bpm ?? decks[deckId].bpm
+  if (!bpm) return
+  const next = setDownbeatAt(bpm, deck.position)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Per-deck tap timestamps for tapTempo, seconds since the page loaded. */
+const tapTimesSec: Record<DeckId, number[]> = { A: [], B: [] }
+/** A gap this long since the last tap starts a fresh tap sequence. */
+const TAP_RESET_SEC = 2
+
+/**
+ * One call per tap (button press or key). Needs two taps to say anything;
+ * every tap after that refines the estimate (core/beatgrid.ts's bpmFromTaps
+ * rejects one fat-fingered interval on its own).
+ */
+export function tapTempo(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const now = performance.now() / 1000
+  const taps = tapTimesSec[deckId]
+  if (taps.length > 0 && now - taps[taps.length - 1] > TAP_RESET_SEC) taps.length = 0
+  taps.push(now)
+  if (taps.length > 8) taps.shift() // bound memory; recent taps matter most
+  const bpm = bpmFromTaps(taps)
+  if (bpm == null) return
+  const { patchDeck, decks } = useStore.getState()
+  const offsetSec = decks[deckId].beatGrid?.offsetSec ?? 0
+  patchDeck(deckId, { beatGrid: { bpm, offsetSec }, bpm, beatGridConfirmed: true })
 }
 
 /** Beat-match deck to the other deck's tempo (simple BPM match, no phase align yet). */
