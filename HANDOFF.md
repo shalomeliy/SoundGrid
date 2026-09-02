@@ -15,62 +15,13 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. ‏`v0.2.6` · `v0.2.7` · `v0.2.8` · `v0.2.9` נסגרו. מה מהן על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
-| **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.0 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 · v0.2.6 — ב‑[`docs/handoff/`](docs/handoff/) |
-| **branch** | ‏PR #1–#4 (`v0.2.1`…`v0.2.5`) — **כולן merged ב‑`main`.** ‏[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) נסגר 30/08. לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
+| **בעבודה** | אין. כל גרסה עד `v0.2.9` סגורה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
+| **branch** | אין PR פתוח כרגע — כל מה שנבנה כבר ב‑`main`. לפני כל עבודה חדשה: `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
 | **גרסה נוכחית** | `v0.2.9` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
 | **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
----
-
-## מה פתוח
-
-**כלום בקוד.** ‏v0.2.0 · v0.1.7 · v0.2.5 · v0.2.6 · v0.2.7 · v0.2.8 · v0.2.9 סגורות,
-והקריסה הלא‑מאומתת מ‑28/08 נסגרה (לא השתחזרה). הרשומה של הסבב הזה, כולל המספרים
-שנמדדו: [`docs/handoff/v0.2.6.md`](docs/handoff/v0.2.6.md) ·
-[`v0.2.8.md`](docs/handoff/v0.2.8.md).
-
-פתוח רק מה שמופיע למטה: פעולת המחיקה שנשארה למשתמש, והחובות הטכניים.
-
----
-
-## חוב תשתית התיעוד — ✅ סגור
-
-פיצול המסמכים (2026-08-29) ושבעת האינווריאנטים ב‑`tests/repo/` — שניהם בוצעו.
-הרשומה המלאה, כולל טבלת הבאגים שכל בדיקה מקבעת:
-[`docs/handoff/doc-infrastructure.md`](docs/handoff/doc-infrastructure.md).
-
-**מה שנשאר מוסכמה ולא בדיקה: "שורת הסטטוס אומרת אמת".** שהשורה "v0.2.0b נכתב"
-הייתה שקר בזמן שארבעה סעיפים לא בוצעו **אינו ניתן לביטוי כבדיקה** — הוא דורש בן אדם
-שקורא את התכנון מול הקוד.
-
----
-
-## פעולה אחת שנשארה למשתמש — מחיקת שני בראנצ׳ים
-
-הסוכן **לא יכול** למחוק בראנצ׳ים מהסביבה הזאת: `git push origin --delete` חוזר
-עם `HTTP 403` מה‑proxy (דחיפה רגילה כן עוברת — מחיקת ref חסומה במדיניות), ול‑MCP
-של GitHub אין כלי מחיקה. **זה נאמר כאן ולא נבלע.**
-
-שניהם מיותרים — מה שנלקח מהם נכנס ב‑v0.2.8 (לאמת: `git log --oneline origin/main -6`),
-וה‑SHA שלהם רשום
-ב‑[`docs/handoff/v0.2.8.md`](docs/handoff/v0.2.8.md):
-
-**הדרך הקצרה — לא צריך מסוף בכלל:**
-‏`github.com/shalomeliy/SoundGrid/branches` → אייקון פח האשפה ליד כל אחד.
-
-**במסוף — חייבים לעמוד בתוך תיקיית הריפו.** ‏`git` מחפש `.git` בתיקייה הנוכחית
-ובהורים שלה, אז מ‑`~` הוא עונה `fatal: not a git repository`. זה לא כשל הרשאה:
-
-```bash
-cd /c/Users/Shalom/<התיקייה של SoundGrid>   # Git Bash; ב‑PowerShell: cd C:\Users\Shalom\...
-git rev-parse --show-toplevel               # אמור להדפיס נתיב, לא fatal
-git push origin --delete claude/handoff-c0dx6i
-git push origin --delete claude/handoff-0ukbck
-```
-
-לא זוכר איפה הוא? ‏`find /c/Users/Shalom -maxdepth 3 -name SoundGrid -type d`.
+**מה פתוח בקוד: כלום.** פתוח רק מה שמופיע למטה — החובות הטכניים וההחלטות הממתינות.
 
 ---
 
