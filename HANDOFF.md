@@ -15,10 +15,10 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. ‏`v0.2.6` · `v0.2.7` (‏`strict`) · `v0.2.8` (יבוא מהבראנץ׳ המקביל) נסגרו. מה מהן על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
+| **בעבודה** | אין. ‏`v0.2.6` · `v0.2.7` · `v0.2.8` · `v0.2.9` נסגרו. מה מהן על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.0 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 · v0.2.6 — ב‑[`docs/handoff/`](docs/handoff/) |
 | **branch** | ‏PR #1–#4 (`v0.2.1`…`v0.2.5`) — **כולן merged ב‑`main`.** ‏[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) נסגר 30/08. לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
-| **גרסה נוכחית** | `v0.2.8` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
+| **גרסה נוכחית** | `v0.2.9` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
 | **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
@@ -146,7 +146,7 @@
 4. **סיום גרסה / תת‑גרסה:** `npm run check` ירוק · סקירה עצמאית ב‑`change-reviewer` ·
    `ROADMAP.md` מסומן ✅ · **הבלוק של הגרסה עובר ל‑`docs/handoff/`** והקובץ הזה נשאר
    בתקציב · המשתמש קיבל הוראות בדיקה בעברית · commit + push.
-5. **בסוף כל גרסה / תת‑גרסה — להריץ `python ~/.claude/tools/context_check.py`**
+5. **בסוף כל גרסה / תת‑גרסה — להריץ `python scripts/context_check.py`**
    ולפעול לפי התוצאה: 🟢 להמשיך כאן · 🟡 להגיד שהשיחה צריכה להיסגר · 🔴 לעצור.
    **לא לשאול את המשתמש אם להמשיך כאן או לפתוח שיחה חדשה** — המדידה הזאת מחליפה
    בדיוק את השאלה הזאת. 🟡/🔴 = **שיחה חדשה, אף פעם לא `/clear`**: שניהם מוחקים הקשר

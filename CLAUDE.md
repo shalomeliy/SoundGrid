@@ -166,7 +166,7 @@ conversations must be allowed to end.
 
 - **`HANDOFF.md` is read first in every conversation**, and is the only source of truth
   between them.
-- **Run `python ~/.claude/tools/context_check.py` at the end of every
+- **Run `python scripts/context_check.py` at the end of every
   version / sub-version** — once the checks are green, `HANDOFF.md` is updated and the
   work is committed. Act on the verdict, and **never ask the user whether to continue
   here or open a new conversation**; that question is what this measurement replaces.
@@ -298,14 +298,21 @@ npm test           # vitest alone — tests/repo/ invariants + tests/core/ unit 
 ```
 
 ```bash
-python ~/.claude/tools/context_check.py
+python scripts/context_check.py
 ```
 
-The tool lives in the **global** `.claude` directory, not in this repo, so it works
-from every project. Written with `~` rather than the absolute Windows path it used to
-carry, because v1.0 targets a Mac build too (`directions.md`) and `C:/Users/...` does
-not exist there. PowerShell, Git Bash and a Mac shell all expand `~`; plain `cmd.exe`
-does not, so spell the home directory out there.
+**It lives in the repo as of v0.2.9, and that is the point.** It used to sit in the
+global `~/.claude/tools/`, which meant it simply did not exist in a remote session —
+so sessions closed versions without ever running it, and said nothing, which is the
+silent skip this file forbids on page one. In the repo it runs on Windows, on the Mac
+v1.0 targets (`directions.md`), and in the Linux containers agents run in.
+
+It reads the Claude Code transcript for the current working directory and reports owner
+turns and size against four constants at the top of the file. **If it cannot find a
+transcript it says UNKNOWN and exits 2** — a measurement that could not be taken must
+never read as a green one. The thresholds are this repo's, calibrated on 2026-09-02;
+if the old global copy still exists somewhere with different numbers, reconcile them
+here rather than there.
 
 Dev server: `preview_start` with `soundgrid-dev` (port 5173) — **not** Bash.
 
