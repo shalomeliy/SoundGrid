@@ -765,6 +765,7 @@ function runSyncCorrection() {
  * there is nothing beneath the master to lock to.
  */
 export function syncDeck(deckId: DeckId) {
+  if (!engine.decks[deckId].hasTrack) return
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
   const { decks, masterDeckId, patchDeck, setNotice } = useStore.getState()
   const st = decks[deckId]
@@ -783,9 +784,19 @@ export function syncDeck(deckId: DeckId) {
     })
     return
   }
+  // Checked and named separately — blaming the master deck for a gap that
+  // was actually on this deck (or vice versa) sends the user troubleshooting
+  // the wrong one.
+  if (!st.bpm) {
+    setNotice({
+      text: `Deck ${deckId} has no tempo yet — nothing to sync from.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
   const master = decks[resolvedMaster]
-  const mine = st.bpm
-  if (!master.bpm || !master.beatGrid || !mine) {
+  if (!master.bpm || !master.beatGrid) {
     setNotice({
       text: `Deck ${resolvedMaster} has no tempo/grid yet — nothing to sync to.`,
       tone: 'warn',
@@ -795,7 +806,7 @@ export function syncDeck(deckId: DeckId) {
   }
 
   if (masterDeckId == null) useStore.setState({ masterDeckId: resolvedMaster })
-  const ratio = master.bpm / mine
+  const ratio = master.bpm / st.bpm
   const tempo = (ratio - 1) / settings.values.tempoRange
   setTempo(deckId, tempo)
   patchDeck(deckId, { syncActive: true })

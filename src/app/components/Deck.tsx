@@ -44,7 +44,10 @@ export function Deck({ deckId }: { deckId: DeckId }) {
 
   // SYNC: a tap toggles phase-lock to the master deck; a long-press makes
   // this deck the master instead (v0.3.0). Mirrors Platter.tsx's hold-timer
-  // idiom — a ref, not state, because the timer firing shouldn't re-render.
+  // idiom (a ref, not state, since the timer firing shouldn't re-render) and
+  // the CUE button's window-level pointerup listener just below — the
+  // release has to be caught even if the pointer drifted off the button
+  // first, the same reason CUE doesn't rely on onPointerUp alone.
   const syncHoldTimer = useRef(0)
   const syncLongFired = useRef(false)
   useEffect(() => () => window.clearTimeout(syncHoldTimer.current), [])
@@ -55,10 +58,12 @@ export function Deck({ deckId }: { deckId: DeckId }) {
       syncLongFired.current = true
       ctl.setMasterDeck(deckId)
     }, LONG_PRESS_MS)
-  }
-  const onSyncUp = () => {
-    window.clearTimeout(syncHoldTimer.current)
-    if (!syncLongFired.current) ctl.syncDeck(deckId)
+    const up = () => {
+      window.clearTimeout(syncHoldTimer.current)
+      if (!syncLongFired.current) ctl.syncDeck(deckId)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointerup', up)
   }
 
   const TRACK_MIME = 'application/x-soundgrid-track'
@@ -219,7 +224,6 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               active={deck.syncActive}
               tone={color}
               onPointerDown={onSyncDown}
-              onPointerUp={onSyncUp}
               disabled={!loaded}
               title="Tap: sync to master. Hold: make this deck master."
             >
