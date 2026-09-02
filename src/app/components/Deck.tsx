@@ -4,7 +4,7 @@ import { PLATTER_SIZE } from '@/core/constants'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
-import { Button, Fader } from '@/app/components/controls'
+import { Button, Fader, Pill } from '@/app/components/controls'
 import { PadGrid } from '@/app/components/PadGrid'
 import { Platter } from '@/app/components/Platter'
 import { Waveform } from '@/app/components/Waveform'
@@ -108,6 +108,14 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               </span>
             )}
           </div>
+          {/* A grid detection wasn't confident about, or found nothing at all,
+              is shown — never silently trusted (CLAUDE.md's central rule).
+              Cleared once the user checks or edits it (BeatGridPanel). */}
+          {loaded && !deck.beatGridConfirmed && (
+            <div className="mt-1 flex justify-end">
+              <Pill tone="warn" label="unconfirmed grid" />
+            </div>
+          )}
         </div>
       </header>
 
@@ -118,6 +126,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         positionSec={deck.positionSec}
         durationSec={deck.durationSec}
         bpm={deck.bpm}
+        offsetSec={deck.beatGrid?.offsetSec ?? 0}
         hotCues={deck.hotCues}
         color={color}
         loading={deck.loading}
