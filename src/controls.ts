@@ -1,6 +1,7 @@
 import { analyzeWaveform, detectBpm } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { HOT_CUE_COLORS } from '@/core/constants'
+import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
@@ -587,7 +588,30 @@ export function filteredTracks(): Track[] {
     (t) =>
       t.path.toLowerCase().includes(q) ||
       t.artist?.toLowerCase().includes(q) ||
-      t.title?.toLowerCase().includes(q),
+      t.title?.toLowerCase().includes(q) ||
+      t.genre?.toLowerCase().includes(q),
   )
+}
+
+/**
+ * Manual genre pick (v0.2.10) — the choke point for this action, called from
+ * the library table's dropdown. Updates the store immediately so the cell
+ * reflects the choice with no round-trip wait, then persists it; a write
+ * failure keeps the in-memory value (an edit that silently reverts on the
+ * next render is worse than one that silently fails to survive a reload) and
+ * surfaces through the existing notice banner rather than a swallowed catch.
+ */
+export function setTrackGenre(trackId: string, genre: string) {
+  const { library, setLibrary, setNotice } = useStore.getState()
+  setLibrary({
+    tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, genre } : t)),
+  })
+  void setGenreOverride(trackId, genre).catch((err) => {
+    setNotice({
+      text: `Genre change applied but not saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'library',
+    })
+  })
 }
 

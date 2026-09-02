@@ -13,7 +13,7 @@ import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output'
+export type NoticeSource = 'load' | 'output' | 'library'
 
 function emptyDeck(id: DeckId): DeckState {
   return {
@@ -54,6 +54,8 @@ export interface AppState {
     selectedId: string | null
     /** files the scan walked past, by extension — never skip silently */
     skipped: Record<string, number>
+    /** tracks whose parent folder matched no known genre, by folder name (v0.2.10) */
+    unrecognizedGenre: Record<string, number>
     supported: boolean
     /**
      * Which of the startup situations we are in (v0.2.6). An empty track list
@@ -152,6 +154,7 @@ export const useStore = create<AppState>((set) => ({
     query: '',
     selectedId: null,
     skipped: {},
+    unrecognizedGenre: {},
     supported: true,
     boot: 'checking',
     bootDetail: null,

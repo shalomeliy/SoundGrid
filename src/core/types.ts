@@ -18,6 +18,13 @@ export interface Track {
   key?: string
   /** Camelot code for the key, e.g. `8A` — what harmonic matching compares */
   camelot?: string
+  /**
+   * From the immediate parent folder at scan time (v0.2.10), overridden by a
+   * manual pick from `core/genres.ts`'s `GENRES` list when the owner sets one.
+   * Undefined means neither source produced a value — never a silent blank
+   * mistaken for "no genre folder exists".
+   */
+  genre?: string
 }
 
 export interface HotCue {

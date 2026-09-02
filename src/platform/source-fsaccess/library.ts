@@ -1,4 +1,5 @@
 import { get, set } from 'idb-keyval'
+import { matchGenre, parentFolderName } from '@/core/genres'
 import type { SavedPermission } from '@/core/library-boot'
 import type { Track } from '@/core/types'
 import { readTags } from '@/platform/source-fsaccess/tags'
@@ -180,6 +181,13 @@ export interface ScanResult {
   tracks: Track[]
   /** files we walked past, by extension — surfaced so a skip is never silent */
   skipped: Record<string, number>
+  /**
+   * Tracks whose immediate parent folder name matched no known genre, tallied
+   * by that folder name — same shape as `skipped`, same reasoning: a track
+   * imported without a genre is a fact the library owes its owner, not a
+   * silently blank column (v0.2.10).
+   */
+  unrecognizedGenre: Record<string, number>
 }
 
 /** Recursively walk the folder collecting audio files. */
@@ -189,6 +197,7 @@ export async function scanLibrary(
 ): Promise<ScanResult> {
   const out: Track[] = []
   const skipped: Record<string, number> = {}
+  const unrecognizedGenre: Record<string, number> = {}
   async function walk(dir: FileSystemDirectoryHandle, prefix: string) {
     onProgress?.({ found: out.length, currentDir: prefix || '/' })
     for await (const [name, entry] of dir.entries()) {
@@ -204,19 +213,28 @@ export async function scanLibrary(
           }
           continue
         }
+        const folder = parentFolderName(prefix)
+        const genre = matchGenre(folder)
+        // a file at the scan root has no folder to blame, so it is excluded
+        // from the notice rather than reported as "unrecognized" — there is
+        // nothing actionable to tell the owner about it
+        if (!genre && folder) {
+          unrecognizedGenre[folder] = (unrecognizedGenre[folder] ?? 0) + 1
+        }
         out.push({
           id: `${prefix}${name}`,
           name: name.replace(/\.[^.]+$/, ''),
           path: `${prefix}${name}`,
           kind: ext,
           handle: entry as FileSystemFileHandle,
+          genre,
         })
       }
     }
   }
   await walk(root, '')
   out.sort((a, b) => a.path.localeCompare(b.path))
-  return { tracks: out, skipped }
+  return { tracks: out, skipped, unrecognizedGenre }
 }
 
 export async function readTrackData(track: Track): Promise<ArrayBuffer> {
