@@ -15,62 +15,13 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. ‏`v0.2.6` · `v0.2.7` · `v0.2.8` · `v0.2.9` נסגרו. מה מהן על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
-| **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.0 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 · v0.2.6 — ב‑[`docs/handoff/`](docs/handoff/) |
-| **branch** | ‏PR #1–#4 (`v0.2.1`…`v0.2.5`) — **כולן merged ב‑`main`.** ‏[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) נסגר 30/08. לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
-| **גרסה נוכחית** | `v0.2.9` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
+| **בעבודה** | אין. כל גרסה עד `v0.3.0` סגורה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
+| **branch** | אין PR פתוח כרגע — כל מה שנבנה כבר ב‑`main`. לפני כל עבודה חדשה: `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
+| **גרסה נוכחית** | `v0.3.0` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
-| **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.3.1`** (מספר גרסה בקליינט, מסונכרן ל‑`package.json`) מאופיינת שם גם‑כן, מיד אחריה. **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.3.0 וגם v0.4.0**, לא לדלג אליו לפני שתיהן; לוודא ששתיהן ב‑`main` עם `git log --oneline origin/main -5` |
+| **הבא בתור** | **v0.4.0 — ניתוח מתמשך + מטא‑דאטה קבועה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.4.0**, לא לדלג אליו לפניה; ‏v0.3.0 כבר סגורה (למעלה). **`v0.3.1`** (מספר גרסה בקליינט, מסונכרן ל‑`package.json`) מאופיינת ב‑[`ROADMAP.md`](ROADMAP.md) מיד אחרי v0.3.0, עדיין לא בעבודה — לא נקבע אם היא לפני או אחרי v0.4.0 |
 
----
-
-## מה פתוח
-
-**כלום בקוד.** ‏v0.2.0 · v0.1.7 · v0.2.5 · v0.2.6 · v0.2.7 · v0.2.8 · v0.2.9 סגורות,
-והקריסה הלא‑מאומתת מ‑28/08 נסגרה (לא השתחזרה). הרשומה של הסבב הזה, כולל המספרים
-שנמדדו: [`docs/handoff/v0.2.6.md`](docs/handoff/v0.2.6.md) ·
-[`v0.2.8.md`](docs/handoff/v0.2.8.md).
-
-פתוח רק מה שמופיע למטה: פעולת המחיקה שנשארה למשתמש, והחובות הטכניים.
-
----
-
-## חוב תשתית התיעוד — ✅ סגור
-
-פיצול המסמכים (2026-08-29) ושבעת האינווריאנטים ב‑`tests/repo/` — שניהם בוצעו.
-הרשומה המלאה, כולל טבלת הבאגים שכל בדיקה מקבעת:
-[`docs/handoff/doc-infrastructure.md`](docs/handoff/doc-infrastructure.md).
-
-**מה שנשאר מוסכמה ולא בדיקה: "שורת הסטטוס אומרת אמת".** שהשורה "v0.2.0b נכתב"
-הייתה שקר בזמן שארבעה סעיפים לא בוצעו **אינו ניתן לביטוי כבדיקה** — הוא דורש בן אדם
-שקורא את התכנון מול הקוד.
-
----
-
-## פעולה אחת שנשארה למשתמש — מחיקת שני בראנצ׳ים
-
-הסוכן **לא יכול** למחוק בראנצ׳ים מהסביבה הזאת: `git push origin --delete` חוזר
-עם `HTTP 403` מה‑proxy (דחיפה רגילה כן עוברת — מחיקת ref חסומה במדיניות), ול‑MCP
-של GitHub אין כלי מחיקה. **זה נאמר כאן ולא נבלע.**
-
-שניהם מיותרים — מה שנלקח מהם נכנס ב‑v0.2.8 (לאמת: `git log --oneline origin/main -6`),
-וה‑SHA שלהם רשום
-ב‑[`docs/handoff/v0.2.8.md`](docs/handoff/v0.2.8.md):
-
-**הדרך הקצרה — לא צריך מסוף בכלל:**
-‏`github.com/shalomeliy/SoundGrid/branches` → אייקון פח האשפה ליד כל אחד.
-
-**במסוף — חייבים לעמוד בתוך תיקיית הריפו.** ‏`git` מחפש `.git` בתיקייה הנוכחית
-ובהורים שלה, אז מ‑`~` הוא עונה `fatal: not a git repository`. זה לא כשל הרשאה:
-
-```bash
-cd /c/Users/Shalom/<התיקייה של SoundGrid>   # Git Bash; ב‑PowerShell: cd C:\Users\Shalom\...
-git rev-parse --show-toplevel               # אמור להדפיס נתיב, לא fatal
-git push origin --delete claude/handoff-c0dx6i
-git push origin --delete claude/handoff-0ukbck
-```
-
-לא זוכר איפה הוא? ‏`find /c/Users/Shalom -maxdepth 3 -name SoundGrid -type d`.
+**מה פתוח בקוד: כלום.** פתוח רק מה שמופיע למטה — החובות הטכניים וההחלטות הממתינות.
 
 ---
 
@@ -80,9 +31,6 @@ git push origin --delete claude/handoff-0ukbck
   הראשונה" מתנהג היום כמו "מההתחלה", כי אין cue נשמר לפני v0.4. **מותר לו להישאר רק
   כל עוד הכתובית `pending` מתחתיו נשארת** — היא מה שהופך אותו מפקד מת לפקד שמצהיר
   על עצמו. **ב‑v0.4, כשה‑cue points נשמרים, לחבר אותו ולהסיר את הכתובית.**
-- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי.
-  **שים לב:** מאז v0.1.7 יש BPM מתגיות ל‑97% מהספרייה. `loadTrackToDeck` נותן לתגית
-  לנצח (`track.bpm ?? detectBpm(buffer)`) עד ל‑beatgrid, ואז זה מתהפך בחזרה.
 - תוצאות התגיות לא נשמרות בין טעינות — נסרק מחדש בכל בחירת תיקייה (0.6ש' ל‑360 קבצים,
   אז לא דחוף). מטמון קבוע ב‑IndexedDB ב‑v0.4.
 - `readTags` על WAV/AIFF לא מוצא ID3 אם הוא יושב אחרי הצ'אנק ה‑64 (cap של הלולאה).
@@ -90,7 +38,6 @@ git push origin --delete claude/handoff-0ukbck
   אין OGG בספרייה של המשתמש, אז לא נבדק על אמת.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
 - אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
-- `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
@@ -102,6 +49,17 @@ git push origin --delete claude/handoff-0ukbck
   `@/app/state/store` ואת `@/controls` במקום לפלוט `ControlAction`s דרך הפורט. נכנס
   ב‑`f1ae061`. מתועד ביושר ב‑`.dependency-cruiser.cjs:29‑33` ב‑severity `warn` כדי
   שיישאר גלוי — `npm run check` נשאר ירוק בזמן שהכלל מופר. לא להעתיק, לא להשתיק.
+- **קבועי הכיוון של לולאת ה‑phase-sync (v0.3.0) ניחושים, לא מדודים.**
+  `MAX_SYNC_BEND = 0.06` ב‑`deck.ts`, `SYNC_LOOP_INTERVAL_SEC = 1` ו‑
+  `SYNC_PHASE_DEADBAND_SEC = 0.004` ב‑`controls.ts` — נגזרו מתקרות ה‑bend הקיימות,
+  לא נבדקו על נגינה אמיתית. אם שני דקים ב‑SYNC נשמעים חורגים מפאזה אחרי 2 דקות —
+  כאן מכוונים, לא ב‑Settings (אלה קבועי כיול, לא העדפה).
+- **הזיהוי האוטומטי מוצא beat, לא bar.** ‏`estimateBeatGrid` (`core/beatgrid.ts`)
+  לא יכול להבדיל פעימה 1 של תיבה משאר הפעימות בלי ניתוח טימבר (קיק מול סנר) — זה
+  מעבר למה ש‑autocorrelation פשוט תומך. «Set downbeat here» ב‑`BeatGridPanel` הוא
+  הכלי לתקן ידנית. פרטים: [`docs/handoff/v0.3.0.md`](docs/handoff/v0.3.0.md).
+- **אין binding ל‑FLX4** לארבעת כלי תיקון הרשת הידניים (nudge/half/double/tap/
+  set‑downbeat) ולא ל‑quantize toggle. גילוי איזה פאד פנוי בפועל דורש חומרה אמיתית.
 
 ---
 
@@ -131,6 +89,8 @@ git push origin --delete claude/handoff-0ukbck
   **כלל אצבע: הכפל כל גודל CSS ב‑0.76 כדי לדעת מה הוא באמת רואה** — המסך 14" = 126
   CSS px לאינץ' מול 96 בייחוס, אז הכל קטן פיזית ב‑24% ממה שהמספר אומר.
 - הוא מסתכל ב‑**Chrome האמיתי שלו**, לא ב‑Browser pane. `localhost:5173`.
+- **כל הפרויקטים שלו יושבים ב‑`C:\Users\Shalom\Projects`.** הפרויקט הזה ספציפית:
+  `C:\Users\Shalom\Projects\SoundGrid` (02/09).
 - הספרייה שלו: `C:\Users\Shalom\Music\Tracks` (תת‑תיקיות HipHop/House/Techno/Trance/
   Mizrahi/Final). folderName שנשמר = "Tracks".
 - **הוא לא מתכנת.** כל הסבר בעברית פשוטה, ובסוף כל יחידת עבודה — איך הוא בודק את זה

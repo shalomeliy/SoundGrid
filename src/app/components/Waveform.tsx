@@ -9,6 +9,8 @@ interface Props {
   positionSec: number
   durationSec: number
   bpm: number | null
+  /** beat grid phase (v0.3.0) — seconds from track start to beat 0. 0 draws the grid from track start, same as before the grid existed. */
+  offsetSec?: number
   hotCues: HotCue[]
   color: string
   loading?: boolean
@@ -47,6 +49,7 @@ export function Waveform({
   positionSec,
   durationSec,
   bpm,
+  offsetSec = 0,
   hotCues,
   color,
   loading = false,
@@ -123,15 +126,18 @@ export function Waveform({
     const centerBucket = positionSec * bucketsPerSec
     const bucketsPerPx = bucketsPerSec / PX_PER_SEC
 
-    // beat grid
+    // beat grid — beat 0 sits at offsetSec, the detected/edited grid's own
+    // phase, not necessarily track start (v0.3.0). offsetSec defaults to 0,
+    // which draws exactly the pre-v0.3.0 grid (bar-aligned to track start).
     if (bpm && bpm > 0) {
       const beatSec = 60 / bpm
       const halfSpanSec = w / 2 / PX_PER_SEC
-      const firstBeat = Math.floor((positionSec - halfSpanSec) / beatSec)
-      const lastBeat = Math.ceil((positionSec + halfSpanSec) / beatSec)
+      const firstBeat = Math.floor((positionSec - offsetSec - halfSpanSec) / beatSec)
+      const lastBeat = Math.ceil((positionSec - offsetSec + halfSpanSec) / beatSec)
       for (let b = firstBeat; b <= lastBeat; b++) {
-        if (b < 0) continue
-        const x = w / 2 + (b * beatSec - positionSec) * PX_PER_SEC
+        const beatTimeSec = b * beatSec + offsetSec
+        if (beatTimeSec < 0) continue
+        const x = w / 2 + (beatTimeSec - positionSec) * PX_PER_SEC
         const bar = b % 4 === 0
         ctx.fillStyle = bar ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.05)'
         ctx.fillRect(x, bar ? 0 : h * 0.12, 1, bar ? h : h * 0.76)
@@ -239,7 +245,7 @@ export function Waveform({
     ctx.closePath()
     ctx.fillStyle = '#fff'
     ctx.fill()
-  }, [peaks, bands, positionSec, durationSec, bpm, hotCues, color, loading, size, PX_PER_SEC, hiResCanvas, waveformColorByEq])
+  }, [peaks, bands, positionSec, durationSec, bpm, offsetSec, hotCues, color, loading, size, PX_PER_SEC, hiResCanvas, waveformColorByEq])
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current

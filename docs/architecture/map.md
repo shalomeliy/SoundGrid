@@ -32,7 +32,7 @@ src/
     transport-webmidi/
       manager.ts        ★ MidiManager singleton — Web MIDI, dispatch לפי mapping, Learn
       mappings/flx4.ts  פריסט DDJ-FLX4 (note/CC — best-effort, לתקן דרך Learn)
-    analyzer-js/analyze.ts   computePeaks, detectBpm
+    analyzer-js/analyze.ts   analyzeWaveform, detectBeatGrid (math in core/beatgrid.ts, v0.3.0)
     clock-audio.ts      Clock יחיד מעל audioContext.currentTime
     capabilities.ts     מה נתמך בסביבה הזו — ה‑UI מתדרדר בחן לפיו
 

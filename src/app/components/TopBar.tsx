@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { initAudio } from '@/controls'
+import { initAudio, toggleQuantize } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
 import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
-import { Button } from '@/app/components/controls'
+import { Button, Pill, type PillTone } from '@/app/components/controls'
 
 export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const audioReady = useStore((s) => s.audioReady)
+  const quantize = useStore((s) => s.quantize)
   const output = useStore((s) => s.output)
   const midiState = useStore((s) => s.midi)
   const scratchReady = useStore((s) => s.scratchReady)
@@ -109,6 +110,11 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           {!scratchReady && (
             <Pill tone="warn" label={`no scratch · ${scratchError ?? 'AudioWorklet unavailable'}`} />
           )}
+          {/* Off by default (v0.3.0 decision) — CUE/hot cues/loops stay exactly
+              as precise as before until the user opts in. */}
+          <Button variant="toggle" active={quantize} tone="var(--color-accent)" onClick={toggleQuantize}>
+            Quantize
+          </Button>
         </>
       )}
 
@@ -144,29 +150,9 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   )
 }
 
-const TONES: Record<string, string> = {
-  live: 'var(--color-live)',
-  warn: 'var(--color-warn)',
-  danger: 'var(--color-danger)',
-  idle: 'var(--color-grid-dim)',
-}
-
-function Pill({ tone, label }: { tone: keyof typeof TONES; label: string }) {
-  const c = TONES[tone]
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold"
-      style={{ background: `color-mix(in srgb, ${c}, transparent 86%)`, color: c }}
-    >
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
-      {label}
-    </span>
-  )
-}
-
 function MidiBadge() {
   const { status, devices } = useStore((s) => s.midi)
-  const map: Record<string, [keyof typeof TONES, string]> = {
+  const map: Record<string, [PillTone, string]> = {
     unsupported: ['danger', 'MIDI unsupported'],
     idle: ['idle', 'MIDI idle'],
     requesting: ['warn', 'MIDI connecting…'],

@@ -1,3 +1,5 @@
+import { estimateBeatGrid, type BeatGridEstimate } from '@/core/beatgrid'
+
 /** Rare path: files with more than two channels. */
 function mixAt(chans: Float32Array[], i: number, invCh: number): number {
   let v = 0
@@ -112,12 +114,18 @@ export function analyzeWaveform(buffer: AudioBuffer, buckets = 2000): WaveformAn
 
 
 
+/** Envelope frames per second — 5ms frames, same rate `core/beatgrid.ts`'s math assumes. */
+const FRAMES_PER_SEC = 200
+
 /**
- * Rough BPM estimate. Filters to the low end, builds an onset envelope, then
- * scores candidate tempos by autocorrelation of the envelope. Good enough to
- * seed a beatgrid; the user can nudge it.
+ * Onset envelope for beat detection: low-pass to isolate kick energy, then the
+ * frame-to-frame rise (a plain low-pass alone flags every strong *sound*, not
+ * just its *attack*). This is the only part of beat detection that has to
+ * touch an `AudioBuffer`, so it stays here; everything from here on — scoring
+ * candidate tempos, finding phase, quantizing to the result — is pure and
+ * lives in `core/beatgrid.ts` so it can be unit tested without one.
  */
-export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | null {
+function buildOnsetEnvelope(buffer: AudioBuffer): { onsets: Float32Array; framesPerSec: number } {
   const sr = buffer.sampleRate
   // channels averaged inline: flattening to a full-length mono copy first cost
   // 63MB on a 6-minute stereo track, for an envelope we throw away immediately
@@ -137,7 +145,7 @@ export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | nu
   const alpha = dt / (rc + dt)
   let lp = 0
   const env: number[] = []
-  const frame = Math.floor(sr / 200) // 5ms envelope frames
+  const frame = Math.floor(sr / FRAMES_PER_SEC)
   let acc = 0
   let n = 0
   for (let i = 0; i < len; i++) {
@@ -150,7 +158,6 @@ export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | nu
       n = 0
     }
   }
-  if (env.length < 64) return null
 
   // difference envelope (onsets only)
   const onsets = new Float32Array(env.length)
@@ -158,21 +165,20 @@ export function detectBpm(buffer: AudioBuffer, min = 80, max = 180): number | nu
     const d = env[i] - env[i - 1]
     onsets[i] = d > 0 ? d : 0
   }
+  return { onsets, framesPerSec: FRAMES_PER_SEC }
+}
 
-  const framesPerSec = 200
-  let bestBpm = 0
-  let bestScore = -Infinity
-  for (let bpm = min; bpm <= max; bpm += 0.5) {
-    const lag = Math.round((60 / bpm) * framesPerSec)
-    let score = 0
-    for (let i = lag; i < onsets.length; i++) {
-      score += onsets[i] * onsets[i - lag]
-    }
-    score /= onsets.length - lag
-    if (score > bestScore) {
-      bestScore = score
-      bestBpm = bpm
-    }
-  }
-  return bestBpm ? Math.round(bestBpm * 10) / 10 : null
+/**
+ * Beat grid estimate: bpm, phase, and whether either looks like a real
+ * periodicity rather than a guess (see `core/beatgrid.ts`'s `CONFIDENCE_RATIO`
+ * doc comment). `null` only when the track is too short to say anything at
+ * all — a low-confidence result still comes back with a grid, so the caller
+ * has something to show and quantize against while marking it unconfirmed.
+ */
+export function detectBeatGrid(
+  buffer: AudioBuffer,
+  opts?: { minBpm?: number; maxBpm?: number },
+): BeatGridEstimate | null {
+  const { onsets, framesPerSec } = buildOnsetEnvelope(buffer)
+  return estimateBeatGrid(onsets, framesPerSec, opts)
 }

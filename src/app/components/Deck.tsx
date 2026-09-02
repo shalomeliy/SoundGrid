@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as ctl from '@/controls'
-import { PLATTER_SIZE } from '@/core/constants'
+import { LONG_PRESS_MS, PLATTER_SIZE } from '@/core/constants'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
-import { Button, Fader } from '@/app/components/controls'
+import { Button, Fader, Pill } from '@/app/components/controls'
+import { BeatGridPanel } from '@/app/components/BeatGridPanel'
 import { PadGrid } from '@/app/components/PadGrid'
 import { Platter } from '@/app/components/Platter'
 import { Waveform } from '@/app/components/Waveform'
@@ -23,6 +24,47 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
   const [dropActive, setDropActive] = useState(false)
+  const [gridPanelOpen, setGridPanelOpen] = useState(false)
+  const closeGridPanel = () => {
+    setGridPanelOpen(false)
+    // Closing without an edit still counts as "the user checked it."
+    ctl.confirmBeatGrid(deckId)
+  }
+  useEffect(() => {
+    if (!gridPanelOpen) return
+    const onDocClick = () => closeGridPanel()
+    // Next tick: otherwise the same click that opened it closes it right back.
+    const id = window.setTimeout(() => document.addEventListener('click', onDocClick), 0)
+    return () => {
+      window.clearTimeout(id)
+      document.removeEventListener('click', onDocClick)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gridPanelOpen])
+
+  // SYNC: a tap toggles phase-lock to the master deck; a long-press makes
+  // this deck the master instead (v0.3.0). Mirrors Platter.tsx's hold-timer
+  // idiom (a ref, not state, since the timer firing shouldn't re-render) and
+  // the CUE button's window-level pointerup listener just below — the
+  // release has to be caught even if the pointer drifted off the button
+  // first, the same reason CUE doesn't rely on onPointerUp alone.
+  const syncHoldTimer = useRef(0)
+  const syncLongFired = useRef(false)
+  useEffect(() => () => window.clearTimeout(syncHoldTimer.current), [])
+  const onSyncDown = () => {
+    syncLongFired.current = false
+    window.clearTimeout(syncHoldTimer.current)
+    syncHoldTimer.current = window.setTimeout(() => {
+      syncLongFired.current = true
+      ctl.setMasterDeck(deckId)
+    }, LONG_PRESS_MS)
+    const up = () => {
+      window.clearTimeout(syncHoldTimer.current)
+      if (!syncLongFired.current) ctl.syncDeck(deckId)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointerup', up)
+  }
 
   const TRACK_MIME = 'application/x-soundgrid-track'
   const onDrop = (e: React.DragEvent) => {
@@ -92,22 +134,46 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             )}
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          <div
-            className="tnum text-xl font-semibold leading-none"
-            style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            className="text-right disabled:cursor-not-allowed"
+            onClick={() => {
+              if (!loaded) return
+              if (gridPanelOpen) closeGridPanel()
+              else setGridPanelOpen(true)
+            }}
+            disabled={!loaded}
+            aria-label="Edit beat grid"
+            aria-expanded={gridPanelOpen}
           >
-            {effectiveBpm ? effectiveBpm.toFixed(bpmDecimals) : '—'}
-          </div>
-          <div className="tnum mt-0.5 text-2xs text-grid-muted">
-            BPM
-            {deltaPct !== 0 && (
-              <span className="ml-1 text-grid-dim">
-                {deltaPct > 0 ? '+' : ''}
-                {deltaPct.toFixed(1)}%
-              </span>
-            )}
-          </div>
+            <div
+              className="tnum text-xl font-semibold leading-none"
+              style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
+            >
+              {effectiveBpm ? effectiveBpm.toFixed(bpmDecimals) : '—'}
+            </div>
+            <div className="tnum mt-0.5 text-2xs text-grid-muted">
+              BPM
+              {deltaPct !== 0 && (
+                <span className="ml-1 text-grid-dim">
+                  {deltaPct > 0 ? '+' : ''}
+                  {deltaPct.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          </button>
+          {/* A grid detection wasn't confident about, or found nothing at all,
+              is shown — never silently trusted (CLAUDE.md's central rule).
+              Cleared once the user checks or edits it (BeatGridPanel). */}
+          {loaded && !deck.beatGridConfirmed && (
+            <div className="mt-1 flex justify-end">
+              <Pill tone="warn" label="unconfirmed grid" />
+            </div>
+          )}
+          {gridPanelOpen && (
+            <BeatGridPanel deckId={deckId} beatGrid={deck.beatGrid} onClose={closeGridPanel} />
+          )}
         </div>
       </header>
 
@@ -118,6 +184,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         positionSec={deck.positionSec}
         durationSec={deck.durationSec}
         bpm={deck.bpm}
+        offsetSec={deck.beatGrid?.offsetSec ?? 0}
         hotCues={deck.hotCues}
         color={color}
         loading={deck.loading}
@@ -152,7 +219,14 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             >
               {deck.playing ? 'Pause' : 'Play'}
             </Button>
-            <Button variant="transport" onClick={() => ctl.syncDeck(deckId)} disabled={!loaded}>
+            <Button
+              variant="transport"
+              active={deck.syncActive}
+              tone={color}
+              onPointerDown={onSyncDown}
+              disabled={!loaded}
+              title="Tap: sync to master. Hold: make this deck master."
+            >
               Sync
             </Button>
           </div>

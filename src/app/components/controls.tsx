@@ -1,6 +1,35 @@
 import { useCallback, useRef, useState } from 'react'
 
 /* ------------------------------------------------------------------ *
+ * Pill — a named, visible degraded/status state (moved here in       *
+ * v0.3.0 so Deck.tsx can flag an unconfirmed beat grid the same way   *
+ * TopBar already flags a lost scratch engine or MIDI status — one     *
+ * idiom for "something is degraded or worth knowing," not two).       *
+ * ------------------------------------------------------------------ */
+
+const TONES = {
+  live: 'var(--color-live)',
+  warn: 'var(--color-warn)',
+  danger: 'var(--color-danger)',
+  idle: 'var(--color-grid-dim)',
+} as const
+
+export type PillTone = keyof typeof TONES
+
+export function Pill({ tone, label }: { tone: PillTone; label: string }) {
+  const c = TONES[tone]
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold"
+      style={{ background: `color-mix(in srgb, ${c}, transparent 86%)`, color: c }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
+      {label}
+    </span>
+  )
+}
+
+/* ------------------------------------------------------------------ *
  * Button — transport / toggle / ghost with explicit idle→active state *
  * ------------------------------------------------------------------ */
 
