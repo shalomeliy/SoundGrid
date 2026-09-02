@@ -89,6 +89,8 @@
   **כלל אצבע: הכפל כל גודל CSS ב‑0.76 כדי לדעת מה הוא באמת רואה** — המסך 14" = 126
   CSS px לאינץ' מול 96 בייחוס, אז הכל קטן פיזית ב‑24% ממה שהמספר אומר.
 - הוא מסתכל ב‑**Chrome האמיתי שלו**, לא ב‑Browser pane. `localhost:5173`.
+- **כל הפרויקטים שלו יושבים ב‑`C:\Users\Shalom\Projects`.** הפרויקט הזה ספציפית:
+  `C:\Users\Shalom\Projects\SoundGrid` (02/09).
 - הספרייה שלו: `C:\Users\Shalom\Music\Tracks` (תת‑תיקיות HipHop/House/Techno/Trance/
   Mizrahi/Final). folderName שנשמר = "Tracks".
 - **הוא לא מתכנת.** כל הסבר בעברית פשוטה, ובסוף כל יחידת עבודה — איך הוא בודק את זה
