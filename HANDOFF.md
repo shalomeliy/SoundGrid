@@ -24,24 +24,14 @@
 
 ---
 
-## מה נסגר בסבב הזה (02/09) — ואין כרגע פתוח מלבד החוב למטה
+## מה פתוח
 
-**‏v0.2.0 נסגרה סופית (02/09).** הסעיף האחרון — גרירת הפלטר בעכבר —
-**נוסתה על טראק אמיתי והצליחה**, לדיווח המשתמש. הרשומה המלאה — המנוע, שלושת
-סבבי המדידה מול החומרה, ו‏`JOG_TICKS_PER_REV = 713`:
-[`docs/handoff/v0.2.0.md`](docs/handoff/v0.2.0.md) · [`v0.2.4.md`](docs/handoff/v0.2.4.md).
-‏`public/midi-check.html` הוא מוניטור ה‑MIDI שמצא שם את באג ה‑63 — קוראים את
-הסכום לדק מעל הטבלה, לא שורה בודדת.
+**כלום בקוד.** ‏v0.2.0 · v0.1.7 · v0.2.5 · v0.2.6 · v0.2.7 · v0.2.8 · v0.2.9 סגורות,
+והקריסה הלא‑מאומתת מ‑28/08 נסגרה (לא השתחזרה). הרשומה של הסבב הזה, כולל המספרים
+שנמדדו: [`docs/handoff/v0.2.6.md`](docs/handoff/v0.2.6.md) ·
+[`v0.2.8.md`](docs/handoff/v0.2.8.md).
 
-**‏v0.1.7 — נסגר סופית (02/09).** שבע העמודות נראו על מסך ב‑1536×710 והתמלאו
-מתגיות ID3 אמיתיות: `TITLE · ARTIST · TYPE · BPM · KEY · TIME · LOAD`, שורה
-ראשונה `Presence | Ace Ventura | MP3 | 136 | Gm | 8:25`. ‏6/6 שורות קיבלו תגיות,
-ותג ה‑`1 skipped` ספר את הקובץ הלא‑ניגן. הבדיקה: `scripts/verify-library-boot.mjs`
-(סעיף `columns`), שמייצר ID3v2.3 אמיתי בדפדפן במקום להישען על קבצים.
-‏`TITLE` הועברה מ‑46% ל‑**25%** על פי המשתמש (02/09), עם `table-fixed` כדי שהמספר יתקיים.
-
-**הקריסה מ 28/08 — סגורה (02/09).** לא השתחזרה. תיקון הזיכרון
-(`analyzeWaveform`, ‏+63MB→+2MB) נשאר — הוא שיפור בפני עצמו, ולא הוכח כסיבה.
+פתוח רק מה שמופיע למטה: פעולת המחיקה שנשארה למשתמש, והחובות הטכניים.
 
 ---
 
@@ -67,12 +57,20 @@
 וה‑SHA שלהם רשום
 ב‑[`docs/handoff/v0.2.8.md`](docs/handoff/v0.2.8.md):
 
+**הדרך הקצרה — לא צריך מסוף בכלל:**
+‏`github.com/shalomeliy/SoundGrid/branches` → אייקון פח האשפה ליד כל אחד.
+
+**במסוף — חייבים לעמוד בתוך תיקיית הריפו.** ‏`git` מחפש `.git` בתיקייה הנוכחית
+ובהורים שלה, אז מ‑`~` הוא עונה `fatal: not a git repository`. זה לא כשל הרשאה:
+
 ```bash
+cd /c/Users/Shalom/<התיקייה של SoundGrid>   # Git Bash; ב‑PowerShell: cd C:\Users\Shalom\...
+git rev-parse --show-toplevel               # אמור להדפיס נתיב, לא fatal
 git push origin --delete claude/handoff-c0dx6i
 git push origin --delete claude/handoff-0ukbck
 ```
 
-או בדפדפן: `github.com/shalomeliy/SoundGrid/branches` → פח האשפה.
+לא זוכר איפה הוא? ‏`find /c/Users/Shalom -maxdepth 3 -name SoundGrid -type d`.
 
 ---
 
