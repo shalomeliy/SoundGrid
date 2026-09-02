@@ -220,13 +220,33 @@ await scenario(
   },
 )
 
-// 5. the whole panel fits the owner's viewport in every startup state
-await scenario(browser, 'fit', { permission: 'prompt' }, async (page) => {
+// 5. the startup sentence has to be ON SCREEN, not merely in the DOM. The owner
+// reported an apparently blank panel in a smaller window: an empty state that
+// centres itself inside a panel taller than the viewport puts its own text below
+// the fold, which looks exactly like the silence this version removed.
+for (const vp of [
+  { width: 1536, height: 710 },
+  { width: 1252, height: 759 },
+  { width: 1280, height: 620 },
+]) {
+  const page = await browser.newPage({ viewport: vp })
+  await page.addInitScript(harness({ permission: 'prompt' }))
+  await page.goto(URL, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(1200)
+  const size = `${vp.width}x${vp.height}`
   const overflow = await page.evaluate(
-    () => document.documentElement.scrollHeight > window.innerHeight,
+    () => document.documentElement.scrollHeight > window.innerHeight + 1,
   )
-  ok('layout: no vertical overflow at 1536x710', !overflow)
-})
+  ok(`layout: no vertical overflow at ${size}`, !overflow)
+  const seen = await page.evaluate(() => {
+    const el = [...document.querySelectorAll('p')].find((p) => /one click to open/.test(p.textContent || ''))
+    if (!el) return 'missing'
+    const r = el.getBoundingClientRect()
+    return r.top >= 0 && r.bottom <= window.innerHeight ? 'visible' : `offscreen(${Math.round(r.top)})`
+  })
+  ok(`layout: the startup sentence is visible at ${size}`, seen === 'visible', seen)
+  await page.close()
+}
 
 // 5b. every way the browser can throw, and the sentence each one produces.
 // Each of these shipped as a permanent "Looking for your library…" with an
@@ -292,6 +312,18 @@ await scenario(
       [...document.querySelectorAll('tbody tr')].filter((r) =>
         /1?[0-9]{2}\.?[0-9]?/.test(r.textContent || '')).length)
     ok('columns: every row got its tags', filled === 6, `${filled}/6`)
+    // the owner asked for Title at 25%; a percentage that the layout quietly
+    // ignores is a number that lies, so it gets measured rather than trusted
+    const widths = await page.evaluate(() => {
+      const table = document.querySelector('tbody')?.closest('table')
+      const total = table?.getBoundingClientRect().width || 1
+      return [...document.querySelectorAll('thead th')].map((th) =>
+        Math.round((th.getBoundingClientRect().width / total) * 100),
+      )
+    })
+    ok('columns: Title is 25% of the table, not 46%', widths[0] === 25, `${widths.join('% / ')}%`)
+    ok('columns: no column swallows the slack', Math.max(...widths.slice(2)) <= 12,
+      `widest non-name column ${Math.max(...widths.slice(2))}%`)
     await page.screenshot({ path: (process.env.SHOT_DIR || '.') + '/library-columns.png' })
   },
 )

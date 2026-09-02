@@ -401,18 +401,25 @@ export function Library() {
               renders at ~0.76 of its nominal size, which is why this is a
               legibility control and not a cosmetic one. */}
           <table
-            className="w-full border-collapse text-sm"
+            className="w-full table-fixed border-collapse text-sm"
             style={libraryTextScale === 1 ? undefined : { fontSize: `${libraryTextScale * 0.875}rem` }}
           >
             <thead className="sticky top-0 z-10 bg-surface-1">
               <tr className="border-b border-hairline">
                 {/* explicit widths: the title/artist cells use max-w-0 to truncate,
-                    which collapses them to nothing without a column width to size against */}
-                <Th className="w-[46%] pl-3 text-left">Title</Th>
-                <Th className="w-[18%] text-left">Artist</Th>
-                <Th className="w-14 text-left">Type</Th>
-                <Th className="w-16 text-right tnum">BPM</Th>
-                <Th className="w-20 text-right">
+                    which collapses them to nothing without a column width to size against.
+                    Title was 46% and the owner cut it to 25%.
+
+                    The percentages have to add to 100 under `table-fixed`, and
+                    that is the point: with auto layout the 21% Title gave up did
+                    not go to Artist, it collected in the Type column as a dead
+                    band between Artist and MP3. Fixed layout is what makes the
+                    number mean what it says. */}
+                <Th className="w-[25%] pl-3 text-left">Title</Th>
+                <Th className="w-[27%] text-left">Artist</Th>
+                <Th className="w-[8%] text-left">Type</Th>
+                <Th className="w-[10%] text-right tnum">BPM</Th>
+                <Th className="w-[10%] text-right">
                   <button
                     onClick={() => {
                       void settings.set('keyMode', keyMode === 'musical' ? 'camelot' : 'musical')
@@ -427,8 +434,8 @@ export function Library() {
                     {keyMode === 'musical' ? 'Key' : 'Camelot'}
                   </button>
                 </Th>
-                <Th className="w-16 text-right tnum">Time</Th>
-                <Th className="w-24 pr-3 text-right">Load</Th>
+                <Th className="w-[10%] text-right tnum">Time</Th>
+                <Th className="w-[10%] pr-3 text-right">Load</Th>
               </tr>
             </thead>
             <tbody>

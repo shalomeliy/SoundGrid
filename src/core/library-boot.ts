@@ -121,13 +121,13 @@ export function bootCopy(
     case 'needs-click':
       return {
         title: `${folder} is ready — one click to open it`,
-        body: 'Chrome only keeps folder access without asking if you chose "Allow on every visit". If you picked "Allow this time", it asks again each session — this is that click, not an error.',
+        body: 'Browsers hand back folder access one session at a time. If yours offered "Allow on every visit" and you took it, this step disappears; otherwise it is one click after each reload. Either way it is not an error.',
         cta: `Open ${folder}`,
       }
     case 'blocked':
       return {
         title: `Chrome is blocking access to ${folder}`,
-        body: 'Folder access was denied for this site. Pick the folder again to grant it, and choose "Allow on every visit" so it opens by itself next time.',
+        body: 'Folder access was refused for this site. Pick the folder again to grant it — and if the dialog offers "Allow on every visit", taking it is what lets SoundGrid open the folder by itself.',
         cta: 'Pick the folder again',
       }
     case 'missing':
