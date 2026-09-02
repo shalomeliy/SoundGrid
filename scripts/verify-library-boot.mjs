@@ -18,7 +18,7 @@
  * IndexedDB that keeps references instead of cloning them. Everything above
  * those two seams is the real application.
  *
- * Result on 2026-09-02, Chromium 1194: 18/18.
+ * Result on 2026-09-02, Chromium 1194: 30/30.
  */
 import { chromium } from 'playwright'
 
@@ -36,7 +36,7 @@ const ok = (name, pass, detail) => {
  * the scanner must refuse. `permission` decides what a saved handle reports on
  * load; `seed` decides whether one is there at all.
  */
-function harness({ permission = 'granted', seed = true, entries, tags } = {}) {
+function harness({ permission = 'granted', seed = true, entries, tags, mode = 'normal' } = {}) {
   return `(() => {
   const FILES = ${JSON.stringify(entries ?? [
     'Artist A - One.mp3',
@@ -46,6 +46,9 @@ function harness({ permission = 'granted', seed = true, entries, tags } = {}) {
   ])};
   window.__picker = [];
   window.__requests = 0;
+  window.__unhandled = [];
+  addEventListener('unhandledrejection', (e) => window.__unhandled.push(String(e.reason)));
+  const MODE = ${JSON.stringify(mode)};
 
   /**
    * A real ID3v2.3 header in front of a stub payload. The library table reads
@@ -83,9 +86,21 @@ function harness({ permission = 'granted', seed = true, entries, tags } = {}) {
     return {
       kind: 'directory',
       name,
-      queryPermission: async () => state,
-      requestPermission: async () => { window.__requests++; state = 'granted'; return state; },
-      entries: async function* () { for (const f of FILES) yield [f, makeFile(f)]; },
+      queryPermission: async () => {
+        if (MODE === 'queryThrows') throw new DOMException('gone', 'NotFoundError');
+        return state;
+      },
+      requestPermission: async () => {
+        window.__requests++;
+        if (MODE === 'requestThrows')
+          throw new DOMException('User activation is required', 'SecurityError');
+        state = 'granted';
+        return state;
+      },
+      entries: async function* () {
+        if (MODE === 'notFound') throw new DOMException('folder gone', 'NotFoundError');
+        for (const f of FILES) yield [f, makeFile(f)];
+      },
     };
   };
 
@@ -103,6 +118,13 @@ function harness({ permission = 'granted', seed = true, entries, tags } = {}) {
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: {
     open() {
       const req = {};
+      if (MODE === 'idbThrows') {
+        setTimeout(() => {
+          req.error = new DOMException('db dead', 'InvalidStateError');
+          req.onerror && req.onerror();
+        }, 0);
+        return req;
+      }
       setTimeout(() => {
         const db = {
           transaction: () => {
@@ -205,6 +227,37 @@ await scenario(browser, 'fit', { permission: 'prompt' }, async (page) => {
   )
   ok('layout: no vertical overflow at 1536x710', !overflow)
 })
+
+// 5b. every way the browser can throw, and the sentence each one produces.
+// Each of these shipped as a permanent "Looking for your library…" with an
+// unhandled rejection and nothing on screen — the silent skip this version was
+// written to remove, arriving through this version's own error paths.
+const THROWS = [
+  ['folder renamed mid-scan', { mode: 'notFound' }, /no longer there/, null],
+  ['queryPermission throws on load', { mode: 'queryThrows' }, /no longer there/, null],
+  ['IndexedDB will not open', { mode: 'idbThrows' }, /Could not read/, null],
+  [
+    'requestPermission loses its activation',
+    { permission: 'prompt', mode: 'requestThrows' },
+    /blocking access to Tracks/,
+    /^Open Tracks$/,
+  ],
+]
+for (const [label, opts, expected, clickFirst] of THROWS) {
+  await scenario(browser, label, opts, async (page) => {
+    if (clickFirst) {
+      await page.getByRole('button', { name: clickFirst }).first().click()
+      await page.waitForTimeout(900)
+    }
+    const said = await page.getByText(expected).count()
+    ok(`throws: ${label} says what happened`, said >= 1)
+    const unhandled = await page.evaluate(() => window.__unhandled)
+    ok(`throws: ${label} leaves no unhandled rejection`, unhandled.length === 0,
+      unhandled.join('; '))
+    const out = await page.getByRole('button', { name: /Pick the folder again/i }).count()
+    ok(`throws: ${label} offers a way out`, out >= 1)
+  })
+}
 
 // 6. the seven-column table with real tag content in it — open since v0.1.7,
 // because the parser was measured against 360 files and the table never was

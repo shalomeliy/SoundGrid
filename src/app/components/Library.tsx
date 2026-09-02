@@ -95,6 +95,25 @@ export function Library() {
   )
 
   /**
+   * Every path below can throw something the browser invented, and an async
+   * handler that throws produces an unhandled rejection — which is to say
+   * nothing on screen at all. That is the silent skip this version exists to
+   * remove, so it must not be how this version fails: `queryPermission` on a
+   * folder that is gone, an IndexedDB that will not open (private window,
+   * blocked storage, a corrupt profile), and `requestPermission` losing its
+   * activation all land here and become copy.
+   */
+  function reportFailure(err: unknown) {
+    const e = err as DOMException
+    setLibrary({
+      boot: bootForScanError(e?.name ?? ''),
+      bootDetail: e?.message || e?.name || String(err),
+      scanning: false,
+      scanMsg: '',
+    })
+  }
+
+  /**
    * Startup (v0.2.6). The only branch that scans unattended is the one where
    * the saved handle still reads `granted` — everything else waits for a
    * gesture and says on screen what it is waiting for. Nothing here calls
@@ -109,10 +128,15 @@ export function Library() {
       return
     }
     void (async () => {
-      const saved = await restoreLibraryFolder()
-      const boot = bootFor(true, saved)
-      setLibrary({ boot, folderName: saved?.name ?? null })
-      if (boot === 'restoring' && saved) await runScan(saved.handle, saved.name)
+      try {
+        const saved = await restoreLibraryFolder()
+        const boot = bootFor(true, saved)
+        setLibrary({ boot, folderName: saved?.name ?? null })
+        if (boot === 'restoring' && saved) await runScan(saved.handle, saved.name)
+      } catch (err) {
+        // without this the panel sits on "Looking for your library…" forever
+        reportFailure(err)
+      }
     })()
     // runScan is stable for the component's lifetime; re-running this effect
     // would re-scan the folder on every render that touches the library.
@@ -124,19 +148,28 @@ export function Library() {
    * call `requestPermission`, because it is reached from a real click.
    */
   async function reconnect() {
-    const saved = await restoreLibraryFolder()
-    if (!saved) return pickNew()
-    if (!(await ensureReadPermission(saved.handle))) {
-      setLibrary({ boot: 'blocked', folderName: saved.name })
-      return
+    try {
+      const saved = await restoreLibraryFolder()
+      if (!saved) return pickNew()
+      if (!(await ensureReadPermission(saved.handle))) {
+        setLibrary({ boot: 'blocked', folderName: saved.name })
+        return
+      }
+      await runScan(saved.handle, saved.name)
+    } catch (err) {
+      // a click that does nothing and says nothing is the worst of the three
+      reportFailure(err)
     }
-    await runScan(saved.handle, saved.name)
   }
 
   async function pickNew() {
-    const folder = await pickLibraryFolder()
-    if (!folder) return
-    await runScan(folder.handle, folder.name)
+    try {
+      const folder = await pickLibraryFolder()
+      if (!folder) return
+      await runScan(folder.handle, folder.name)
+    } catch (err) {
+      reportFailure(err)
+    }
   }
 
   async function runScan(handle: FileSystemDirectoryHandle, name: string) {
