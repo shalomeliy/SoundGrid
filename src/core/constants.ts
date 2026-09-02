@@ -124,3 +124,18 @@ export const PLATTER_RPM = 45
 
 /** Waveform zoom: CSS px of screen per second of audio. */
 export const WAVEFORM_PX_PER_SEC = 150
+
+/**
+ * Beat grid nudge per click of the manual +/- correction in BeatGridPanel
+ * (v0.3.0). 10ms — small enough that a few clicks close a by-ear phase error
+ * without overshooting, big enough to be worth a click instead of ten.
+ */
+export const BEATGRID_NUDGE_SEC = 0.01
+
+/**
+ * SYNC long-press threshold, in ms, for the master-deck override (v0.3.0).
+ * Shared by the mouse path (Deck.tsx) and the FLX4 path (manager.ts) so a
+ * press reads the same either way. Long enough that an ordinary SYNC tap
+ * never fires it by accident, short enough not to feel unresponsive.
+ */
+export const LONG_PRESS_MS = 500
