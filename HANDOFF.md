@@ -57,6 +57,25 @@
 
 ---
 
+## פעולה אחת שנשארה למשתמש — מחיקת שני בראנצ׳ים
+
+הסוכן **לא יכול** למחוק בראנצ׳ים מהסביבה הזאת: `git push origin --delete` חוזר
+עם `HTTP 403` מה‑proxy (דחיפה רגילה כן עוברת — מחיקת ref חסומה במדיניות), ול‑MCP
+של GitHub אין כלי מחיקה. **זה נאמר כאן ולא נבלע.**
+
+שניהם מיותרים — מה שנלקח מהם נכנס ב‑v0.2.8 (לאמת: `git log --oneline origin/main -6`),
+וה‑SHA שלהם רשום
+ב‑[`docs/handoff/v0.2.8.md`](docs/handoff/v0.2.8.md):
+
+```bash
+git push origin --delete claude/handoff-c0dx6i
+git push origin --delete claude/handoff-0ukbck
+```
+
+או בדפדפן: `github.com/shalomeliy/SoundGrid/branches` → פח האשפה.
+
+---
+
 ## חובות טכניים ידועים
 
 - **`onLoadPlayhead` נשאר על המסך עד v0.4 — החלטת המשתמש (30/08).** "מנקודת ה‑Cue
