@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. כל גרסה עד `v0.2.9` סגורה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
+| **בעבודה** | אין. כל גרסה עד `v0.3.0` סגורה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
 | **branch** | אין PR פתוח כרגע — כל מה שנבנה כבר ב‑`main`. לפני כל עבודה חדשה: `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
-| **גרסה נוכחית** | `v0.2.9` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
+| **גרסה נוכחית** | `v0.3.0` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
-| **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
+| **הבא בתור** | **v0.4.0 — ניתוח מתמשך + מטא‑דאטה קבועה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
 **מה פתוח בקוד: כלום.** פתוח רק מה שמופיע למטה — החובות הטכניים וההחלטות הממתינות.
 
@@ -31,9 +31,6 @@
   הראשונה" מתנהג היום כמו "מההתחלה", כי אין cue נשמר לפני v0.4. **מותר לו להישאר רק
   כל עוד הכתובית `pending` מתחתיו נשארת** — היא מה שהופך אותו מפקד מת לפקד שמצהיר
   על עצמו. **ב‑v0.4, כשה‑cue points נשמרים, לחבר אותו ולהסיר את הכתובית.**
-- `detectBpm` פשטני (energy autocorrelation) — יוחלף ב‑v0.3 עם beatgrid אמיתי.
-  **שים לב:** מאז v0.1.7 יש BPM מתגיות ל‑97% מהספרייה. `loadTrackToDeck` נותן לתגית
-  לנצח (`track.bpm ?? detectBpm(buffer)`) עד ל‑beatgrid, ואז זה מתהפך בחזרה.
 - תוצאות התגיות לא נשמרות בין טעינות — נסרק מחדש בכל בחירת תיקייה (0.6ש' ל‑360 קבצים,
   אז לא דחוף). מטמון קבוע ב‑IndexedDB ב‑v0.4.
 - `readTags` על WAV/AIFF לא מוצא ID3 אם הוא יושב אחרי הצ'אנק ה‑64 (cap של הלולאה).
@@ -41,7 +38,6 @@
   אין OGG בספרייה של המשתמש, אז לא נבדק על אמת.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
 - אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
-- `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
@@ -53,6 +49,17 @@
   `@/app/state/store` ואת `@/controls` במקום לפלוט `ControlAction`s דרך הפורט. נכנס
   ב‑`f1ae061`. מתועד ביושר ב‑`.dependency-cruiser.cjs:29‑33` ב‑severity `warn` כדי
   שיישאר גלוי — `npm run check` נשאר ירוק בזמן שהכלל מופר. לא להעתיק, לא להשתיק.
+- **קבועי הכיוון של לולאת ה‑phase-sync (v0.3.0) ניחושים, לא מדודים.**
+  `MAX_SYNC_BEND = 0.06` ב‑`deck.ts`, `SYNC_LOOP_INTERVAL_SEC = 1` ו‑
+  `SYNC_PHASE_DEADBAND_SEC = 0.004` ב‑`controls.ts` — נגזרו מתקרות ה‑bend הקיימות,
+  לא נבדקו על נגינה אמיתית. אם שני דקים ב‑SYNC נשמעים חורגים מפאזה אחרי 2 דקות —
+  כאן מכוונים, לא ב‑Settings (אלה קבועי כיול, לא העדפה).
+- **הזיהוי האוטומטי מוצא beat, לא bar.** ‏`estimateBeatGrid` (`core/beatgrid.ts`)
+  לא יכול להבדיל פעימה 1 של תיבה משאר הפעימות בלי ניתוח טימבר (קיק מול סנר) — זה
+  מעבר למה ש‑autocorrelation פשוט תומך. «Set downbeat here» ב‑`BeatGridPanel` הוא
+  הכלי לתקן ידנית. פרטים: [`docs/handoff/v0.3.0.md`](docs/handoff/v0.3.0.md).
+- **אין binding ל‑FLX4** לארבעת כלי תיקון הרשת הידניים (nudge/half/double/tap/
+  set‑downbeat) ולא ל‑quantize toggle. גילוי איזה פאד פנוי בפועל דורש חומרה אמיתית.
 
 ---
 
