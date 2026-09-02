@@ -136,13 +136,27 @@ export async function pickTrackFiles(): Promise<Track[]> {
  * consumes this, and `prompt` vs `denied` is the distinction that matters:
  * `prompt` is one click away, `denied` needs the picker again.
  */
-export async function restoreLibraryFolder(): Promise<
-  (LibraryFolder & { permission: SavedPermission }) | null
-> {
-  const handle = await get<FileSystemDirectoryHandle>(HANDLE_KEY)
-  if (!handle) return null
-  const permission = (await handle.queryPermission({ mode: 'read' })) as SavedPermission
-  return { handle, name: handle.name, permission }
+export type Restored =
+  | { kind: 'none' }
+  /** something is stored, but it is not a directory handle this build can use */
+  | { kind: 'unusable' }
+  | { kind: 'saved'; handle: FileSystemDirectoryHandle; name: string; permission: SavedPermission }
+
+export async function restoreLibraryFolder(): Promise<Restored> {
+  const stored = await get<FileSystemDirectoryHandle>(HANDLE_KEY)
+  if (!stored) return { kind: 'none' }
+  /**
+   * A record written by an older build, or one the browser can no longer
+   * revive. Without this branch `queryPermission` is called on it, throws, and
+   * the app lands on either the first-visit screen or a raw TypeError — both of
+   * which tell the user there is no saved folder while there plainly is one.
+   * `unusable` is a state of its own so the screen can say which it is.
+   */
+  if (typeof stored.queryPermission !== 'function' || typeof stored.name !== 'string') {
+    return { kind: 'unusable' }
+  }
+  const permission = (await stored.queryPermission({ mode: 'read' })) as SavedPermission
+  return { kind: 'saved', handle: stored, name: stored.name, permission }
 }
 
 /**
@@ -216,6 +230,11 @@ export interface TagProgress {
   total: number
   /** how many of them actually carried a BPM */
   tagged: number
+  /**
+   * how many could not be read at all. Separate from `tagged` because "no BPM"
+   * and "no file" are different facts, and the badge names this one (v0.2.8).
+   */
+  unreadable: number
 }
 
 /**
@@ -236,12 +255,13 @@ export async function readLibraryTags(
   let next = 0
   let done = 0
   let tagged = 0
+  let unreadable = 0
   let batch = new Map<string, Partial<Track>>()
   let lastFlush = performance.now()
 
   const flush = () => {
     if (batch.size === 0) return
-    onBatch(batch, { done, total, tagged })
+    onBatch(batch, { done, total, tagged, unreadable })
     batch = new Map()
     lastFlush = performance.now()
   }
@@ -253,6 +273,7 @@ export async function readLibraryTags(
       try {
         const file = await track.handle.getFile()
         const tags = await readTags(file)
+        if (tags.unreadable) unreadable++
         if (tags.bpm != null) tagged++
         const patch: Partial<Track> = {}
         if (tags.bpm != null) patch.bpm = tags.bpm
@@ -264,7 +285,10 @@ export async function readLibraryTags(
         if (tags.album) patch.album = tags.album
         if (Object.keys(patch).length > 0) batch.set(track.id, patch)
       } catch {
-        // permission revoked or file vanished mid-scan — skip it
+        // `getFile()` itself rejected: the entry is gone or access was pulled
+        // between the scan and now. Counted, never skipped — a row that cannot
+        // be read is a fact the library owes its owner (v0.2.8).
+        unreadable++
       }
       done++
       if (batch.size >= 50 || performance.now() - lastFlush > 400) flush()
@@ -273,5 +297,5 @@ export async function readLibraryTags(
 
   await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker))
   flush()
-  if (!opts.signal?.cancelled) onBatch(new Map(), { done, total, tagged })
+  if (!opts.signal?.cancelled) onBatch(new Map(), { done, total, tagged, unreadable })
 }

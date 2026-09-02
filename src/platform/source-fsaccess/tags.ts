@@ -14,6 +14,14 @@
  */
 
 export interface TrackTags {
+  /**
+   * The file could not be READ — deleted mid-scan, permission withdrawn, the
+   * drive gone — as opposed to being read fine and carrying no tags. The two
+   * used to arrive at the caller identically, so a library where half the files
+   * had vanished looked exactly like a library of untagged files. That is the
+   * silent skip of `59c5fe5` one layer down (v0.2.8).
+   */
+  unreadable?: boolean
   bpm?: number
   /** display spelling, e.g. `Am`, `F#` */
   key?: string
@@ -648,8 +656,14 @@ export async function readTags(file: File): Promise<TrackTags> {
     } else if (magic[0] === 0xff && (magic[1] & 0xe0) === 0xe0) {
       tags.durationSec = await mp3Duration(file, 0)
     }
-  } catch {
-    // a malformed header is not worth failing a library scan over
+  } catch (err) {
+    // A malformed header is not worth failing a library scan over, and stays
+    // swallowed. A file that cannot be read is a different event and must not
+    // ride out on the same catch.
+    const name = (err as { name?: string } | null)?.name
+    if (name === 'NotReadableError' || name === 'NotAllowedError' || name === 'NotFoundError') {
+      tags.unreadable = true
+    }
   }
   if (tags.durationSec != null && (!isFinite(tags.durationSec) || tags.durationSec <= 0)) {
     delete tags.durationSec

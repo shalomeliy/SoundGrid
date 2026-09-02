@@ -131,8 +131,10 @@ export function Library() {
       try {
         const saved = await restoreLibraryFolder()
         const boot = bootFor(true, saved)
-        setLibrary({ boot, folderName: saved?.name ?? null })
-        if (boot === 'restoring' && saved) await runScan(saved.handle, saved.name)
+        setLibrary({ boot, folderName: saved.kind === 'saved' ? saved.name : null })
+        if (boot === 'restoring' && saved.kind === 'saved') {
+          await runScan(saved.handle, saved.name)
+        }
       } catch (err) {
         // without this the panel sits on "Looking for your library…" forever
         reportFailure(err)
@@ -150,7 +152,9 @@ export function Library() {
   async function reconnect() {
     try {
       const saved = await restoreLibraryFolder()
-      if (!saved) return pickNew()
+      // 'none' and 'unusable' both mean there is nothing here to reconnect to;
+      // the picker is the only way forward from either.
+      if (saved.kind !== 'saved') return pickNew()
       if (!(await ensureReadPermission(saved.handle))) {
         setLibrary({ boot: 'blocked', folderName: saved.name })
         return
@@ -261,6 +265,7 @@ export function Library() {
         }
         const total = store.library.tracks.length
         store.setLibrary({
+          unreadable: progress.unreadable,
           scanMsg:
             progress.done < progress.total
               ? `${total} tracks · tags ${progress.done}/${progress.total}`
@@ -348,6 +353,20 @@ export function Library() {
                 .join(', ')}`}
             >
               {skippedTotal} skipped
+            </span>
+          )}
+          {/*
+            Files that ARE tracks and could not be read: deleted between the
+            scan and the tag pass, or access pulled. Until v0.2.8 an empty catch
+            counted them as "no tags", so a folder half of which had vanished
+            looked identical to a folder of untagged files.
+          */}
+          {!library.scanning && library.unreadable > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-warn"
+              title="Listed tracks whose file could not be read — moved, deleted, or access withdrawn since the scan."
+            >
+              {library.unreadable} unreadable
             </span>
           )}
         </span>

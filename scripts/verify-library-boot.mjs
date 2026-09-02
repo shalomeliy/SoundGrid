@@ -36,7 +36,7 @@ const ok = (name, pass, detail) => {
  * the scanner must refuse. `permission` decides what a saved handle reports on
  * load; `seed` decides whether one is there at all.
  */
-function harness({ permission = 'granted', seed = true, entries, tags, mode = 'normal' } = {}) {
+function harness({ permission = 'granted', seed = true, entries, tags, mode = 'normal', unreadable = [] } = {}) {
   return `(() => {
   const FILES = ${JSON.stringify(entries ?? [
     'Artist A - One.mp3',
@@ -75,11 +75,15 @@ function harness({ permission = 'granted', seed = true, entries, tags, mode = 'n
     return new Blob([header, ...frames, new Uint8Array(2048)]);
   };
   const TAGS = ${JSON.stringify(tags ?? {})};
+  const UNREADABLE = new Set(${JSON.stringify(unreadable)});
   const makeFile = (name) => ({
     kind: 'file',
     name,
-    getFile: async () =>
-      new File([TAGS[name] ? id3(TAGS[name]) : new Uint8Array(64)], name),
+    getFile: async () => {
+      if (UNREADABLE.has(name))
+        throw new DOMException('file is gone', 'NotFoundError');
+      return new File([TAGS[name] ? id3(TAGS[name]) : new Uint8Array(64)], name);
+    },
   });
   const makeDir = (name, perm) => {
     let state = perm;
@@ -113,7 +117,13 @@ function harness({ permission = 'granted', seed = true, entries, tags, mode = 'n
 
   // --- IndexedDB shim: idb-keyval only needs open/transaction/get/put ---
   const mem = new Map();
-  ${seed ? `mem.set('soundgrid:libraryDir', makeDir('Tracks', ${JSON.stringify(permission)}));` : ''}
+  ${
+    seed === 'unusable'
+      ? `mem.set('soundgrid:libraryDir', { name: 'Tracks' });`
+      : seed
+        ? `mem.set('soundgrid:libraryDir', makeDir('Tracks', ${JSON.stringify(permission)}));`
+        : ''
+  }
   const fire = (obj, prop, value) => setTimeout(() => { obj.result = value; obj[prop] && obj[prop](); }, 0);
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: {
     open() {
@@ -278,6 +288,32 @@ for (const [label, opts, expected, clickFirst] of THROWS) {
     ok(`throws: ${label} offers a way out`, out >= 1)
   })
 }
+
+// 5c. imported from the parallel v0.2.6 branch: two facts that used to arrive
+// looking like other facts.
+await scenario(browser, 'unusable', { seed: 'unusable' }, async (page) => {
+  const said = await page.getByText(/saved folder cannot be reopened/).count()
+  ok('unusable: a stale saved record says so instead of claiming nothing is saved', said === 1)
+  const asNew = await page.getByText(/No music loaded yet/).count()
+  ok('unusable: it is not reported as a first visit', asNew === 0)
+  const unhandled = await page.evaluate(() => window.__unhandled)
+  ok('unusable: no unhandled rejection', unhandled.length === 0, unhandled.join('; '))
+})
+
+await scenario(
+  browser,
+  'unreadable',
+  {
+    permission: 'granted',
+    entries: ['a.mp3', 'b.mp3', 'gone.mp3', 'also-gone.mp3'],
+    unreadable: ['gone.mp3', 'also-gone.mp3'],
+  },
+  async (page) => {
+    const badge = await page.getByText(/2 unreadable/).count()
+    ok('unreadable: files that vanished are counted and named, not filed as untagged',
+      badge === 1)
+  },
+)
 
 // 6. the seven-column table with real tag content in it — open since v0.1.7,
 // because the parser was measured against 360 files and the table never was

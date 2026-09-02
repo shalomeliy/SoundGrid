@@ -31,6 +31,8 @@ export type LibraryBoot =
   | 'unsupported'
   /** nothing saved: a first visit, or the handle was cleared */
   | 'new'
+  /** something IS saved, but it is not a handle this build can revive (v0.2.8) */
+  | 'unusable'
   /** saved and still granted — scanning right now, no click was needed */
   | 'restoring'
   /** saved, but the permission reverted to `prompt`. One click fixes it. */
@@ -52,10 +54,11 @@ export type LibraryBoot =
  */
 export function bootFor(
   supported: boolean,
-  saved: { permission: SavedPermission } | null,
+  saved: { kind: 'none' } | { kind: 'unusable' } | { kind: 'saved'; permission: SavedPermission },
 ): LibraryBoot {
   if (!supported) return 'unsupported'
-  if (!saved) return 'new'
+  if (saved.kind === 'none') return 'new'
+  if (saved.kind === 'unusable') return 'unusable'
   if (saved.permission === 'granted') return 'restoring'
   if (saved.permission === 'denied') return 'blocked'
   return 'needs-click'
@@ -115,6 +118,12 @@ export function bootCopy(
         title: 'No music loaded yet',
         body: 'Pick the folder your tracks live in. The dialog opens in your Music folder. Nothing is uploaded — files stay on your machine.',
         cta: 'Load my music folder',
+      }
+    case 'unusable':
+      return {
+        title: 'The saved folder cannot be reopened',
+        body: 'SoundGrid remembers a folder from an earlier version of itself, and this build cannot revive it. Picking it again fixes it for good — nothing was lost.',
+        cta: 'Pick the folder again',
       }
     case 'restoring':
       return { title: `Opening ${folder}…`, body: 'The folder you used last, reopening on its own.' }

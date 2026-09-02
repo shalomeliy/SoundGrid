@@ -64,6 +64,8 @@ export interface AppState {
     boot: LibraryBoot
     /** the browser's own words when a scan failed, so `failed` can quote them */
     bootDetail: string | null
+    /** listed tracks whose file could not be read — counted, never swallowed */
+    unreadable: number
   }
 
   midi: {
@@ -153,6 +155,7 @@ export const useStore = create<AppState>((set) => ({
     supported: true,
     boot: 'checking',
     bootDetail: null,
+    unreadable: 0,
   },
   midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },

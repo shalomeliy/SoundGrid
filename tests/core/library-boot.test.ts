@@ -16,7 +16,7 @@ import {
  */
 describe('bootFor', () => {
   it('scans unattended only when the saved permission is still granted', () => {
-    expect(bootFor(true, { permission: 'granted' })).toBe('restoring')
+    expect(bootFor(true, { kind: 'saved', permission: 'granted' })).toBe('restoring')
   })
 
   /**
@@ -27,24 +27,34 @@ describe('bootFor', () => {
    * `granted` would scan and fail with nothing on screen.
    */
   it('treats a reverted permission as one click away, not as a refusal', () => {
-    expect(bootFor(true, { permission: 'prompt' })).toBe('needs-click')
-    expect(bootFor(true, { permission: 'denied' })).toBe('blocked')
-    expect(bootFor(true, { permission: 'prompt' })).not.toBe(
-      bootFor(true, { permission: 'denied' }),
+    expect(bootFor(true, { kind: 'saved', permission: 'prompt' })).toBe('needs-click')
+    expect(bootFor(true, { kind: 'saved', permission: 'denied' })).toBe('blocked')
+    expect(bootFor(true, { kind: 'saved', permission: 'prompt' })).not.toBe(
+      bootFor(true, { kind: 'saved', permission: 'denied' }),
     )
   })
 
   it('has a first-visit state distinct from every saved-folder state', () => {
-    expect(bootFor(true, null)).toBe('new')
+    expect(bootFor(true, { kind: 'none' })).toBe('new')
     const saved: SavedPermission[] = ['granted', 'prompt', 'denied']
     for (const permission of saved) {
-      expect(bootFor(true, { permission })).not.toBe('new')
+      expect(bootFor(true, { kind: 'saved', permission })).not.toBe('new')
     }
   })
 
+  /**
+   * A record that survived in IndexedDB but is not a handle this build can use.
+   * Falling back to 'new' here would tell the user nothing is saved while a
+   * folder plainly is — the remembered-but-denied confusion again, one level up.
+   */
+  it('separates an unusable saved record from no record at all', () => {
+    expect(bootFor(true, { kind: 'unusable' })).toBe('unusable')
+    expect(bootFor(true, { kind: 'unusable' })).not.toBe(bootFor(true, { kind: 'none' }))
+  })
+
   it('reports an unsupported browser before anything else', () => {
-    expect(bootFor(false, null)).toBe('unsupported')
-    expect(bootFor(false, { permission: 'granted' })).toBe('unsupported')
+    expect(bootFor(false, { kind: 'none' })).toBe('unsupported')
+    expect(bootFor(false, { kind: 'saved', permission: 'granted' })).toBe('unsupported')
   })
 })
 
@@ -68,6 +78,7 @@ const ALL: LibraryBoot[] = [
   'checking',
   'unsupported',
   'new',
+  'unusable',
   'restoring',
   'needs-click',
   'blocked',
