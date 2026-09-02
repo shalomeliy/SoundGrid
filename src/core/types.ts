@@ -27,6 +27,12 @@ export interface HotCue {
   color: string
 }
 
+export interface BeatGrid {
+  /** seconds from track start to the grid's own beat 0, folded into [0, 60/bpm) */
+  offsetSec: number
+  bpm: number
+}
+
 export interface DeckState {
   id: DeckId
   track: Track | null
