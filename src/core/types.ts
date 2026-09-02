@@ -43,6 +43,21 @@ export interface DeckState {
   durationSec: number
   /** detected / edited bpm of the loaded track */
   bpm: number | null
+  /**
+   * Detected/edited beat grid (v0.3.0) — phase (`offsetSec`) plus the same
+   * number as `bpm`, always written together. `null` until a track is loaded
+   * or detection found nothing to say (too short/quiet to show a periodicity).
+   */
+  beatGrid: BeatGrid | null
+  /**
+   * Whether `beatGrid` has been checked or edited by the user. False means
+   * detection found it but wasn't confident, or found nothing at all — shown
+   * in the UI, never silently trusted. `true` with no track loaded (nothing
+   * to warn about).
+   */
+  beatGridConfirmed: boolean
+  /** locked to the master deck's phase via SYNC (v0.3.0) */
+  syncActive: boolean
   /** tempo fader value, -1..1 mapped to +/- range (see TEMPO_RANGE) */
   tempo: number
   /** normalised waveform peaks for rendering (min/max interleaved) */
