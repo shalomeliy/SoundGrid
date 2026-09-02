@@ -1,3 +1,4 @@
+import type { LibraryBoot } from '@/core/library-boot'
 import { create } from 'zustand'
 import type {
   ChannelState,
@@ -54,6 +55,15 @@ export interface AppState {
     /** files the scan walked past, by extension — never skip silently */
     skipped: Record<string, number>
     supported: boolean
+    /**
+     * Which of the startup situations we are in (v0.2.6). An empty track list
+     * is never on its own enough: this is what turns "nothing here" into a
+     * sentence, and it is the reason the panel can tell a first visit from a
+     * revoked permission from a folder that was renamed.
+     */
+    boot: LibraryBoot
+    /** the browser's own words when a scan failed, so `failed` can quote them */
+    bootDetail: string | null
   }
 
   midi: {
@@ -141,6 +151,8 @@ export const useStore = create<AppState>((set) => ({
     selectedId: null,
     skipped: {},
     supported: true,
+    boot: 'checking',
+    bootDetail: null,
   },
   midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },

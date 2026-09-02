@@ -1,4 +1,5 @@
 import { get, set } from 'idb-keyval'
+import type { SavedPermission } from '@/core/library-boot'
 import type { Track } from '@/core/types'
 import { readTags } from '@/platform/source-fsaccess/tags'
 
@@ -45,17 +46,29 @@ export function fileSystemAccessSupported(): boolean {
     .showDirectoryPicker === 'function'
 }
 
+/**
+ * `startIn: 'music'` opens the dialog already inside the OS music folder, so a
+ * first visit is one click instead of one click plus a walk down the tree. It
+ * does **not** load Music itself: the user's library is `Music/Tracks`, and
+ * scanning all of Music would drag in recordings and voice memos that are not
+ * a set. Music is where the dialog starts, not what gets chosen.
+ *
+ * `id` outranks `startIn` once it has remembered a directory, which is the
+ * behaviour we want and the reason both are passed: first visit starts in
+ * Music, every visit after that starts where they last were.
+ */
 export async function pickLibraryFolder(): Promise<LibraryFolder | null> {
   const picker = (
     window as unknown as {
       showDirectoryPicker: (o?: {
         mode?: 'read' | 'readwrite'
         id?: string
+        startIn?: string
       }) => Promise<FileSystemDirectoryHandle>
     }
   ).showDirectoryPicker
   try {
-    const handle = await picker({ mode: 'read', id: 'soundgrid-music' })
+    const handle = await picker({ mode: 'read', id: 'soundgrid-music', startIn: 'music' })
     await set(HANDLE_KEY, handle)
     return { handle, name: handle.name }
   } catch (err) {
@@ -113,14 +126,30 @@ export async function pickTrackFiles(): Promise<Track[]> {
   }
 }
 
-export async function restoreLibraryFolder(): Promise<LibraryFolder | null> {
+/**
+ * The saved folder plus **the permission it still holds**.
+ *
+ * Until v0.2.6 this queried the permission and then threw the answer away —
+ * both branches returned the same object — so the caller could not tell "open
+ * it now, no click needed" from "this needs a gesture first", and the app
+ * asked for a click either way. `bootFor` in `core/library-boot.ts` is what
+ * consumes this, and `prompt` vs `denied` is the distinction that matters:
+ * `prompt` is one click away, `denied` needs the picker again.
+ */
+export async function restoreLibraryFolder(): Promise<
+  (LibraryFolder & { permission: SavedPermission }) | null
+> {
   const handle = await get<FileSystemDirectoryHandle>(HANDLE_KEY)
   if (!handle) return null
-  const perm = await handle.queryPermission({ mode: 'read' })
-  if (perm === 'granted') return { handle, name: handle.name }
-  return { handle, name: handle.name } // caller must re-request on user gesture
+  const permission = (await handle.queryPermission({ mode: 'read' })) as SavedPermission
+  return { handle, name: handle.name, permission }
 }
 
+/**
+ * **Call this from a click, never from an effect.** `requestPermission` needs
+ * transient user activation; without it Chromium raises no dialog at all, so a
+ * page-load call is a guaranteed silent no.
+ */
 export async function ensureReadPermission(
   handle: FileSystemDirectoryHandle,
 ): Promise<boolean> {

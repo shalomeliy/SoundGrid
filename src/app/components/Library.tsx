@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as ctl from '@/controls'
 import {
   ensureReadPermission,
@@ -10,6 +10,7 @@ import {
   scanLibrary,
 } from '@/platform/source-fsaccess/library'
 import { useShallow } from 'zustand/react/shallow'
+import { bootCopy, bootFor, bootForScanError } from '@/core/library-boot'
 import { mixRecommendations, type MixMatch } from '@/core/recommend'
 import { settings } from '@/platform/settings-idb/store'
 import { useSettings } from '@/app/hooks/useSettings'
@@ -93,23 +94,43 @@ export function Library() {
     [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks],
   )
 
+  /**
+   * Startup (v0.2.6). The only branch that scans unattended is the one where
+   * the saved handle still reads `granted` — everything else waits for a
+   * gesture and says on screen what it is waiting for. Nothing here calls
+   * `requestPermission`: outside a click it raises no dialog, so it would fail
+   * with nothing visible, which is the exact failure this version removes.
+   */
   useEffect(() => {
-    setLibrary({ supported: fileSystemAccessSupported() })
-    void restoreLibraryFolder().then((f) => {
-      if (f) setLibrary({ folderName: f.name })
-    })
-  }, [setLibrary])
-
-  async function choose() {
-    const folder = (await restoreLibraryFolder()) ?? (await pickLibraryFolder())
-    if (!folder) return
-    if (!(await ensureReadPermission(folder.handle))) {
-      const fresh = await pickLibraryFolder()
-      if (!fresh) return
-      await runScan(fresh.handle, fresh.name)
+    const supported = fileSystemAccessSupported()
+    setLibrary({ supported })
+    if (!supported) {
+      setLibrary({ boot: 'unsupported' })
       return
     }
-    await runScan(folder.handle, folder.name)
+    void (async () => {
+      const saved = await restoreLibraryFolder()
+      const boot = bootFor(true, saved)
+      setLibrary({ boot, folderName: saved?.name ?? null })
+      if (boot === 'restoring' && saved) await runScan(saved.handle, saved.name)
+    })()
+    // runScan is stable for the component's lifetime; re-running this effect
+    // would re-scan the folder on every render that touches the library.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setLibrary])
+
+  /**
+   * The single click that mode 2 asks for. This is the one place allowed to
+   * call `requestPermission`, because it is reached from a real click.
+   */
+  async function reconnect() {
+    const saved = await restoreLibraryFolder()
+    if (!saved) return pickNew()
+    if (!(await ensureReadPermission(saved.handle))) {
+      setLibrary({ boot: 'blocked', folderName: saved.name })
+      return
+    }
+    await runScan(saved.handle, saved.name)
   }
 
   async function pickNew() {
@@ -123,13 +144,34 @@ export function Library() {
     const scan = { cancelled: false }
     tagScan.current = scan
 
-    setLibrary({ scanning: true, folderName: name, scanMsg: 'Scanning…' })
-    const { tracks, skipped } = await scanLibrary(handle, (p) =>
-      setLibrary({ scanMsg: `${p.found} tracks · ${p.currentDir}` }),
-    )
+    setLibrary({ scanning: true, folderName: name, scanMsg: 'Scanning…', bootDetail: null })
+
+    let tracks: Track[]
+    let skipped: Record<string, number>
+    try {
+      ;({ tracks, skipped } = await scanLibrary(handle, (p) =>
+        setLibrary({ scanMsg: `${p.found} tracks · ${p.currentDir}` }),
+      ))
+    } catch (err) {
+      // A folder that was renamed throws here, and an empty list looks exactly
+      // like a folder with no music in it — so the failure gets a name and a
+      // sentence rather than a blank panel.
+      const e = err as DOMException
+      setLibrary({
+        boot: bootForScanError(e?.name ?? ''),
+        bootDetail: e?.message || e?.name || String(err),
+        scanning: false,
+        scanMsg: '',
+        tracks: [],
+        skipped: {},
+      })
+      return
+    }
+
     setLibrary({
       tracks,
       skipped,
+      boot: 'loaded',
       scanning: false,
       scanMsg: `${tracks.length} tracks · reading tags…`,
       selectedId: tracks[0]?.id ?? null,
@@ -161,6 +203,8 @@ export function Library() {
       tracks: [...current, ...fresh].sort((a, b) => a.path.localeCompare(b.path)),
       selectedId: fresh[0].id,
       folderName: useStore.getState().library.folderName ?? 'Added files',
+      // tracks are on screen now, so the startup sentence must give way
+      boot: 'loaded',
       scanMsg: `+${fresh.length} · reading tags…`,
     })
     await applyTags(fresh, scan)
@@ -198,17 +242,27 @@ export function Library() {
     ? ctl.filteredTracks().filter((t) => recs.has(t.id))
     : ctl.filteredTracks()
 
+  // null once tracks are on screen — that is the only state with no sentence
+  const boot = bootCopy(library.boot, library.folderName, library.bootDetail ?? undefined)
+
   return (
     <section className="panel flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-hairline p-2">
+        {/*
+          The header keeps the *other* choice, never a second copy of the one
+          the panel is already asking for: while a startup state is on screen
+          its own button is the call to action, and offering the same action
+          twice next to a third, louder button read as three ways out of one
+          situation.
+        */}
         <Button
           variant="toggle"
-          active={!library.folderName}
+          active={library.boot === 'new'}
           tone="var(--color-accent)"
-          onClick={library.folderName ? pickNew : choose}
+          onClick={pickNew}
           disabled={!library.supported}
         >
-          {library.folderName ? 'Change folder' : 'Choose music folder'}
+          {library.boot === 'new' ? 'Load my music folder' : 'Change folder'}
         </Button>
         <Button
           variant="ghost"
@@ -221,11 +275,6 @@ export function Library() {
         </Button>
         {library.folderName && (
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
-        )}
-        {!library.folderName && library.supported && (
-          <Button variant="ghost" size="sm" onClick={choose}>
-            Reconnect last
-          </Button>
         )}
 
         {recs.size > 0 && (
@@ -271,17 +320,30 @@ export function Library() {
         </span>
       </div>
 
-      {!library.supported ? (
-        <EmptyState
-          title="Local library needs Chrome or Edge"
-          body="SoundGrid reads audio straight from a folder on your disk using the File System Access API. Open it in a Chromium desktop browser to scan your collection."
-        />
-      ) : library.scanning && list.length === 0 ? (
+      {library.scanning && list.length === 0 ? (
         <EmptyState title="Scanning your folder…" body={library.scanMsg} pulse />
-      ) : !library.folderName ? (
+      ) : boot ? (
+        /*
+          One sentence per startup situation (v0.2.6). The panel is never
+          allowed to be empty and silent: `bootCopy` returns copy for every
+          state except `loaded`, and a test in tests/core/ holds that.
+        */
         <EmptyState
-          title="No music loaded yet"
-          body="Choose a folder to index everything inside it, or use + Files to add individual tracks. Nothing is uploaded — files stay on your machine."
+          title={boot.title}
+          body={boot.body}
+          pulse={library.boot === 'checking' || library.boot === 'restoring'}
+          action={
+            boot.cta ? (
+              <Button
+                variant="toggle"
+                active
+                tone="var(--color-accent)"
+                onClick={library.boot === 'needs-click' ? reconnect : pickNew}
+              >
+                {boot.cta}
+              </Button>
+            ) : undefined
+          }
         />
       ) : list.length === 0 ? (
         <EmptyState
@@ -465,10 +527,13 @@ function EmptyState({
   title,
   body,
   pulse = false,
+  action,
 }: {
   title: string
   body?: string
   pulse?: boolean
+  /** the one button that resolves this state, when one can */
+  action?: ReactNode
 }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
@@ -481,6 +546,7 @@ function EmptyState({
       </span>
       <p className="text-sm font-medium text-grid-text">{title}</p>
       {body && <p className="max-w-sm text-xs leading-relaxed text-grid-muted">{body}</p>}
+      {action && <div className="mt-1">{action}</div>}
     </div>
   )
 }
