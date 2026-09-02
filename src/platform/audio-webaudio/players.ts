@@ -141,6 +141,12 @@ export class BufferSourcePlayer implements SourcePlayer {
       // keep position continuous across a rate change
       this.startOffset = this.positionSec
       this.startCtxTime = this.ctx.currentTime
+      // Cancel first, same as rampRate below: v0.3.0's syncNudge routinely
+      // leaves a linearRampToValueAtTime scheduled up to half a second out,
+      // and grabbing the tempo fader mid-correction is the exact moment
+      // setTempo -> setRate is meant to win. Without this the old ramp's
+      // endpoint could still fire on this fallback path and glitch the rate.
+      this.source.playbackRate.cancelScheduledValues(this.ctx.currentTime)
       this.source.playbackRate.setValueAtTime(rate, this.ctx.currentTime)
     }
   }

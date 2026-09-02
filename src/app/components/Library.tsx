@@ -259,7 +259,7 @@ export function Library() {
   }
 
   /**
-   * Overlay stored manual genre overrides (v0.2.10) onto whatever tracks are
+   * Overlay stored manual genre overrides (v0.3.2) onto whatever tracks are
    * currently on screen. Runs after the fast, synchronous folder-derived list
    * is already visible — same two-pass shape as `applyTags` below — so a
    * rescan of the same, unmoved files does not clobber a manual pick with the
@@ -400,7 +400,7 @@ export function Library() {
             </span>
           )}
           {/*
-            Folders that don't match a known genre (v0.2.10) — same shape and
+            Folders that don't match a known genre (v0.3.2) — same shape and
             reasoning as the skipped/unreadable badges: named, not silently
             blank. `+ Files` tracks have no folder to report, so they never
             add to this count.

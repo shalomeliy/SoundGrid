@@ -1,5 +1,5 @@
 /**
- * Manual genre overrides (v0.2.10), keyed by track id, on `idb-keyval`.
+ * Manual genre overrides (v0.3.2), keyed by track id, on `idb-keyval`.
  *
  * A small dedicated store rather than a `core/ports/persistence.ts` implementation:
  * that port's own doc comment names cue points/loops/the analysis cache as its v0.4

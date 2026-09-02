@@ -1,12 +1,22 @@
-import { analyzeWaveform, detectBpm } from '@/platform/analyzer-js/analyze'
+import { analyzeWaveform, detectBeatGrid } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { HOT_CUE_COLORS } from '@/core/constants'
+import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
+import {
+  bpmFromTaps,
+  doubleGrid,
+  halveGrid,
+  phaseDeltaSec,
+  quantizeToGrid,
+  setDownbeatAt,
+  shiftGrid,
+} from '@/core/beatgrid'
 import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
+import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { useStore } from '@/app/state/store'
-import type { DeckId, Track } from '@/core/types'
+import type { BeatGrid, DeckId, Track } from '@/core/types'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.
@@ -123,11 +133,21 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     // waveform came out as blocks — the old path fill hid it by interpolating.
     const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(durationSec * 200)))
     const { peaks, bands } = analyzeWaveform(buffer, buckets)
-    // A tag written by Serato beats our own estimate: detectBpm is a crude
-    // energy autocorrelation (see ROADMAP v0.3) and was overriding a good value
-    // with a worse one — a tagged 124 became a detected 123.5, which SYNC then
-    // drifts on. Once the real beatgrid lands this precedence flips back.
-    const bpm = track.bpm ?? detectBpm(buffer)
+    // A tag written by Serato still beats our own bpm guess — v0.1.7 measured
+    // tag accuracy at 97% across the user's library, and detection is still
+    // autocorrelation on an onset envelope, occasionally an octave off (see
+    // core/beatgrid.ts). What v0.3.0 changes: detection is the *only* source
+    // of phase (`offsetSec`) — tags carry no phase — so it always runs and its
+    // grid is always kept, even when the tag wins on the bpm number itself.
+    const detected = detectBeatGrid(buffer)
+    const bpm = track.bpm ?? detected?.grid.bpm ?? null
+    const beatGrid: BeatGrid | null = detected
+      ? { bpm: bpm ?? detected.grid.bpm, offsetSec: detected.grid.offsetSec }
+      : null
+    // Unconfirmed whenever detection didn't produce a grid it trusts — never a
+    // silently-assumed-fine grid. Cleared only by the user checking or editing
+    // it (BeatGridPanel, v0.3.0 sub-step d).
+    const beatGridConfirmed = detected ? detected.confident : false
     engine.decks[deckId].load(buffer)
     // write analysis back into the library entry so its BPM/Time columns
     // populate and mix recommendations have data to work with
@@ -151,6 +171,9 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       positionSec: startSec,
       durationSec,
       bpm,
+      beatGrid,
+      beatGridConfirmed,
+      syncActive: false,
       peaks,
       bands,
       hotCues: [],
@@ -164,11 +187,23 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   }
 }
 
+/**
+ * First deck to start playing becomes master by default (v0.3.0) — the
+ * automatic half of "auto + manual override". A no-op once a master already
+ * exists, whether set this way or by an explicit long-press. Deliberately not
+ * wired to `cuePlayPreview`'s hold-to-preview: a momentary CUE-hold is not
+ * "starting to play" in the sense a DJ means it.
+ */
+function maybeAutoMaster(deckId: DeckId) {
+  if (useStore.getState().masterDeckId == null) useStore.setState({ masterDeckId: deckId })
+}
+
 export function togglePlay(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) return
   deck.togglePlay()
   useStore.getState().patchDeck(deckId, { playing: deck.playing })
+  if (deck.playing) maybeAutoMaster(deckId)
 }
 
 export function play(deckId: DeckId) {
@@ -176,6 +211,7 @@ export function play(deckId: DeckId) {
   if (!deck.hasTrack || deck.playing) return
   deck.play()
   useStore.getState().patchDeck(deckId, { playing: true })
+  maybeAutoMaster(deckId)
 }
 
 export function pause(deckId: DeckId) {
@@ -198,7 +234,7 @@ export function cue(deckId: DeckId) {
     deck.seek(st.cuePointSec)
     useStore.getState().patchDeck(deckId, { positionSec: st.cuePointSec })
   } else {
-    useStore.getState().patchDeck(deckId, { cuePointSec: deck.position })
+    useStore.getState().patchDeck(deckId, { cuePointSec: quantizeIfOn(deckId, deck.position) })
   }
 }
 
@@ -445,10 +481,17 @@ export function nudgeDeck(deckId: DeckId, deltaSec: number) {
   seekDeck(deckId, deck.position + deltaSec)
 }
 
+/**
+ * Touching the tempo fader breaks an active phase-lock (v0.3.0) — matches
+ * real hardware, where grabbing the fader is how a DJ takes tempo back from
+ * SYNC. `syncDeck`/`setMasterDeck` call this to *set* the matched tempo and
+ * then set `syncActive: true` themselves right after, so that path is not
+ * affected — only a caller that patches `tempo` alone, i.e. a manual touch.
+ */
 export function setTempo(deckId: DeckId, tempo: number) {
   const t = Math.max(-1, Math.min(1, tempo))
   engine.decks[deckId].setTempo(t)
-  useStore.getState().patchDeck(deckId, { tempo: t })
+  useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
 }
 
 export function setHotCue(deckId: DeckId, index: number) {
@@ -465,7 +508,7 @@ export function setHotCue(deckId: DeckId, index: number) {
       ...cues,
       {
         index,
-        positionSec: deck.position,
+        positionSec: quantizeIfOn(deckId, deck.position),
         label: `${index + 1}`,
         color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length],
       },
@@ -492,7 +535,7 @@ export function toggleLoop(deckId: DeckId) {
   } else {
     const bpm = st.bpm ?? 120
     const beatSec = 60 / bpm
-    const start = deck.position
+    const start = quantizeIfOn(deckId, deck.position)
     deck.setLoop(start, start + beatSec * st.loopBeats)
     patchDeck(deckId, { loopActive: true })
   }
@@ -554,16 +597,246 @@ export function setCueMix(v: number) {
   useStore.getState().patchMixer({ cueMix: v })
 }
 
-/** Beat-match deck to the other deck's tempo (simple BPM match, no phase align yet). */
+// ————————————————————————————————————————————————————————————————
+// Manual beat-grid correction (v0.3.0). No FLX4 control is bound to any of
+// these: discovering which physical buttons are actually free needs the real
+// hardware this remote session doesn't have, so guessing here would risk
+// breaking a working mapping for no verifiable benefit. If one is ever
+// mapped, it needs a `ControlAction` pair and a case in `dispatch`, the same
+// as any other control — nothing here is exempt from the choke point, it is
+// just not reachable from it yet.
+// ————————————————————————————————————————————————————————————————
+
+/** Mark the grid as looked at, edit or not — clears the "unconfirmed" pill. */
+export function confirmBeatGrid(deckId: DeckId) {
+  useStore.getState().patchDeck(deckId, { beatGridConfirmed: true })
+}
+
+export function toggleQuantize() {
+  useStore.setState((s) => ({ quantize: !s.quantize }))
+}
+
+/**
+ * `sec` snapped to `deckId`'s beat grid when quantize is on, unchanged when
+ * it's off or the deck has no grid to snap to. The no-grid case is never a
+ * silent no-op — the user asked for quantize and didn't get it, so they're
+ * told, once, via the notice line (CLAUDE.md's central rule again).
+ */
+function quantizeIfOn(deckId: DeckId, sec: number): number {
+  const { quantize, decks, setNotice } = useStore.getState()
+  if (!quantize) return sec
+  const grid = decks[deckId].beatGrid
+  if (!grid) {
+    setNotice({
+      text: `Quantize is on but deck ${deckId} has no beat grid yet — this point was set exactly, not snapped.`,
+      tone: 'warn',
+      source: 'quantize',
+    })
+    return sec
+  }
+  return quantizeToGrid(sec, grid)
+}
+
+export function nudgeBeatGrid(deckId: DeckId, deltaSec: number = BEATGRID_NUDGE_SEC) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = shiftGrid(grid, deltaSec)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Corrects an octave-low guess — see core/beatgrid.ts's halveGrid. */
+export function halveBeatGrid(deckId: DeckId) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = halveGrid(grid)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Corrects an octave-high guess — see core/beatgrid.ts's doubleGrid. */
+export function doubleBeatGrid(deckId: DeckId) {
+  const { patchDeck, decks } = useStore.getState()
+  const grid = decks[deckId].beatGrid
+  if (!grid) return
+  const next = doubleGrid(grid)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/**
+ * Beat 0 is wherever the playhead sits right now, at the grid's current bpm
+ * (or the plain tag/detected bpm if there was no grid yet at all — this is
+ * also how a track with no detectable periodicity gets a first grid).
+ */
+export function setDownbeatHere(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const { patchDeck, decks } = useStore.getState()
+  const bpm = decks[deckId].beatGrid?.bpm ?? decks[deckId].bpm
+  if (!bpm) return
+  const next = setDownbeatAt(bpm, deck.position)
+  patchDeck(deckId, { beatGrid: next, bpm: next.bpm, beatGridConfirmed: true })
+}
+
+/** Per-deck tap timestamps for tapTempo, seconds since the page loaded. */
+const tapTimesSec: Record<DeckId, number[]> = { A: [], B: [] }
+/** A gap this long since the last tap starts a fresh tap sequence. */
+const TAP_RESET_SEC = 2
+
+/**
+ * One call per tap (button press or key). Needs two taps to say anything;
+ * every tap after that refines the estimate (core/beatgrid.ts's bpmFromTaps
+ * rejects one fat-fingered interval on its own).
+ */
+export function tapTempo(deckId: DeckId) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const now = performance.now() / 1000
+  const taps = tapTimesSec[deckId]
+  if (taps.length > 0 && now - taps[taps.length - 1] > TAP_RESET_SEC) taps.length = 0
+  taps.push(now)
+  if (taps.length > 8) taps.shift() // bound memory; recent taps matter most
+  const bpm = bpmFromTaps(taps)
+  if (bpm == null) return
+  const { patchDeck, decks } = useStore.getState()
+  const offsetSec = decks[deckId].beatGrid?.offsetSec ?? 0
+  patchDeck(deckId, { beatGrid: { bpm, offsetSec }, bpm, beatGridConfirmed: true })
+}
+
+// ————————————————————————————————————————————————————————————————
+// Phase-align SYNC + master deck (v0.3.0)
+//
+// Why an ongoing correction loop and not a one-shot nudge on the SYNC press:
+// once tempo faders match, both decks share one AudioContext clock, so there
+// is no drift *source* between them except that each deck's detected bpm has
+// finite precision (rounded to 0.1, core/beatgrid.ts). A ~0.1bpm error at 128
+// bpm is ~0.08% — over two minutes that is up to ~0.1s of accumulated drift,
+// enough to fail the "stays in phase" bar. A single correction at press-time
+// cannot chase an error that only reveals itself gradually.
+//
+// Why this lives here and not in platform/: it needs engine.decks (rate
+// control) and useStore (grid/master/quantize state) together, which is
+// exactly what every other function in this file already does. Putting it in
+// platform/audio-webaudio/ would mean platform/ reaching into
+// @/app/state/store — a second copy of the one documented, deliberate
+// boundary violation (.dependency-cruiser.cjs) that transport-webmidi/
+// manager.ts already carries, which CLAUDE.md is explicit must not happen.
+// ————————————————————————————————————————————————————————————————
+
+const SYNC_LOOP_INTERVAL_SEC = 1
+/** Below this phase gap, a correction would be smaller than it's worth firing. */
+const SYNC_PHASE_DEADBAND_SEC = 0.004
+
+let syncLoopStarted = false
+/** Subscribed once, ever — same lifetime as useRenderLoop's clock subscription. Each deck's own `syncActive` flag is what turns correction on and off, not this. */
+function ensureSyncLoop() {
+  if (syncLoopStarted) return
+  syncLoopStarted = true
+  let last = 0
+  clock.subscribe((t) => {
+    if (t - last < SYNC_LOOP_INTERVAL_SEC) return
+    last = t
+    runSyncCorrection()
+  })
+}
+
+function runSyncCorrection() {
+  const { decks, masterDeckId } = useStore.getState()
+  if (!masterDeckId) return
+  const master = decks[masterDeckId]
+  for (const id of ['A', 'B'] as DeckId[]) {
+    if (id === masterDeckId) continue
+    const st = decks[id]
+    if (!st.syncActive || !st.playing || !master.playing) continue
+    if (!st.beatGrid || !master.beatGrid) continue
+    const deck = engine.decks[id]
+    const masterDeck = engine.decks[masterDeckId]
+    const delta = phaseDeltaSec(deck.position, st.beatGrid, masterDeck.position, master.beatGrid)
+    if (Math.abs(delta) < SYNC_PHASE_DEADBAND_SEC) continue
+    deck.syncNudge(delta, SYNC_LOOP_INTERVAL_SEC)
+  }
+}
+
+/**
+ * SYNC: match tempo to the master deck (auto-resolved to the other deck if
+ * none is set yet), then keep phase-locked to it until pressed again, the
+ * tempo fader is touched (setTempo), or a new track loads (loadTrackToDeck) —
+ * all three already patch `syncActive: false`. Pressing SYNC on the deck
+ * that is already master is a no-op with a notice, not a silent nothing:
+ * there is nothing beneath the master to lock to.
+ */
 export function syncDeck(deckId: DeckId) {
+  if (!engine.decks[deckId].hasTrack) return
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
-  const { decks } = useStore.getState()
-  const src = decks[other].bpm
-  const mine = decks[deckId].bpm
-  if (!src || !mine) return
-  const ratio = src / mine
-  const tempo = (ratio - 1) / 0.08
+  const { decks, masterDeckId, patchDeck, setNotice } = useStore.getState()
+  const st = decks[deckId]
+
+  if (st.syncActive) {
+    patchDeck(deckId, { syncActive: false })
+    return
+  }
+
+  const resolvedMaster = masterDeckId ?? other
+  if (resolvedMaster === deckId) {
+    setNotice({
+      text: `Deck ${deckId} is already master — long-press SYNC on deck ${other} to make it master instead.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  // Checked and named separately — blaming the master deck for a gap that
+  // was actually on this deck (or vice versa) sends the user troubleshooting
+  // the wrong one.
+  if (!st.bpm) {
+    setNotice({
+      text: `Deck ${deckId} has no tempo yet — nothing to sync from.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  const master = decks[resolvedMaster]
+  if (!master.bpm || !master.beatGrid) {
+    setNotice({
+      text: `Deck ${resolvedMaster} has no tempo/grid yet — nothing to sync to.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+
+  if (masterDeckId == null) useStore.setState({ masterDeckId: resolvedMaster })
+  const ratio = master.bpm / st.bpm
+  const tempo = (ratio - 1) / settings.values.tempoRange
   setTempo(deckId, tempo)
+  patchDeck(deckId, { syncActive: true })
+  ensureSyncLoop()
+}
+
+/**
+ * Explicit master override — SYNC long-press (v0.3.0). Always wins over the
+ * automatic pick. A deck already phase-locked (syncActive) to the old master
+ * is re-engaged against the new one rather than dropped: the point of
+ * overriding master mid-mix is to keep mixing, not to have to press SYNC
+ * again. The deck being promoted can't stay locked to what it used to follow.
+ */
+export function setMasterDeck(deckId: DeckId) {
+  const { decks, patchDeck } = useStore.getState()
+  useStore.setState({ masterDeckId: deckId })
+  if (decks[deckId].syncActive) patchDeck(deckId, { syncActive: false })
+
+  const other: DeckId = deckId === 'A' ? 'B' : 'A'
+  const st = decks[other]
+  if (!st.syncActive) return
+  const master = decks[deckId]
+  const mine = st.bpm
+  if (!master.bpm || !mine) return
+  const ratio = master.bpm / mine
+  const tempo = (ratio - 1) / settings.values.tempoRange
+  setTempo(other, tempo)
+  patchDeck(other, { syncActive: true })
+  ensureSyncLoop()
 }
 
 export function selectedTrack(): Track | undefined {
@@ -594,7 +867,7 @@ export function filteredTracks(): Track[] {
 }
 
 /**
- * Manual genre pick (v0.2.10) — the choke point for this action, called from
+ * Manual genre pick (v0.3.2) — the choke point for this action, called from
  * the library table's dropdown. Updates the store immediately so the cell
  * reflects the choice with no round-trip wait, then persists it; a write
  * failure keeps the in-memory value (an edit that silently reverts on the

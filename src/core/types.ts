@@ -19,7 +19,7 @@ export interface Track {
   /** Camelot code for the key, e.g. `8A` — what harmonic matching compares */
   camelot?: string
   /**
-   * From the immediate parent folder at scan time (v0.2.10), overridden by a
+   * From the immediate parent folder at scan time (v0.3.2), overridden by a
    * manual pick from `core/genres.ts`'s `GENRES` list when the owner sets one.
    * Undefined means neither source produced a value — never a silent blank
    * mistaken for "no genre folder exists".
@@ -34,6 +34,12 @@ export interface HotCue {
   color: string
 }
 
+export interface BeatGrid {
+  /** seconds from track start to the grid's own beat 0, folded into [0, 60/bpm) */
+  offsetSec: number
+  bpm: number
+}
+
 export interface DeckState {
   id: DeckId
   track: Track | null
@@ -44,6 +50,21 @@ export interface DeckState {
   durationSec: number
   /** detected / edited bpm of the loaded track */
   bpm: number | null
+  /**
+   * Detected/edited beat grid (v0.3.0) — phase (`offsetSec`) plus the same
+   * number as `bpm`, always written together. `null` until a track is loaded
+   * or detection found nothing to say (too short/quiet to show a periodicity).
+   */
+  beatGrid: BeatGrid | null
+  /**
+   * Whether `beatGrid` has been checked or edited by the user. False means
+   * detection found it but wasn't confident, or found nothing at all — shown
+   * in the UI, never silently trusted. `true` with no track loaded (nothing
+   * to warn about).
+   */
+  beatGridConfirmed: boolean
+  /** locked to the master deck's phase via SYNC (v0.3.0) */
+  syncActive: boolean
   /** tempo fader value, -1..1 mapped to +/- range (see TEMPO_RANGE) */
   tempo: number
   /** normalised waveform peaks for rendering (min/max interleaved) */

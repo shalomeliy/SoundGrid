@@ -185,7 +185,7 @@ export interface ScanResult {
    * Tracks whose immediate parent folder name matched no known genre, tallied
    * by that folder name — same shape as `skipped`, same reasoning: a track
    * imported without a genre is a fact the library owes its owner, not a
-   * silently blank column (v0.2.10).
+   * silently blank column (v0.3.2).
    */
   unrecognizedGenre: Record<string, number>
 }

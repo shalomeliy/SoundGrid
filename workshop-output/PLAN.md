@@ -1,4 +1,6 @@
-# PLAN — Genre column (v0.2.10)
+# PLAN — Genre column (v0.2.10 → shipped as v0.3.2)
+
+> **Renumbered** — see the note at the top of `FEATURE_SPEC.md`. Shipped as `v0.3.2`.
 
 Implements the approved `workshop-output/FEATURE_SPEC.md`. This file defines *how*, in
 what order, grounded in the repository as it exists today; it does not reopen any

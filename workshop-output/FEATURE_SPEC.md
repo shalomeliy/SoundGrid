@@ -1,4 +1,10 @@
-# FEATURE_SPEC — Genre column (v0.2.10)
+# FEATURE_SPEC — Genre column (v0.2.10 → shipped as v0.3.2)
+
+> **Renumbered.** Written and approved as `v0.2.10`, next after `v0.2.9`. While this was
+> being implemented, `main` closed `v0.3.0` (Beatgrid & Phase Sync) and reserved `v0.3.1`
+> for an unrelated, unbuilt feature — so this shipped as `v0.3.2` instead. Nothing in the
+> decisions below changed; only the number. See `HANDOFF.md` and `ROADMAP.md`'s `v0.3.2`
+> entry for the actual shipped record.
 
 Status: approved-pending-user-confirmation. Written from a fan-out of product-expert,
 architecture-expert, design-expert and QA-expert reviews plus the product owner's own

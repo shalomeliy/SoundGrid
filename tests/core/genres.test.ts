@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { matchGenre, parentFolderName } from '@/core/genres'
 
 /**
- * v0.2.10. The owner's real library is `Tracks/HipHop|House|Techno|Trance|Mizrahi|Final`
+ * v0.3.2. The owner's real library is `Tracks/HipHop|House|Techno|Trance|Mizrahi|Final`
  * — the five genre folders below are not a hypothetical, they're what has to work with
  * zero manual intervention on the first real scan.
  */

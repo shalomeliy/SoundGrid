@@ -13,7 +13,7 @@ import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output' | 'library'
+export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync'
 
 function emptyDeck(id: DeckId): DeckState {
   return {
@@ -24,6 +24,9 @@ function emptyDeck(id: DeckId): DeckState {
     positionSec: 0,
     durationSec: 0,
     bpm: null,
+    beatGrid: null,
+    beatGridConfirmed: true,
+    syncActive: false,
     tempo: 0,
     peaks: null,
     bands: null,
@@ -45,6 +48,19 @@ export interface AppState {
   decks: Record<DeckId, DeckState>
   mixer: MixerState
 
+  /**
+   * Which deck SYNC's phase-align locks the other deck to (v0.3.0). `null`
+   * until a deck starts playing (auto-set from there) or the user overrides
+   * it with a long-press on a deck's SYNC button.
+   */
+  masterDeckId: DeckId | null
+  /**
+   * Global, off-by-default. When on, CUE/hot cues/loops snap new points to
+   * the active deck's beat grid (v0.3.0) — never on the branches that seek to
+   * an *existing* point, only where a new one is being set.
+   */
+  quantize: boolean
+
   library: {
     folderName: string | null
     tracks: Track[]
@@ -54,7 +70,7 @@ export interface AppState {
     selectedId: string | null
     /** files the scan walked past, by extension — never skip silently */
     skipped: Record<string, number>
-    /** tracks whose parent folder matched no known genre, by folder name (v0.2.10) */
+    /** tracks whose parent folder matched no known genre, by folder name (v0.3.2) */
     unrecognizedGenre: Record<string, number>
     supported: boolean
     /**
@@ -139,6 +155,8 @@ export interface AppState {
 
 export const useStore = create<AppState>((set) => ({
   decks: { A: emptyDeck('A'), B: emptyDeck('B') },
+  masterDeckId: null,
+  quantize: false,
   mixer: {
     crossfader: 0,
     masterVolume: 0.85,
