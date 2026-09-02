@@ -240,6 +240,44 @@ hiding work.
   The check strips comments first, so `core/settings.ts` can still *name* them in the
   paragraph explaining the exclusion — a named exemption, not an omission.
 
+- **No hard-coded test count in `HANDOFF.md`, and any claim about `main` carries the
+  command that settles it** (imported in v0.2.8 from the parallel branch). The file went
+  stale three times in one day: it said 117 tests when there were 122, and it said v0.2.4
+  was waiting outside `main` when v0.2.4 had been merged in PR #3 — the very commit the
+  working branch was cut from. The split the check encodes: a count this suite can verify
+  (test *files*) is verified; one it cannot (test *cases*) is banned, because a number
+  nothing checks will age into a lie. The dated archive under `docs/handoff/` keeps the
+  numbers; only the present tense has to keep up.
+- **`strict` is on in all three tsconfigs** (v0.2.7), and `tests/repo/tsconfig-strict.test.ts`
+  pins it together with the claim in both `CLAUDE` files. It was carried as debt for seven
+  versions on the assumption that enabling it meant working through a pile of errors. It
+  produced zero. Estimating a cost is not measuring it.
+
+**Three rules no check can express:**
+
+**Verify a status claim before you restate it.** The v0.2.4 lie above was not written by
+whoever first got it wrong — it was *amplified* by the next reader, who bolded it without
+running a single command. Inheriting a claim is not the same as knowing it. Before writing
+or repeating anything about what is merged or outstanding: `git fetch && git log --oneline
+origin/main -1`, and `git merge-base --is-ancestor <sha> origin/main` for the specific
+question.
+
+**Read back what a scripted edit actually wrote.** Docs here get edited with `python`/`sed`
+string replacement, and an anchor that matches half of what you pictured leaves a splice:
+`docs/handoff/v0.2.5.md` once read "מה שלא נבדק: וכן:" — a heading fused to the tail of the
+sentence it replaced. The edit reported success. **After any scripted edit to a document,
+print the edited region and read it.**
+
+**Claim your version before you write code, and check nobody else has.** On 2026-09-02 two
+sessions built v0.2.6 in parallel, neither aware of the other, and produced two
+implementations of the same module down to the filename. Nothing in this repo pointed
+either of them at the other: `HANDOFF.md` records what is *next*, never who is *on* it, and
+both sessions read it and started. So: **`git fetch --prune && git branch -r --no-merged
+origin/main` is step 0 of every session** — before `HANDOFF.md`, before the dev server. An
+unmerged `claude/*` branch is a claim on whatever version its commits name; either take a
+different version or continue that branch. This is the one process rule whose absence costs
+a whole session's work.
+
 **Still a convention, because no check can express it: "the status line tells the truth."**
 The 2026-08-29 failure — a header announcing "v0.2.0b written" while four of the six items
 in its own plan were never done — needs a human reading the plan against the code. The
