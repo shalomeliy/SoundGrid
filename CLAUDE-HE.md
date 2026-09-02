@@ -34,7 +34,8 @@ Web MIDI, File System Access ובחירת כרטיס קול ספציפי.
 
 ## מאיזה חלקים הפרויקט בנוי
 
-React 19 + TypeScript + Vite, עיצוב ב‑Tailwind, ניהול מצב ב‑zustand.
+React 19 + TypeScript (strict) + Vite, עיצוב ב‑Tailwind, ניהול מצב ב‑zustand.
+**‏`strict` הופעל ב‑v0.2.7 בשלושת ה‑tsconfig, ובדיקה מקבעת את זה** — ‏`tests/repo/tsconfig-strict.test.ts`.
 אין שרת ואין בסיס נתונים — זו אפליקציה סטטית שרצה כולה בדפדפן, וזה במכוון:
 בלי תלות בשרת אפשר להריץ אותה אופליין, ובהמשך גם כאפליקציית דסקטופ.
 

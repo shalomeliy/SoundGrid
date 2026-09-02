@@ -26,7 +26,8 @@ screen — multiply any CSS size by 0.76 to know what they actually see.
 
 ## Stack
 
-- React 19 + TypeScript (strict) + Vite 8, Tailwind 4, zustand. No router, no backend —
+- React 19 + TypeScript (strict — on in all three tsconfigs since v0.2.7, and
+  pinned by `tests/repo/tsconfig-strict.test.ts`) + Vite 8, Tailwind 4, zustand. No router, no backend —
   a pure static SPA. **Zero runtime server dependency** is a deliberate constraint.
 - Three layers, enforced by dependency-cruiser (`.dependency-cruiser.cjs`), not by convention:
   - `src/core/` — pure TS. No React, no DOM, no `AudioContext`, no Web MIDI. Types,

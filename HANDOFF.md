@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. ‏`v0.2.6` נסגרה ונדחפה — הספרייה נפתחת מעצמה בביקור חוזר |
+| **בעבודה** | אין. ‏`v0.2.6` (ספרייה נטענת מעצמה) ו‑`v0.2.7` (‏`strict`) נסגרו ונדחפו |
 | **הושלם** | v0.1.0 · v0.1.5 · v0.1.6 · v0.1.7 · v0.2.0 · v0.2.1 · v0.2.2 · v0.2.3 · v0.2.4 · v0.2.5 · v0.2.6 — ב‑[`docs/handoff/`](docs/handoff/) |
 | **branch** | ‏PR #1–#4 (`v0.2.1`…`v0.2.5`) — **כולן merged ב‑`main`.** ‏[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) נסגר 30/08. לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
-| **גרסה נוכחית** | `v0.2.6` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
-| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏137 בדיקות ב‑11 קבצים. להריץ לפני כל commit |
+| **גרסה נוכחית** | `v0.2.7` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
+| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. ‏141 בדיקות ב‑12 קבצים. להריץ לפני כל commit |
 | **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md) |
 
 ---
@@ -76,9 +76,6 @@
 - `syncDeck` מיישר BPM בלבד, לא פאזה (v0.3).
 - אין persistence ל‑cue points / tempo בין טעינות (v0.4 / v0.16).
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
-- **`strict` לא מופעל באף `tsconfig`** — לא ב‑`app`, לא ב‑`node`, ולא ב‑`test`
-  שנוסף ב‑v0.2.1. ‏`CLAUDE.md` מכריז "TypeScript (strict)" והריפו לא. עלה בסקירת
-  v0.2.1; להפעיל כמשימה בפני עצמה, לא באמצע פיצ'ר.
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑
   `platform/settings-idb/boot-latency.ts`. מבודד לקובץ אחד עם מפתח אחד בכוונה. אם
