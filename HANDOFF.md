@@ -20,7 +20,7 @@
 | **branch** | ‏PR #1–#4 (`v0.2.1`…`v0.2.5`) — **כולן merged ב‑`main`.** ‏[PR #4](https://github.com/shalomeliy/SoundGrid/pull/4) נסגר 30/08. לאמת מול המציאות: `git fetch && git log --oneline origin/main -1` — **לא לקבע כאן SHA, ולא להעתיק את השורה הזאת בלי לבדוק אותה** |
 | **גרסה נוכחית** | `v0.2.9` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
-| **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.3.0 וגם v0.4.0**, לא לדלג אליו לפני שתיהן; לוודא ששתיהן ב‑`main` עם `git log --oneline origin/main -5` |
+| **הבא בתור** | **v0.3.0 — Beatgrid & phase‑sync.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.3.1`** (מספר גרסה בקליינט, מסונכרן ל‑`package.json`) מאופיינת שם גם‑כן, מיד אחריה. **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.3.0 וגם v0.4.0**, לא לדלג אליו לפני שתיהן; לוודא ששתיהן ב‑`main` עם `git log --oneline origin/main -5` |
 
 ---
 
