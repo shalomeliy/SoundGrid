@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as ctl from '@/controls'
 import { GENRES } from '@/core/genres'
-import { getGenreOverrides } from '@/platform/genre-overrides-idb/store'
+import { getGenreOverrides, getGenreOverridesByHash } from '@/platform/genre-overrides-idb/store'
+import { migrateGenreOverridesToHash } from '@/platform/genre-overrides-idb/migrate'
 import {
   ensureReadPermission,
   fileSystemAccessSupported,
@@ -232,6 +233,14 @@ export function Library() {
       selectedId: tracks[0]?.id ?? null,
     })
 
+    // Only from a full folder scan, never `addFiles`'s small ad-hoc batch —
+    // the migration marks itself done after one run, and a partial track
+    // list would fail to match most existing overrides and never get a
+    // second chance against the real library. Awaited (not fire-and-forget)
+    // because `applyAnalysisQueue` reads the hash-keyed store exactly once,
+    // up front — a migration still in flight when that read happens would
+    // miss the very entries it just wrote, on this first post-upgrade scan.
+    await migrateGenreOverridesToHash(queued)
     await applyGenreOverrides(scan)
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
@@ -325,6 +334,13 @@ export function Library() {
    * pass fills in `bpm` first, a tag never loses to a detected guess.
    */
   async function applyAnalysisQueue(tracks: Track[], scan: { cancelled: boolean }) {
+    // Fetched once up front, not per track: this is the actual fix for the
+    // v0.3.2 move bug on genre. `applyGenreOverrides` above already applied
+    // the path-keyed store for tracks that haven't moved; a track that HAS
+    // moved has no `contentHash` yet at that point (nothing does, right
+    // after a scan), so its override only surfaces here, the moment this
+    // pass gives it an identity to look up by.
+    const hashOverrides = await getGenreOverridesByHash()
     // Progress isn't read here — the header's "N queued"/"K failed" badges
     // (below) derive straight from `library.tracks[].analysisState`, the
     // same way the skipped/unrecognized-genre counts already do, so there is
@@ -338,7 +354,10 @@ export function Library() {
           tracks: store.library.tracks.map((t) => {
             const p = patch.get(t.id)
             if (!p) return t
-            return { ...t, ...p, bpm: t.bpm ?? p.bpm, durationSec: t.durationSec ?? p.durationSec }
+            const merged = { ...t, ...p, bpm: t.bpm ?? p.bpm, durationSec: t.durationSec ?? p.durationSec }
+            const hash = p.contentHash ?? t.contentHash
+            const override = hash ? hashOverrides.get(hash) : undefined
+            return override ? { ...merged, genre: override } : merged
           }),
         })
       },

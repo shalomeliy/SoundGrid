@@ -12,11 +12,11 @@ import {
   setDownbeatAt,
   shiftGrid,
 } from '@/core/beatgrid'
-import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
+import { setGenreOverrideByHash } from '@/platform/genre-overrides-idb/store'
 import { getCues, putCues } from '@/platform/cues-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
-import { hashBytes } from '@/platform/source-fsaccess/hash'
+import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { moveHotCue as moveHotCuePure } from '@/core/hotcues'
@@ -970,24 +970,48 @@ export function filteredTracks(): Track[] {
 }
 
 /**
- * Manual genre pick (v0.3.2) — the choke point for this action, called from
- * the library table's dropdown. Updates the store immediately so the cell
+ * Manual genre pick — the choke point for this action, called from the
+ * library table's dropdown. Updates the store immediately so the cell
  * reflects the choice with no round-trip wait, then persists it; a write
  * failure keeps the in-memory value (an edit that silently reverts on the
  * next render is worse than one that silently fails to survive a reload) and
  * surfaces through the existing notice banner rather than a swallowed catch.
+ *
+ * Persisted by content hash since v0.4.0, not `trackId` (a scan-relative
+ * path) — this is what makes the override survive the file turning up in a
+ * different genre folder later. Most tracks already have `contentHash` by
+ * the time an owner gets around to overriding their genre (the background
+ * queue reaches them first); the ones that don't — a pick made right after a
+ * fresh scan, before that queue catches up — get a one-off single-file hash
+ * here (`hashFile`, the same on-demand path `core/types.ts`'s own doc
+ * comment names), and that hash is kept on the track so nothing re-hashes it
+ * a second time later.
  */
 export function setTrackGenre(trackId: string, genre: string) {
   const { library, setLibrary, setNotice } = useStore.getState()
   setLibrary({
     tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, genre } : t)),
   })
-  void setGenreOverride(trackId, genre).catch((err) => {
+  void persistGenreOverride(trackId, genre).catch((err) => {
     setNotice({
       text: `Genre change applied but not saved: ${err instanceof Error ? err.message : String(err)}`,
       tone: 'warn',
       source: 'library',
     })
   })
+}
+
+async function persistGenreOverride(trackId: string, genre: string): Promise<void> {
+  const track = useStore.getState().library.tracks.find((t) => t.id === trackId)
+  if (!track) return // rescanned/removed since the click — nothing left to persist against
+  let hash = track.contentHash
+  if (!hash) {
+    hash = await hashFile(track.handle)
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({
+      tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, contentHash: hash } : t)),
+    })
+  }
+  await setGenreOverrideByHash(hash, genre)
 }
 
