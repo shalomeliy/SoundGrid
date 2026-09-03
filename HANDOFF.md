@@ -15,13 +15,13 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין. ‏`v0.3.0` ו‑`v0.3.2` סגורות. `v0.3.1` (מספר גרסה בקליינט) מאופיינת ועדיין לא נבנתה — לא לבלבל עם `v0.3.2` שכן נבנתה, מספר קטן ממנה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/) ו‑ב‑[`ROADMAP.md`](ROADMAP.md); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
-| **branch** | אין PR פתוח כרגע — כל מה שנבנה כבר ב‑`main`. לפני כל עבודה חדשה: `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
-| **גרסה נוכחית** | `v0.3.2` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
-| **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
-| **הבא בתור** | **v0.4.0 — ניתוח מתמשך + מטא‑דאטה קבועה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.4.0**, לא לדלג אליו לפניה. **`v0.3.1`** (מספר גרסה בקליינט) עדיין לא בעבודה — לא נקבע אם היא לפני או אחרי v0.4.0 |
+| **בעבודה** | **v0.4.0 — ניתוח מתמשך + מטא‑דאטה קבועה, באמצע בנייה (03/09).** ‏branch: `claude/v0-4-0-continuous-analysis`, כל commit דחוף ל‑origin. ספק מאושר: [`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md). תוכנית מאושרת, 10 שלבים מסודרים: [`workshop-output/PLAN.md`](workshop-output/PLAN.md) — **זה מקור האמת למה שנעשה ומה נשאר, לקרוא אותו לפני להמשיך**. שלבים 1‑5 בוצעו (ספייק Worker, hash+Capabilities, analyzer-worker, analyze-cache-idb, שילוב ב‑loadTrackToDeck — כל אחד עם `npm run check` ירוק ואימות בדפדפן אמיתי). שלבים 6‑10 פתוחים: cues-idb+onLoadPlayhead, PadGrid (X בהצבעה + גרירה), תור רקע+UI בספרייה, מיגרציית ז'אנר ל‑hash, סגירה. **4 החלטות מוצר כבר אושרו ע"י הבעלים — לא לשאול שוב**: ניתוח רקע אוטומטי בבחירת תיקייה; נשמר גם כל בנק ה‑Hot Cues (לא רק נקודה אחת); זהות track מאוחדת ל‑content‑hash כולל עבור עריכות ז'אנר (מתקן את חוב v0.3.2); טעינת דק לא נחסמת — טוענת מיד עם מה שיש. **ממצא אמפירי חשוב**: ב‑Chromium היעד, `AudioBuffer`/`OfflineAudioContext` לא קיימים בתוך Worker — decode נשאר ב‑thread הראשי, ה‑Worker מקבל `{channels, sampleRate}` גולמי. |
+| **branch** | `claude/v0-4-0-continuous-analysis` פעיל, עדיין לא ממוזג ל‑`main` — לאמת עם `git fetch --prune && git branch -r --no-merged origin/main` לפני כל עבודה חדשה |
+| **גרסה נוכחית** | `v0.3.2` — `package.json` עדיין לא שונה; המספר עולה כשv0.4.0 נסגרת, לא באמצע |
+| **`npm run check`** | ירוק על ה‑branch נכון לסוף שלב 5. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **הבא בתור** | להמשיך את v0.4.0 משלב 6 ב‑`PLAN.md` — **לא** שלב חדש. `v0.4.6`/`v0.3.1` עדיין ממתינות מאחורי v0.4.0, כרשום קודם |
 
-**מה פתוח בקוד: כלום.** פתוח רק מה שמופיע למטה — החובות הטכניים וההחלטות הממתינות.
+**מה פתוח בקוד:** v0.4.0 באמצע — ר' למעלה. חוץ מזה, החובות הטכניים וההחלטות הממתינות למטה.
 
 ---
 
