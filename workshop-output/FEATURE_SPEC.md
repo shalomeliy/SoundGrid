@@ -130,6 +130,20 @@ session or a fresh one — restores `hotCues` and `cuePointSec` from that store.
 track's restored state when set to `firstCue`; its `pending` label and warning text
 (`core/settings.ts:297`) are removed once this is wired.
 
+**Redefining a hot cue (owner's decision this session).** Today (`PadGrid.tsx`, already
+shipped, unchanged by this version's persistence work) an occupied pad only jumps to its
+cue on click; deleting requires an undiscoverable `Shift`+click, hinted only by small
+static text next to the grid's header. This version replaces that with a small `×`
+that appears only on hover over an occupied pad (same hover-reveal idiom already used
+for the Key-mode toggle and the v0.3.2 genre-cell dropdown) — clicking it deletes that
+cue and returns the pad to its empty look (the same neutral "no cue set" color/state
+already used for pads that were never set), so the owner can then click the empty pad
+to set a new cue at the current position. The `Shift`+click gesture and its hint text
+are removed — one discoverable mechanism instead of two. This is a same-version UI
+change to `PadGrid.tsx`, independent of the persistence work, but ships together with it
+since both touch the same component and the delete-then-redefine flow is what needs to
+survive a reload once cues persist.
+
 **Identity unification.** `track.id` moves from `` `${prefix}${name}` `` (scan-relative
 path) to the same content hash used as the analysis-cache key. `genre-overrides-idb`'s
 stored keys are migrated from path-based ids to content-hash ids (a one-time migration
@@ -209,6 +223,11 @@ it is the documented escape hatch if the real-library measurement comes back bad
    available (tag BPM; no waveform/grid/cue).
 4. Setting a hot cue or the CUE-button point on a loaded track, then unloading and
    reloading it (same session and after a full app reload), restores that state exactly.
+4a. Hovering an occupied pad shows a `×`; clicking it deletes that cue (pad returns to
+   its empty look) and this deletion persists — reloading the track does not bring the
+   deleted cue back. Clicking the now-empty pad sets a new cue there, which also
+   persists. The old `Shift`+click gesture no longer does anything special (or is
+   removed outright) — hovering is the only way to see the delete option.
 5. Moving a file to a different folder and rescanning: its genre override, hot cues, and
    cached analysis all survive — the track is recognized as the same track by content,
    not by path.
