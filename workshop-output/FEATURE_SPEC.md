@@ -1,239 +1,316 @@
-# FEATURE_SPEC — Genre column (v0.2.10 → shipped as v0.3.2)
-
-> **Renumbered.** Written and approved as `v0.2.10`, next after `v0.2.9`. While this was
-> being implemented, `main` closed `v0.3.0` (Beatgrid & Phase Sync) and reserved `v0.3.1`
-> for an unrelated, unbuilt feature — so this shipped as `v0.3.2` instead. Nothing in the
-> decisions below changed; only the number. See `HANDOFF.md` and `ROADMAP.md`'s `v0.3.2`
-> entry for the actual shipped record.
+# FEATURE_SPEC — v0.4.0: Continuous analysis + persistent metadata
 
 Status: approved-pending-user-confirmation. Written from a fan-out of product-expert,
-architecture-expert, design-expert and QA-expert reviews plus the product owner's own
-decisions (both collected live in this session). `SECURITY NOT TRIGGERED` — no auth,
-no external input beyond folder names already read by `scanLibrary`, no new dependency.
+architecture-expert, design-expert, qa-expert and security-expert reviews (security
+triggered — this reads and hashes the user's own files), plus four product decisions
+the owner made directly in this session. `SECURITY TRIGGERED — reviewed, no blocking
+finding, see "Accessibility / security / privacy / operational constraints" below.`
 
 ## Context and observed problem
 
-The library table (`src/app/components/Library.tsx`) shows Title/Artist/Type/BPM/Key/
-Time/Load. Genre is not tracked anywhere in the codebase (`grep -i genre src` → zero
-hits). The owner organizes `Tracks/` into genre subfolders (`HipHop`, `House`, `Techno`,
-`Trance`, `Mizrahi`, plus `Final`, which is not a genre) but that structure is thrown
-away at scan time — nothing in the UI reflects which folder a track came from.
+Every time the owner picks their music folder (~360 files), every track is decoded and
+re-analyzed from scratch — waveform peaks, BPM/beatgrid via autocorrelation
+(`src/platform/analyzer-js/analyze.ts`, backed by `src/core/beatgrid.ts`) — inside the
+synchronous `loadTrackToDeck` pipeline (`src/controls.ts:91-188`) every single time a
+track is loaded to a deck, with nothing kept between sessions. `startSec` is
+hard-coded to `0` (`controls.ts:166`) because no cue point survives a reload at all.
+The Settings screen already has an `onLoadPlayhead` control (`core/settings.ts:39,293`)
+that is dead on arrival — its `pending` label says outright: "Cue points are not saved
+between loads yet (v0.4), so this behaves as Start until then." The seams for all of
+this were already drawn in v0.1.6 and left unimplemented on purpose:
+`core/ports/analyzer.ts` (`Analyzer` + `AnalysisCache`, doc-commented "v0.4 moves this
+to a Web Worker with a real cache") and `core/ports/persistence.ts` ("Cue points, saved
+loops and the analysis cache all land here from v0.4 on").
+
+Separately, `Track.id` is built from the file's scan-relative path
+(`src/platform/source-fsaccess/library.ts:225`, `` `${prefix}${name}` ``). v0.3.2
+accepted, as known debt, that moving a file to a different genre folder silently
+detaches its manual genre override, because the id — and therefore the override's
+key — changes (`HANDOFF.md`, "עריכת ז'אנר ידנית אובדת בשקט אם הקובץ זז לתיקייה
+אחרת"). The same fragile identity would apply to anything else keyed by `track.id`.
 
 ## Target user and decision
 
-The product owner (solo DJ, non-programmer), while picking tracks to load to a deck or
-filtering the library, needs to see and rely on genre to find the right track fast —
-today the only signal is which folder they remember dragging it from.
+The owner (solo DJ, non-programmer) wants decks that are instantly ready — BPM, grid,
+waveform, and now saved cue points/hot cues — every time they reload a track they've
+already played, without a multi-second re-analysis wait, and without ever silently
+losing an edit (a genre override, a hot cue) just because a file moved folders.
 
 ## User and business outcome
 
-Genre becomes a first-class, visible, editable column, populated automatically from the
-folder structure the owner already maintains, so browsing/filtering the library by genre
-needs no new manual tagging effort for tracks that are already organized by folder.
+A track is analyzed once and remembered forever. Reloading it — even after the app is
+closed and reopened, even after the file moved to a different folder — is near-instant
+and preserves everything the owner set on it (genre, hot cues, cue point). Nothing about
+analysis state is ever invisible: what's queued, what's done, and what failed are all
+named in the UI, matching this repo's standing "never skip silently" rule.
 
 ## Goal
 
-Add a `genre` value to every track, derived from its parent folder at scan time,
-displayed as a column right of Artist, editable via a closed-list dropdown, with
-overrides that survive rescans, and with tracks from unrecognized folders surfaced
-in one consolidated, informative notice rather than silently blank.
+1. Move analysis (decode, peaks, BPM, beatgrid) off the main thread into a Web Worker,
+   queued with a concurrency limit, running automatically in the background as soon as a
+   folder is picked or files are added — not gated on the owner clicking anything.
+2. Cache the result in IndexedDB, keyed by the track's content — not its path — so the
+   cache (and everything else keyed by track identity) survives a file move.
+3. Show per-track analysis state in the library (queued / analyzing / analyzed / failed)
+   and a header count, following this repo's existing badge/notice idiom.
+4. Persist the owner's hot-cue bank (`DeckState.hotCues`) and the single CUE-button
+   point (`DeckState.cuePointSec`) per track, and wire the already-existing
+   `onLoadPlayhead` Settings control to the real saved cue point, removing its `pending`
+   label.
+5. Loading a track to a deck never blocks on its own analysis: it loads immediately with
+   whatever is already available (tag BPM, cached peaks/grid/cues if present) and the
+   deck's waveform/grid/cue UI fills in live if analysis is still running or gets queued
+   at that moment.
 
-## Non-goals (explicitly out of scope for v0.2.10)
+## Non-goals (explicitly out of scope for v0.4.0)
 
-- Genre-aware mix recommendations (`core/recommend.ts` stays BPM/key-only).
-- Click-to-sort on any column (none exist today; not introduced here).
-- Free-text genre entry — the dropdown is a closed list, by the owner's decision.
-- A generalized "Persistence port" implementation (`core/ports/persistence.ts` /
-  `platform/persist-idb/`) — reserved for its already-documented v0.4 use (cue points,
-  loops). Genre overrides get their own small dedicated IndexedDB store instead, by the
-  owner's explicit decision.
-- Fixing genre override loss when a file is physically moved between folders and
-  rescanned — accepted as known debt (see "Known debt" below), by the owner's decision.
-- Redesigning the header badge cluster into a consolidated "N issues" disclosure — the
-  new notice is a third badge in the existing style, not a badge-system redesign.
+- Real audio-derived key detection (`v0.9.0` — this version still only has Camelot from
+  tags, unchanged).
+- Continuous playing-track "next song" recommendation UI (`v0.4.5`) and Mix Assist
+  (`v0.4.6`) — both explicitly blocked behind this version in `ROADMAP.md`/`HANDOFF.md`,
+  not touched here.
+- A generic implementation of `Persistence`/`platform/persist-idb/` as a single catch-all
+  store. Per this repo's own established pattern (`genre-overrides-idb/store.ts:4-8`
+  explicitly declines the generic port for the same reason), the analysis cache and the
+  cue/hot-cue store are dedicated IndexedDB stores, e.g. `platform/analyze-cache-idb/`
+  and `platform/cues-idb/` (or one store if the plan phase finds that simpler) — not a
+  generic key/value repository. `core/ports/persistence.ts` stays an unimplemented seam.
+- Manual retry UI for a single failed track beyond a generic "try again" — a stretch goal
+  if it fits, not a blocking criterion.
+- Any change to `platform/genre-overrides-idb/`'s own storage format beyond re-keying it
+  onto the new content-hash identity (see below) — its resolution priority
+  (folder-derived, overridden by manual pick) is untouched.
 
-## Assumptions
+## Assumptions (from the owner's decisions this session)
 
-- A track's genre is fully determined by (a) its immediate parent folder name at scan
-  time, overridden by (b) a stored per-track manual choice, in that priority order.
-- The known-genre list is a flat, closed, extensible array living in `core/` — no
-  hierarchy (no "Deep House is a child of House"), consistent with the owner's "pick
-  from a list" decision and the QA finding that a flat list removes runtime match
-  ambiguity by construction.
-- Folder-name matching does not need edit-distance fuzziness (the owner explicitly chose
-  normalized-exact-match + a known-aliases table over open-ended fuzzy matching, to avoid
-  false-positive misclassification the product-expert flagged as the more dangerous
-  failure mode than a false negative).
+| Decision | Chosen | Rejected alternative |
+| --- | --- | --- |
+| When background analysis runs | Automatically, the moment a folder is picked/added — the owner never has to click "analyze" | Manual per-track or per-folder trigger only |
+| What "cue points" means in this version | Both `cuePointSec` (the single CUE-button point `onLoadPlayhead` refers to) **and** the full `HotCue[]` bank set via the pads | Only the single point |
+| Track identity | Unify: `track.id` becomes content-hash-based everywhere (genre overrides included), fixing the v0.3.2 file-move bug as a side effect | Leave genre-override identity on path, add a second hash-based identity only for the analysis cache |
+| Loading an unanalyzed/failed track | Loads immediately with whatever's already available (tag BPM, no waveform/grid/cue yet); completes live in the background if/when analysis finishes | Block the Load button until analysis is done |
 
 ## Proposed experience
 
-**Automatic genre on scan.** `scanLibrary` already walks each file's parent directory
-(`src/platform/source-fsaccess/library.ts`). For each track, its immediate parent folder
-name is normalized (lowercased, separators/whitespace collapsed) and matched against a
-normalized index built from the canonical genre list plus a small alias table (e.g.
-`"DnB"` → `Drum & Bass`, `"RnB"` → `R&B`). A normalized match needs no explicit alias:
-`"HipHop"` and `"Hip Hop"` normalize to the same key. This must resolve all five of the
-owner's real folder names (`HipHop`, `House`, `Techno`, `Trance`, `Mizrahi`) correctly —
-that is the concrete acceptance bar, not a hypothetical taxonomy.
+**On folder pick / add-files.** The existing two-pass shape (`runScan` →
+`applyGenreOverrides` → `applyTags`, `Library.tsx:216-227,261-266`) gains a third,
+asynchronous pass: every track is queued for background analysis automatically, no
+button. This is consistent with the app's existing "nothing needs a manual go" pattern —
+introducing a manual trigger here would be the first exception to it, without a stated
+reason.
 
-`Final` is **not** special-cased as a silent exemption (unlike `COMPANION_EXT`, which
-hides files, not information from a visible column): it simply doesn't match any known
-genre, so tracks from it fall into the same "unrecognized" bucket and notice as any other
-non-matching folder name. This keeps the rule uniform — "every folder name is either a
-known genre or is named in the notice" — with no hidden list to maintain.
+**Per-row status.** Reuses the existing leading-icon slot already used for the
+BPM-match dot in the Title cell (`Library.tsx:569-583`) rather than a new column — there
+is no spare width budget (Title/Artist/BPM/Key/Load are load-bearing,
+`Library.tsx:487-488`). Four states — queued, analyzing, analyzed, failed — are
+distinguished by shape/motion, not color alone (a static dot vs. a pulsing dot vs. no
+icon vs. a distinct failed glyph), because at this app's actual physical scale (CSS px
+× 0.76 on the owner's 157-PPI panel) a small dot's hue alone is not reliably legible.
+Failed gets a tooltip naming why, mirroring the header badges' existing `title`
+attribute pattern (`Library.tsx:379-383,396-397`). Status is **not** inferred from
+whether `Track.bpm` is populated — tag-read BPM already fills that field before analysis
+ever runs (`Library.tsx:281-307`) and analysis is told never to clobber it — so a
+distinct `analysisState` field drives the icon, not a guess from an existing cell.
 
-A track added via **+ Files** (`pickTrackFiles`, no parent folder available at all) gets
-no derived genre and shows the same dim "–" the Key/BPM columns already use for "no
-value" — and is **not** counted in the unrecognized-folder notice, since there is no
-folder name to report or to advise renaming.
+**Header count.** "N queued" (neutral tone) while background work remains, "K failed"
+(existing `text-warn` tone) once any track fails — same badge token already used for
+"N skipped"/"N unreadable" (`Library.tsx:378,396,410`), conditionally rendered only
+while non-zero, in the same horizontal strip. No progress bar, no modal — the table
+stays fully usable (draggable, loadable) while the queue runs behind it.
 
-**The notice.** One consolidated badge per scan, in the same visual slot and style as the
-existing "N skipped" / "N unreadable" badges (`Library.tsx` ~L341-372): "N tracks
-imported from folders not recognized as a genre." Its tooltip lists which folder names
-didn't match and how many tracks each contributed — mirroring the skipped-badge's
-per-extension tooltip — so the owner can act (rename the folder) instead of guessing.
+**Instant cache-load path.** A track with a valid, matching cache entry loads through
+the existing `DeckState.loading` flag (`core/types.ts:46`) exactly as today — at
+&lt;200ms that flag will barely be visible, which is correct, not a missing state.
 
-**The column.** Plain muted text (matching Artist's treatment), positioned immediately
-right of Artist. No color coding (unlike Key, whose color encodes harmonic distance —
-genre has no comparable continuous relationship to encode). A track with no genre (either
-source) shows the dim dash used elsewhere in the row. Width is reclaimed from Type
-primarily and Time secondarily — Title, Artist, BPM, Key and Load are load-bearing
-columns this spec does not touch — with the final split confirmed live in the running app
-at `libraryTextScale = 1.5` (the widest supported text scale) so the longest realistic
-genre label still truncates cleanly inside a 36px row instead of wrapping it.
+**Cue points and hot cues.** Setting a hot cue (pad) or the CUE-button point persists
+it immediately (through `controls.ts`, this repo's one choke point for user actions) to
+the new cue store, keyed by the track's content-hash id. Reloading the same track — same
+session or a fresh one — restores `hotCues` and `cuePointSec` from that store.
+`onLoadPlayhead` (`'start' | 'firstCue'`) reads `cuePointSec` from the just-loaded
+track's restored state when set to `firstCue`; its `pending` label and warning text
+(`core/settings.ts:297`) are removed once this is wired.
 
-**Manual override.** Hovering the genre cell reveals a native `<select>` (copying the
-existing `keyMode` header-toggle's hover-reveal styling and Settings' select styling),
-restricted to the same canonical genre list used for matching — no free text. Selecting a
-value commits immediately through `controls.ts` (per the project's "every user action
-goes through it" rule), is written to a new small IndexedDB store keyed by track id, and
-from then on wins over the folder-derived value for that track (highest priority in the
-resolution order above). The click target stops propagation so it doesn't also trigger
-row-select or load-to-deck.
+**Identity unification.** `track.id` moves from `` `${prefix}${name}` `` (scan-relative
+path) to the same content hash used as the analysis-cache key. `genre-overrides-idb`'s
+stored keys are migrated from path-based ids to content-hash ids (a one-time migration
+pass reading the existing store and re-keying entries it can still match to a scanned
+file; entries for files no longer present are dropped, not silently retried forever).
+This means a file's genre override, hot cues, and cached analysis all survive a move to
+a different folder and a rescan — the exact bug v0.3.2 accepted as debt is closed as a
+side effect of this version, per the owner's explicit choice.
 
-**Search.** The existing filter box (`ctl.filteredTracks`) is extended to match against
-`genre` as well as path/artist/title, per the owner's decision — typing "techno" finds
-tracks whose genre is Techno even if the word isn't in the file path.
+**Cost this creates, stated plainly:** identity-by-content means every track's full
+bytes are read and hashed at scan time — not only for tracks the owner loads to a deck,
+as happens today. This is materially more scan work than today's 0.6s/360-files tag-only
+byte-range read (`HANDOFF.md`). The verification plan below requires this be measured
+against the owner's real library before the version is called done; if the number is
+unacceptable, the fallback (recorded here so it isn't rediscovered mid-build) is: keep
+the path-based id as the *display* identity for session-stability, compute the content
+hash asynchronously in the same background queue as analysis, and have overrides/hot
+cues/cache resolve by content hash only once it's ready — with a defined, visible state
+for "identity not yet confirmed" in between. This fallback is **not** the default plan;
+it is the documented escape hatch if the real-library measurement comes back bad.
 
 ## System / data implications
 
-- `Track.genre?: string` (`src/core/types.ts`) — the single resolved value the UI reads,
-  same shape as `bpm`/`key`: nothing else in the app needs to know whether it came from a
-  folder or an override.
-- `src/core/genres.ts` (new, pure, no React/DOM/platform import): the canonical genre
-  list, the alias table, and a pure `matchGenre(folderName: string): string | undefined`
-  — this is exactly the kind of pure logic CLAUDE.md requires get real unit tests as it's
-  touched, and is where dependency-cruiser would flag a violation if platform/app code
-  leaked in.
-- Derivation runs inside `scanLibrary` (`platform/source-fsaccess/library.ts`), which
-  already has the parent-folder name during its existing walk — no new platform port
-  needed, it calls the pure `core/genres.ts` matcher the same way other platform code
-  already calls pure `core/` helpers.
-- A new small IndexedDB store (its own file, sibling to `settings-idb/`, not folded into
-  it and not routed through the unused `Persistence` port) holds `trackId -> genre`
-  overrides. Loaded once after each scan/add-files and merged onto the resolved tracks;
-  written on every manual edit.
-- Merge point: after `runScan`/`addFiles` populate folder-derived genre (same place
-  `applyTags`'s tag patch already merges in), overlay stored overrides — override wins,
-  mirroring the existing "never clobber" merge pattern but with reversed priority (here,
-  the *user's* value is the one that must not be clobbered by a later scan).
-- `library.ts`'s per-scan progress result (parallel to `skipped: Record<string, number>`)
-  gains an unrecognized-genre-folder tally in the same `folderName -> count` shape, so the
-  UI badge and tooltip reuse the existing rendering pattern verbatim.
+- **`platform/analyzer-worker/`** (new) implements `core/ports/analyzer.ts`'s
+  `Analyzer` behind a Web Worker, with a queue and a concurrency limit. Gated on a new
+  `capabilities.ts` flag (Worker support check, following the existing pattern for
+  `audioWorklet`/`webgpu`/etc., `docs/architecture/directions.md` §3) — if unsupported,
+  analysis falls back to today's synchronous main-thread path with no crash and a
+  visible note, per the Capabilities "no feature crashes, none pretends to work" rule.
+- **`platform/analyze-cache-idb/`** (new, dedicated store, mirroring
+  `genre-overrides-idb/` and `settings-idb/` — not the generic `Persistence` port,
+  per this repo's established precedent). Each entry: `{ contentHash, analyzerVersion,
+  fileSize, analysis: TrackAnalysis, cachedAt }`. `analyzerVersion` is a constant bumped
+  whenever `core/beatgrid.ts` or the analysis logic changes meaningfully (e.g. the
+  existing `CONFIDENCE_RATIO` retuning history, `beatgrid.ts:53`) — a cache hit whose
+  stamped version doesn't match the current one is treated as a miss and re-analyzed.
+  Without this, a future analyzer change would silently keep serving old cached
+  BPM/grids forever with no visible sign anything's stale — exactly the class of bug
+  this repo's "never skip silently" rule exists to prevent.
+- **Content hash**: SHA-256 via `crypto.subtle.digest`, computed over the full file
+  bytes already being read for analysis (no second read). Chosen over a fast/weak or
+  sampled hash because a collision here would silently serve one track's BPM/grid/peaks
+  (or cue points, or genre override) for a *different* track — a correctness failure,
+  not an adversarial-security one, but the same "silent wrong data" class this repo
+  forbids. Reading whole-file bytes for hashing is not "decoding a track into memory"
+  (that rule, `tags.ts:10-13`, is about not building an `AudioBuffer`) — the deck-load
+  path already does a full `file.arrayBuffer()` read today (`library.ts:240-243`,
+  called from `controls.ts:121`) before decoding, so this reuses bytes already in
+  memory on that path; the scan-time hash of *every* track is the new cost named above.
+- **`platform/cues-idb/`** (new, dedicated store) holds `contentHash -> { hotCues,
+  cuePointSec }`, written on every pad/CUE-button change via `controls.ts`, read once
+  after each track's identity (content hash) is known.
+- **`Track.id`** becomes the content hash; `Track.analysisState: 'queued' | 'analyzing'
+  | 'analyzed' | 'failed'` and `Track.analysisError?: string` are added to
+  `core/types.ts` to drive the row indicator explicitly (not inferred).
+- **File System Access + Worker boundary**: a `FileSystemFileHandle` saved from a
+  previous session can have its OS-level permission revoked outside the browser. A
+  Worker calling `getFile()` on such a handle must have its rejection caught and
+  surfaced as that track's `failed` state with a named reason (mirroring the existing
+  unreadable-file handling, `library.ts:305-309`) — never a queue entry that silently
+  disappears.
+- **`loadTrackToDeck`** (`controls.ts:91-188`) changes its `startSec` from the hard-coded
+  `0` to read the restored `cuePointSec`/`onLoadPlayhead` setting, and no longer performs
+  analysis inline for a track with a valid cache hit — it reads cache first, falls back
+  to (and enqueues, jumping the queue) synchronous or Worker analysis only on a miss.
 
 ## Acceptance criteria
 
-1. Scanning the owner's real `Tracks` folder assigns the correct genre to tracks in
-   `HipHop`, `House`, `Techno`, `Trance`, `Mizrahi`, with zero manual intervention.
-2. Tracks under `Final` (and any other non-matching folder) show a dim "–" genre cell and
-   are counted in one consolidated header notice naming the folder and count.
-3. A track added via "+ Files" shows a dim "–" genre cell and is **not** counted in that
-   notice.
-4. Hovering a genre cell reveals a dropdown restricted to the canonical genre list only;
-   picking a value updates the cell immediately and does not trigger row-select or
-   load-to-deck.
-5. After a manual override, rescanning the same folder (same files, unmoved) preserves
-   the override — it is not replaced by the folder-derived value.
-6. Typing a genre name (e.g. "techno") into the existing filter box returns tracks whose
-   resolved genre matches, independent of their file path text.
-7. `npm run check` stays green; the new `core/genres.ts` has unit tests in `tests/core/`
-   enumerating at minimum: exact match, case-insensitivity, the owner's five real folder
-   names, a known alias (e.g. "DnB"), an unrecognized name, and an empty/`Final` input —
-   all passing before this ships, since a missing test here is exactly the "it's just a
-   UI column" gap the QA review flagged as the likely place this gets skipped.
+1. Loading the same track a second time (from cache, unmoved or moved) is measurably
+   &lt;200ms, with no re-analysis — the number is recorded, not asserted (see
+   Verification).
+2. Picking the owner's real `Tracks` folder automatically queues all tracks for
+   background analysis with no click; the header shows a live "N queued" count that
+   drains to zero, and each row's status icon reflects its real state at every point.
+3. A track whose analysis fails shows a distinct, non-color-only "failed" indicator with
+   a tooltip naming why, and remains loadable to a deck with whatever data is already
+   available (tag BPM; no waveform/grid/cue).
+4. Setting a hot cue or the CUE-button point on a loaded track, then unloading and
+   reloading it (same session and after a full app reload), restores that state exactly.
+5. Moving a file to a different folder and rescanning: its genre override, hot cues, and
+   cached analysis all survive — the track is recognized as the same track by content,
+   not by path.
+6. `onLoadPlayhead` set to "First cue point" actually moves the playhead to the restored
+   `cuePointSec` on load; its `pending` label is gone from Settings.
+7. A track with no cache entry and analysis still queued/running, when loaded to a deck,
+   plays immediately with tag-only data and its waveform/grid/cue populate live once
+   analysis completes — never a blocked Load button.
+8. Revoking the library folder's OS-level permission and reloading the app: background
+   analysis of previously-granted files fails visibly (named count, not a silently
+   drained queue) rather than disappearing with no trace.
+9. `npm run check` stays green; `core/`-level logic (state machine transitions, hash
+   usage, cache-version invalidation) has unit tests in `tests/core/`.
 
 ## Loading / empty / error / partial / recovery states
 
-- **Before any scan / no library loaded:** no genre column content to show — same
-  pre-scan empty states the table already has (`EmptyState` in `Library.tsx`), untouched.
-- **Mid-scan (tags not yet read):** genre is available immediately at scan time (unlike
-  BPM/key, which need the later tag pass), so cells populate with the first render of
-  `tracks`, not after `applyTags` — no separate "loading" state needed for this column.
-- **Unrecognized folder:** dim dash cell + consolidated notice (criterion 2).
-- **No folder context (+ Files):** dim dash cell, silently excluded from the notice by
-  design (criterion 3) — this is a named exemption from the notice, not an omission, and
-  is documented as such in code.
-- **IndexedDB unavailable** (private window, blocked storage — already a handled failure
-  mode elsewhere in this app, see `reportFailure` in `Library.tsx`): manual overrides
-  silently fail to persist is not acceptable per "never skip silently" — the edit must
-  still apply for the current session, and the failure needs the same visible treatment
-  `settings-idb` already gives storage failures, not a swallowed catch.
-- **Recovery:** renaming a folder to a recognized genre name and rescanning moves those
-  tracks out of the unrecognized bucket on the next scan, with no special handling needed
-  beyond the normal derive-on-scan path.
+- **`queued`**: track is known, not yet started. Row icon: static, neutral. Counted in
+  the header "N queued" badge.
+- **`analyzing`**: Worker actively processing this track. Row icon: pulsing/animated
+  variant of the same slot, distinguishable from `queued` without relying on color.
+- **`analyzed`**: cache entry exists and its `analyzerVersion` matches current. No icon
+  (or a subtle "done" mark) — this is the steady state, not something to keep drawing
+  attention to.
+- **`failed`**: analysis threw (decode error, unreadable file, revoked permission,
+  unsupported codec). Distinct icon + tooltip naming the reason. Counted in a header
+  "K failed" badge. The track still loads to a deck with tag-only data (criterion 3).
+- **Stale cache (same path, different bytes)**: content hash differs from the stored
+  entry's key by construction — a changed file simply misses the cache and re-analyzes;
+  no special-case detection code needed, this falls out of hashing content rather than
+  path.
+- **Worker unsupported**: `capabilities.ts` flag false → falls back to today's
+  synchronous main-thread analysis on load, with a visible (not silent) note that
+  background pre-analysis is unavailable on this browser/profile.
+- **IndexedDB unavailable** (private window, blocked storage — already a handled class
+  of failure elsewhere, `reportFailure` pattern in `Library.tsx`): analysis and cue
+  edits still work for the current session; persistence failures are surfaced the same
+  visible way `settings-idb`/`genre-overrides-idb` already handle it, never swallowed.
+- **Genre-override migration on first run of this version**: existing path-keyed
+  overrides are re-keyed to content-hash where the file can still be matched by scanning;
+  unmatched entries (file no longer present) are dropped, not retried forever or left as
+  orphaned dead keys.
 
 ## Accessibility / security / privacy / operational constraints
 
-- Native `<select>` gives correct keyboard/focus/screen-reader semantics for free
-  (design-expert's explicit recommendation over a custom popover), and isn't clipped by
-  the table's scroll container the way an absolutely-positioned custom dropdown could be.
-- No color-only signal: the dim-dash state for "no genre" reuses the existing, already
-  colorblind-safe idiom (shape/opacity, not hue) used by BPM and Key.
-- SECURITY NOT TRIGGERED — reaffirmed: folder names are local filesystem strings already
-  read by the existing scan; no new external input, no new dependency, no auth surface.
+- No color-only status signaling (per this repo's existing Key/BPM-match precedent and
+  the design-expert review's flagged risk at this app's actual physical icon size).
+- **Security review, triggered and addressed**: this is a local-only, single-user, no-
+  auth, no-network feature — hashing and analyzing the owner's own files, stored only in
+  their own browser's IndexedDB. No adversarial threat model applies; the two real risks
+  are (a) a cache-key collision silently serving wrong data — mitigated by full SHA-256
+  over full file content, not a sampled/weak hash — and (b) a Worker failing silently on
+  a revoked File System Access permission — mitigated by explicit catch-and-surface as a
+  named `failed` state (see System/data implications and acceptance criterion 8). Neither
+  introduces a new dependency or external input.
+- No data leaves the device; nothing here changes the app's zero-network-dependency
+  constraint (`CLAUDE.md`).
 
 ## Verification plan and evidence
 
-- `tests/core/genres.test.ts` (or similarly named) covering the acceptance-criterion-7
-  cases — this is the "check that fails without the change" the repo's Definition of
-  Done requires or a script/measurement-grade substitute.
-- `npm run check` green (tsc + oxlint + depcruise + vitest).
-- Browser-verified, numbers recorded (per CLAUDE.md's own standard, echoing the v0.1.7
-  BPM/Key measurement pattern): scan the real `Tracks` folder and record how many tracks
-  landed in each of `HipHop`/`House`/`Techno`/`Trance`/`Mizrahi`/unrecognized, confirming
-  it matches the real folder contents.
-- Override-survives-rescan evidence (the QA review's flagged highest-risk path): override
-  one track's genre, rescan the same folder, confirm in the running app that the override
-  is still shown (not the folder-derived value) — this is the one scenario this feature
-  can silently fail at, since nothing else in `runScan` merges by id today.
-- A few plain Hebrew lines handed to the owner at the end of the version, per this
-  repo's standing convention: what to click (open the Tracks folder, or rescan), what
-  should appear (a Genre column with the right value per folder, and — if any folder
-  doesn't match — the new notice naming it), and what would mean it's broken (a genre
-  column that's blank for tracks that ARE inside a known-name folder, or an override that
-  disappears after a rescan of the same, unmoved files).
+- **Agent-testable now** (`tests/core/`): the analysis state-machine transitions,
+  `analyzerVersion` cache-invalidation logic, and content-hash-based identity resolution
+  are pure logic — real unit tests, not just type-checking, per this repo's Definition
+  of Done.
+- **Agent-testable in the running dev-server app** (`javascript_tool` +
+  `read_console_messages`, this remote environment's available tools): mock a small
+  library, confirm the queued→analyzing→analyzed/failed sequence renders correctly and
+  the second-load timing improves; confirm no console errors from the Worker/IndexedDB
+  paths.
+- **Owner-testable, required before this version is called done** (v0.1.7 pattern — a
+  small Node script or browser-measured run against the real
+  `C:\Users\Shalom\Music\Tracks`, numbers written down, not "it worked"):
+  - Full-folder scan time **with** content hashing, compared to today's 0.6s/360-files
+    tag-only baseline — this is the number that validates or invalidates the identity-
+    unification cost named above.
+  - Second-load time for ~20 real tracks, cached vs. first load.
+  - Confirm a real file move (drag a track to a different genre subfolder, rescan)
+    preserves its genre override, hot cues, and cache hit.
+- A few plain Hebrew lines handed to the owner at the end of the version: what to click
+  (pick the Tracks folder; wait for "N queued" to reach zero; reload a track a second
+  time), what should appear (near-instant second load; a hot cue set before survives a
+  full app reload; moving a file's folder and rescanning keeps its genre/cues), and what
+  would mean it's broken (a second load that's still slow, a hot cue that vanishes, or a
+  genre/cue that resets after a file move).
 
-## Known debt (to record in `HANDOFF.md`, not fixed in v0.2.10)
+## Known debt this version explicitly does not fix
 
-- Track `id` is derived from scan-relative path (`library.ts`). If the owner manually
-  overrides a track's genre and then moves that file to a different folder on disk before
-  rescanning, the id changes and the override silently detaches — the track reverts to
-  its new folder's derived genre (or unrecognized) with no notice that an override
-  existed and was lost. By the owner's explicit decision this is accepted as known debt
-  for v0.2.10, to be recorded in `HANDOFF.md`'s "חובות טכניים ידועים" section alongside
-  the other path-identity caveats already there, not silently — the same standard applied
-  to every other item in that list.
+- Manual retry UI for one failed track — generic re-queue behavior only.
+- Worker/analyzer running on browsers where SubtleCrypto or Worker+FSA-handle transfer
+  behaves unexpectedly — Chromium desktop only remains this app's stated target
+  (`CLAUDE.md`), so this is not tested against other browsers.
 
 ## Open decisions and tradeoffs (already resolved by the product owner this session)
 
 | Decision | Chosen | Rejected alternative |
 | --- | --- | --- |
-| Matching strategy | Normalized exact match + alias table | Fuzzy edit-distance matching |
-| Override persistence | New small dedicated IndexedDB store | Building out the unused `Persistence` port now |
-| Filter box scope | Extended to search genre | Left unchanged |
-| Override-survives-file-move | Accepted as known debt, documented | Building move-resilient (content-hash) keying now |
+| Background analysis trigger | Automatic on folder pick/add | Manual per-folder/track button |
+| Cue scope persisted | `cuePointSec` **and** full `HotCue[]` bank | `cuePointSec` only |
+| Track identity | Unified to content hash (fixes v0.3.2 genre-move debt) | Two separate identities (path for genre, hash for cache) |
+| Loading an unanalyzed/failed track | Loads immediately with available data, fills in live | Blocks Load until analysis completes |
+| Scan-time hashing cost | Accepted, with a documented fallback (lazy hash + interim state) if real-library measurement is unacceptable | Silently defer the cost question to implementation |
 
 No further open product questions remain for this spec. File-level implementation
-sequencing (which files change in what order, exact column-width percentages, exact
-IndexedDB schema) is deliberately left to the plan phase (`architecture-plan` skill),
-per this skill's own rule that a specification must not become a file-by-file plan.
+sequencing (exact Worker message protocol, exact IndexedDB schema fields, migration
+script shape) is deliberately left to the plan phase (`architecture-plan` skill), per
+this skill's own rule that a specification must not become a file-by-file plan.
