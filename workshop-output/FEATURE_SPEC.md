@@ -130,6 +130,22 @@ session or a fresh one — restores `hotCues` and `cuePointSec` from that store.
 track's restored state when set to `firstCue`; its `pending` label and warning text
 (`core/settings.ts:297`) are removed once this is wired.
 
+**Moving a hot cue to a different pad (owner's decision this session).** Dragging an
+occupied pad onto a different pad slot moves that cue there — its saved time in the
+track (`positionSec`) and color are unchanged, only which physical pad it's triggered
+from. Its `label`, which today is always just its pad number (`` `${index+1}` ``,
+`controls.ts:512`), updates to match the new pad so the numbering always reflects
+current pad position, not history. Uses this app's existing native drag-and-drop idiom
+(`draggable` + `dataTransfer`, already used for Library-row-to-deck drags,
+`Library.tsx:551-555`) with its own MIME type, not a new interaction pattern. Dropping
+on an **empty** pad simply relocates the cue (source pad becomes empty). Dropping on an
+**occupied** pad **swaps** the two cues' pad positions rather than overwriting one
+silently — a drop that destroyed the destination cue with no visible sign would be
+exactly the "silent skip" this repo's central rule forbids. Dropping a pad onto itself
+is a no-op. The move is written through `controls.ts` immediately and persists to the
+same cue store as any other hot-cue edit, so it survives a reload. Mouse-only, same
+accessibility scope as the existing Library drag-to-deck interaction (not a new gap).
+
 **Redefining a hot cue (owner's decision this session).** Today (`PadGrid.tsx`, already
 shipped, unchanged by this version's persistence work) an occupied pad only jumps to its
 cue on click; deleting requires an undiscoverable `Shift`+click, hinted only by small
@@ -232,6 +248,10 @@ it is the documented escape hatch if the real-library measurement comes back bad
    deleted cue back. `Shift`+click on an occupied pad does the identical delete, kept as
    a second way to trigger it. Clicking the now-empty pad (either way) sets a new cue
    there, which also persists.
+4b. Dragging an occupied pad onto an empty pad moves the cue there (same time in the
+   track, new pad number matching its label); dragging onto another occupied pad swaps
+   the two cues' pads and labels; both persist across a reload, same as any other
+   hot-cue edit.
 5. Moving a file to a different folder and rescanning: its genre override, hot cues, and
    cached analysis all survive — the track is recognized as the same track by content,
    not by path.
