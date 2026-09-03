@@ -28,23 +28,34 @@ declining the generic `Persistence` port. `core/ports/analyzer.ts` and
 `capabilities.ts` / `core/ports/capabilities.ts` is the existing feature-probe pattern
 (boolean flags, resolved once at boot, no field yet for Worker support).
 
-**Open technical question the spec did not resolve (this plan must, first):** can this
-app actually decode audio inside a Web Worker? `engine.decode` today runs on the main
-thread. Web Audio's `OfflineAudioContext` is spec'd as constructible in a worker global
-scope, but this repo has never verified it against the actual Chromium build this app
-targets. Building the whole Worker architecture on an unverified assumption is exactly
-the kind of thing CLAUDE.md's "measured, not estimated" rule (`tsconfig-strict` cost
-estimate that turned out to be zero) warns against — so step 1 below is a throwaway
-spike that answers this before anything else is built on top of it.
+**Resolved by step 1's spike (empirically, not assumed):** neither `OfflineAudioContext`
+nor `AudioBuffer` exists at all inside a dedicated Worker in this app's target Chromium
+(tested: Chromium 141, `chromium-1194`). `typeof AudioBuffer === 'undefined'` inside the
+worker global scope threw a bare `ReferenceError` on construction. So `engine.decode`
+stays exactly where it is — main-thread only, unchanged. This does **not** block moving
+the expensive work off the main thread: `analyzeWaveform`/`detectBeatGrid`
+(`platform/analyzer-js/analyze.ts:34,178`) only ever call `buffer.numberOfChannels`,
+`buffer.getChannelData(c)`, `buffer.length`, `buffer.sampleRate` — four reads, no
+Web Audio behavior. They are refactored to take a plain `{ channels: Float32Array[],
+sampleRate: number }` instead of an `AudioBuffer`, which is both Worker-transferable
+(each `Float32Array`'s backing `ArrayBuffer` moves with zero copy) and, as a side effect,
+a small decoupling cleanup — this numeric code never needed a live Web Audio object, it
+was just never asked to run anywhere else. Content hashing does **not** need the Worker
+either: `crypto.subtle.digest` is itself asynchronous in Chromium (does not block the
+main thread while awaited), so it runs wherever the file bytes already are — main thread
+in `loadTrackToDeck`, main thread in the background queue's per-file step. The Worker's
+only job is the CPU-bound numeric loop (`analyzeWaveform` + `detectBeatGrid`'s onset
+envelope + autocorrelation), which is exactly the part actually worth moving off-thread.
 
 ## 2. Proposed thin end-to-end slice (first vertical proof)
 
-Before building the full queue/cache/UI, prove the riskiest link end-to-end on one
-track: Worker receives a `FileSystemFileHandle`-derived `ArrayBuffer`, decodes it (or
-doesn't — see step 1), computes peaks + BPM + a SHA-256 content hash, and posts the
-result back to the main thread, which patches one deck exactly like `loadTrackToDeck`
-does today. No queue, no cache, no UI change yet. This is the walking skeleton every
-later step extends.
+Before building the full queue/cache/UI, prove the real link end-to-end on one track:
+main thread decodes (as today) and extracts `{ channels, sampleRate }` from the
+resulting `AudioBuffer`; Worker receives those (transferred, not copied) and returns
+`{ peaks, bands, beatGrid }`; main thread separately hashes the original file bytes
+(already in memory) via `crypto.subtle.digest` and patches one deck exactly like
+`loadTrackToDeck` does today. No queue, no cache, no UI change yet. This is the walking
+skeleton every later step extends.
 
 ## 3. Exact files to add or change
 
@@ -52,8 +63,8 @@ later step extends.
 
 | File | Responsibility |
 | --- | --- |
-| `src/platform/analyzer-worker/worker.ts` | The actual Worker script: receives `{fileBytes}`, decodes (if step 1 confirms feasible) or receives pre-decoded PCM (if not), runs `analyzeWaveform`/`detectBeatGrid` (imported from existing `core/beatgrid.ts` and the pure parts of `analyzer-js/analyze.ts` — both already framework-free, importable into a Worker unchanged), computes SHA-256 via `crypto.subtle.digest`, posts `{contentHash, analysis}` or `{error}` back. |
-| `src/platform/analyzer-worker/index.ts` | Implements `core/ports/analyzer.ts`'s `Analyzer`, plus a queue: concurrency-limited (start at 2, tunable), FIFO with a jump-the-queue method for "the track just requested for a deck." Owns the one live Worker instance (or a small pool). Falls back to calling today's synchronous main-thread analysis path directly when `capabilities.webWorker` is false — same public API either way, caller doesn't branch. |
+| `src/platform/analyzer-worker/worker.ts` | The actual Worker script: receives `{ channels: Float32Array[], sampleRate: number, buckets }` (transferred, not copied), calls the refactored `analyzeWaveform`/`detectBeatGrid` (imported unchanged in logic from `analyzer-js/analyze.ts` and `core/beatgrid.ts`, only their input shape changes — see §1), posts `{ peaks, bands, beatGrid }` or `{ error }` back. Does **not** decode audio and does **not** hash — both happen on the main thread (§1). |
+| `src/platform/analyzer-worker/index.ts` | Implements `core/ports/analyzer.ts`'s `Analyzer`. `analyze()` decodes on the main thread (unchanged `engine.decode` call, owned by the caller — this module receives an already-decoded `AudioBuffer` or the extracted channel data), extracts channel `Float32Array`s, dispatches the numeric work to the Worker, and separately computes the content hash via `crypto.subtle.digest` on the original file bytes. Includes a queue: concurrency-limited (start at 2, tunable), FIFO with a jump-the-queue method for "the track just requested for a deck." Owns the one live Worker instance (or a small pool). Falls back to calling `analyzeWaveform`/`detectBeatGrid` directly on the main thread when `capabilities.webWorker` is false — same public API either way, caller doesn't branch. |
 | `src/platform/analyze-cache-idb/store.ts` | Implements `AnalysisCache`. Key: `contentHash`. Value: `{ contentHash, analyzerVersion, fileSize, analysis: TrackAnalysis, cachedAt }`. `get` returns `null` (cache miss) if the stored `analyzerVersion` doesn't match the current constant — an intentional miss, not a bug, so a future analyzer change never silently serves stale results. Mirrors `genre-overrides-idb/store.ts`'s shape (own IndexedDB key, try/catch that never throws on read, throws on write so the caller can surface failure). |
 | `src/platform/analyze-cache-idb/version.ts` | Exports `ANALYZER_VERSION` (a plain integer/string constant). Bumped by hand whenever `core/beatgrid.ts` or the analysis logic changes meaningfully — the one manual step this design requires, documented at the constant's own definition. |
 | `src/platform/cues-idb/store.ts` | `contentHash -> { hotCues: HotCue[], cuePointSec: number }`. Same shape/failure pattern as above. |
@@ -168,13 +179,12 @@ store slice needed beyond the `Track` fields themselves.
 
 ## 7. Risks, rollback, and deliberate non-goals
 
-**Risk 1 — Worker decode may not work in this Chromium build at all.** Mitigated by
-step 1 (§8) being a standalone spike with a clear pass/fail gate before any other Worker
-code is written. If it fails: fallback architecture keeps `engine.decode` on the main
-thread (unchanged) and moves only `analyzeWaveform`/`detectBeatGrid`/hashing into the
-Worker, operating on the already-decoded PCM `Float32Array` passed via a transferable
-`ArrayBuffer`. Both architectures satisfy the spec's acceptance criteria; only the
-Worker's input/output shape changes.
+**Risk 1 — resolved by measurement, not assumption.** Step 1's spike confirmed neither
+`OfflineAudioContext` nor `AudioBuffer` exists inside a Worker in this Chromium build.
+The architecture in §1/§2 above (decode stays main-thread, only the numeric
+analysis moves to the Worker, hashing stays main-thread via async `crypto.subtle`) is
+what the rest of this plan builds — not a contingency, the actual design. No further
+risk here; recorded as closed.
 
 **Risk 2 — `analyzerVersion` bump is a manual, easy-to-forget step.** Named explicitly at
 the constant's own definition (`analyze-cache-idb/version.ts`) with a comment pointing
@@ -200,12 +210,12 @@ already provides "for free."
 
 ## 8. Ordered implementation steps, each with its own verification
 
-1. **Spike: can this app decode audio in a Worker?** A throwaway script/component,
-   not shipped: spin up a `Worker`, `postMessage` one real track's bytes, attempt
-   `OfflineAudioContext`-based decode inside it, `postMessage` back success/failure.
-   **Verification:** run it in the actual dev-server app via `javascript_tool` +
-   `read_console_messages` against a real file. Records which of the two Risk-1
-   architectures this build proceeds with. This gates everything else.
+1. ~~**Spike: can this app decode audio in a Worker?**~~ **Done.** A headless-Chromium
+   probe (Playwright, this build's own `chromium-1194`) confirmed `typeof
+   OfflineAudioContext === 'undefined'` and `typeof AudioBuffer === 'undefined'` inside a
+   dedicated Worker — both threw `ReferenceError` on construction. Decode stays
+   main-thread; only the numeric analysis moves to the Worker (§1/§2). This is the
+   architecture every later step below builds.
 2. **`core/hash.ts` + `platform/source-fsaccess/hash.ts` + `Capabilities.webWorker`.**
    Small, isolated, no behavior change yet. **Verification:** `tests/core/hash.test.ts`
    passing; `npm run check` green.
