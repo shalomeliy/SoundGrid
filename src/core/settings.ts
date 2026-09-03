@@ -294,7 +294,6 @@ export const FIELDS: Field[] = [
     label: 'On track load',
     help: 'Where the playhead waits when a track lands on a deck.',
     group: 'feel',
-    pending: 'Cue points are not saved between loads yet (v0.4), so this behaves as Start until then.',
     options: [
       { value: 'start', label: 'Start of the track' },
       { value: 'firstCue', label: 'First cue point' },

@@ -13,11 +13,13 @@ import {
   shiftGrid,
 } from '@/core/beatgrid'
 import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
+import { getCues, putCues } from '@/platform/cues-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { hashBytes } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
+import { moveHotCue as moveHotCuePure } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
 import type { BeatGrid, DeckId, Track } from '@/core/types'
 
@@ -143,6 +145,15 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     throw err
   }
   const durationSec = buffer.duration
+  // A hash failure above leaves `contentHash` `undefined` — "not yet
+  // identified", same as a track whose analysis hasn't reached it yet. Its
+  // cue bank simply isn't found, the same shape as a first-ever load.
+  const storedCues = contentHash ? await getCues(contentHash) : null
+  const cuePointSec = storedCues?.cuePointSec ?? 0
+  // "First cue point" (Settings › Feel › On track load) means this saved CUE
+  // point — the one thing `onLoadPlayhead` had nothing to read before this
+  // version (core/settings.ts's `pending` note on the field, now resolved).
+  const startSec = cfg.onLoadPlayhead === 'firstCue' ? cuePointSec : 0
   // Load the deck the moment decode finishes — never wait on analysis to let
   // the owner hear the track (v0.4.0: a not-yet-analyzed or failed-analysis
   // track still plays, per the owner's explicit decision; see
@@ -152,12 +163,9 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // makes it safe to hand `buffer` to the deck first and extract PCM for
   // analysis second, below.
   engine.decks[deckId].load(buffer)
-  // `firstCue` has nothing to read yet at this point — cue/hot-cue
-  // persistence lands in the next step of v0.4.0 (workshop-output/PLAN.md
-  // step 6). Until then this is still `0`, same as before.
-  const startSec = 0
+  if (startSec > 0) engine.decks[deckId].seek(startSec)
   patchDeck(deckId, {
-    track: { ...track, bpm: track.bpm ?? undefined, durationSec },
+    track: { ...track, contentHash, bpm: track.bpm ?? undefined, durationSec },
     loading: false,
     playing: false,
     positionSec: startSec,
@@ -168,13 +176,13 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     syncActive: false,
     peaks: null,
     bands: null,
-    hotCues: [],
-    cuePointSec: startSec,
+    hotCues: storedCues?.hotCues ?? [],
+    cuePointSec,
     loopActive: false,
   })
   const { library, setLibrary } = useStore.getState()
   setLibrary({
-    tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, durationSec } : t)),
+    tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, contentHash, durationSec } : t)),
   })
 
   // Analysis is best-effort from here: the track is already loaded and
@@ -230,12 +238,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     if (useStore.getState().decks[deckId].track?.id !== track.id) return
     const message = err instanceof Error ? err.message : String(err)
     patchDeck(deckId, {
-      track: { ...track, analysisState: 'failed', analysisError: message, durationSec },
+      track: { ...track, contentHash, analysisState: 'failed', analysisError: message, durationSec },
     })
     const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
     setLibAfter({
       tracks: libAfter.tracks.map((t) =>
-        t.id === track.id ? { ...t, analysisState: 'failed', analysisError: message } : t,
+        t.id === track.id ? { ...t, contentHash, analysisState: 'failed', analysisError: message } : t,
       ),
     })
   }
@@ -275,6 +283,29 @@ export function pause(deckId: DeckId) {
   useStore.getState().patchDeck(deckId, { playing: false })
 }
 
+/**
+ * Persist the current cue bank + CUE point for whatever track is on this deck
+ * (v0.4.0). A no-op when the track has no `contentHash` yet (hash failed, or
+ * hasn't been computed — see `loadTrackToDeck`): the edit still applies on
+ * screen, it just isn't identified well enough to save yet. A write failure
+ * is surfaced, not swallowed — the central rule this whole project is built
+ * around — because a cue that looks set but silently isn't saved is worse
+ * than one the user never tried to set.
+ */
+function persistCues(deckId: DeckId) {
+  const { decks, setNotice } = useStore.getState()
+  const st = decks[deckId]
+  const hash = st.track?.contentHash
+  if (!hash) return
+  void putCues(hash, { hotCues: st.hotCues, cuePointSec: st.cuePointSec }).catch((err) => {
+    setNotice({
+      text: `Cue point set on screen but not saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'cues',
+    })
+  })
+}
+
 /** CUE button: if playing, stop and jump to cue point; if stopped, set cue point here. */
 export function cue(deckId: DeckId) {
   const deck = engine.decks[deckId]
@@ -289,6 +320,7 @@ export function cue(deckId: DeckId) {
     useStore.getState().patchDeck(deckId, { positionSec: st.cuePointSec })
   } else {
     useStore.getState().patchDeck(deckId, { cuePointSec: quantizeIfOn(deckId, deck.position) })
+    persistCues(deckId)
   }
 }
 
@@ -568,6 +600,7 @@ export function setHotCue(deckId: DeckId, index: number) {
       },
     ].sort((a, b) => a.index - b.index)
     patchDeck(deckId, { hotCues: next })
+    persistCues(deckId)
   }
 }
 
@@ -576,6 +609,22 @@ export function deleteHotCue(deckId: DeckId, index: number) {
   patchDeck(deckId, {
     hotCues: decks[deckId].hotCues.filter((c) => c.index !== index),
   })
+  persistCues(deckId)
+}
+
+/**
+ * Drag a hot cue pad onto another pad — relocate onto an empty one, swap with
+ * an occupied one (v0.4.0, `PadGrid.tsx`). Pure logic lives in
+ * `core/hotcues.ts`; this is the choke-point wrapper that patches the store
+ * and persists, same shape as `setHotCue`/`deleteHotCue`.
+ */
+export function moveHotCue(deckId: DeckId, fromIndex: number, toIndex: number) {
+  const { patchDeck, decks } = useStore.getState()
+  const cues = decks[deckId].hotCues
+  const next = moveHotCuePure(cues, fromIndex, toIndex)
+  if (next === cues) return
+  patchDeck(deckId, { hotCues: next })
+  persistCues(deckId)
 }
 
 export function toggleLoop(deckId: DeckId) {
