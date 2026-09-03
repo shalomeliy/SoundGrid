@@ -524,7 +524,11 @@ beatgrid.test.ts`, אימות דפדפן חי בכל תת‑צעד), ושני ה
 ## v0.9.0 — זיהוי סולם + מיקס הרמוני
 **מטרה:** לדעת את הסולם ולמזג לפיו.
 - זיהוי key (chroma + template matching), תצוגת Camelot + מוזיקלי
-- Key‑lock (master tempo) — שינוי tempo בלי שינוי pitch (phase vocaser / `AudioWorklet`)
+- Key‑lock (master tempo) — שינוי tempo בלי שינוי pitch, ב‑`AudioWorklet`. מועמד קונקרטי:
+  פורט WASM של [Rubber Band Library](https://github.com/breakfastquay/rubberband) (LGPL,
+  time‑stretch/pitch‑shift באיכות גבוהה, זה מה שרוב תוכנות ה‑DJ בקוד פתוח משתמשות בו),
+  מול phase vocoder עצמאי בקוד שלנו — עדיין **החלטה פתוחה** (ראה `HANDOFF.md`), לא
+  ברירת מחדל. לבדוק רישיון LGPL מול חבילה סטטית ל‑SPA לפני שסוגרים
 - Key‑sync: התאמת pitch של דק לדק השני
 - הדגשה בספרייה של טראקים תואמים הרמונית לדק המנגן
 - **הושלם כאשר:** key‑lock ב‑±8% לא משנה גובה צליל בשמיעה; זיהוי key נכון ב‑>70% במדגם.
