@@ -1,4 +1,6 @@
-import { analyzeTrack, pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
+import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
+import { analysisCache } from '@/platform/analyze-cache-idb/store'
+import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
 import {
@@ -13,6 +15,7 @@ import {
 import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
+import { hashBytes } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { useStore } from '@/app/state/store'
@@ -117,24 +120,84 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // wiped by the first track load, before the owner could read it.
   clearNotice('load')
   patchDeck(deckId, { loading: true })
+  let buffer: AudioBuffer
+  let contentHash: string | undefined
   try {
     const data = await readTrackData(track)
-    const buffer = await engine.decode(data)
-    // Read everything we need OUT of the buffer before handing it to the deck.
-    // Deliberately defensive rather than currently required: the worklet player
-    // copies the samples with copyFromChannel and transfers only those copies,
-    // so today's AudioBuffer is not detached (see the note in players.ts). A
-    // backend that took the buffer itself would detach it, and analysing after
-    // the handoff would then yield a flat waveform and a null BPM with nothing
-    // thrown. Cheap to keep the handoff last; invisible if it ever stops being.
-    // One analysis bucket per ~1.3 rendered pixels, derived from duration
-    // inside `analyzeTrack` now (moved from an inline formula here in v0.4.0
-    // so every caller — this synchronous path, the Worker path, its
-    // main-thread fallback — computes it the same way).
-    const pcm = pcmFromAudioBuffer(buffer)
-    const analysis = analyzeTrack(pcm)
-    const { peaks, bands } = analysis
-    const durationSec = analysis.durationSec
+    // Hashed from the raw file bytes, *before* decode — `decodeAudioData`
+    // neuters its input `ArrayBuffer` per spec (its `byteLength` becomes 0
+    // once decoding starts), so hashing `data` after `engine.decode(data)`
+    // would silently hash an empty buffer and give every track the same
+    // "identity". Caught on its own: a hash failure degrades to "not yet
+    // identified" (`contentHash` stays `undefined`) rather than blocking
+    // playback — the track still loads either way.
+    try {
+      contentHash = await hashBytes(data)
+    } catch (hashErr) {
+      console.error('hash failed', hashErr)
+    }
+    buffer = await engine.decode(data)
+  } catch (err) {
+    console.error('load failed', err)
+    patchDeck(deckId, { loading: false })
+    throw err
+  }
+  const durationSec = buffer.duration
+  // Load the deck the moment decode finishes — never wait on analysis to let
+  // the owner hear the track (v0.4.0: a not-yet-analyzed or failed-analysis
+  // track still plays, per the owner's explicit decision; see
+  // workshop-output/FEATURE_SPEC.md). `deck.load` only ever *copies* channel
+  // samples out (`copyFromChannel` inside the worklet player), so `buffer`'s
+  // own data is still fully intact and readable afterward — this is what
+  // makes it safe to hand `buffer` to the deck first and extract PCM for
+  // analysis second, below.
+  engine.decks[deckId].load(buffer)
+  // `firstCue` has nothing to read yet at this point — cue/hot-cue
+  // persistence lands in the next step of v0.4.0 (workshop-output/PLAN.md
+  // step 6). Until then this is still `0`, same as before.
+  const startSec = 0
+  patchDeck(deckId, {
+    track: { ...track, bpm: track.bpm ?? undefined, durationSec },
+    loading: false,
+    playing: false,
+    positionSec: startSec,
+    durationSec,
+    bpm: track.bpm ?? null,
+    beatGrid: null,
+    beatGridConfirmed: false,
+    syncActive: false,
+    peaks: null,
+    bands: null,
+    hotCues: [],
+    cuePointSec: startSec,
+    loopActive: false,
+  })
+  const { library, setLibrary } = useStore.getState()
+  setLibrary({
+    tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, durationSec } : t)),
+  })
+
+  // Analysis is best-effort from here: the track is already loaded and
+  // playable, so a failure here means "no waveform/grid yet", never "the
+  // load failed" — caught on its own, never re-thrown to this function's
+  // caller (v0.4.0 acceptance criterion 3).
+  try {
+    // No hash (a hashing failure above) means "not yet identified" — analysis
+    // still runs so this load gets its waveform/grid, it just can't be cached
+    // or looked up by identity yet.
+    let analysis = contentHash ? await analysisCache.get(contentHash) : null
+    if (!analysis) {
+      // `pcmFromAudioBuffer` only now, not before `deck.load` above: the
+      // Worker path transfers (detaches) these channel buffers, and nothing
+      // else needs to read `buffer` again after this point.
+      const pcm = pcmFromAudioBuffer(buffer)
+      analysis = await analyzerWorker.analyze(pcm)
+      if (contentHash) await analysisCache.put(contentHash, analysis)
+    }
+    // A fast second load on this same deck may have already replaced the
+    // track this analysis was for — don't let a late result clobber it.
+    if (useStore.getState().decks[deckId].track?.id !== track.id) return
+
     // A tag written by Serato still beats our own bpm guess — v0.1.7 measured
     // tag accuracy at 97% across the user's library, and detection is still
     // autocorrelation on an onset envelope, occasionally an octave off (see
@@ -145,46 +208,36 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     const beatGrid: BeatGrid | null = analysis.beatGrid
       ? { bpm: bpm ?? analysis.beatGrid.bpm, offsetSec: analysis.beatGrid.offsetSec }
       : null
-    // Unconfirmed whenever detection didn't produce a grid it trusts — never a
-    // silently-assumed-fine grid. Cleared only by the user checking or editing
-    // it (BeatGridPanel, v0.3.0 sub-step d).
-    const beatGridConfirmed = analysis.beatGridConfirmed
-    engine.decks[deckId].load(buffer)
-    // write analysis back into the library entry so its BPM/Time columns
-    // populate and mix recommendations have data to work with
-    const { library, setLibrary } = useStore.getState()
-    setLibrary({
-      tracks: library.tracks.map((t) =>
-        t.id === track.id
-          ? { ...t, bpm: bpm ?? t.bpm, durationSec }
-          : t,
+    patchDeck(deckId, {
+      track: { ...track, contentHash, analysisState: 'analyzed', bpm: bpm ?? undefined, durationSec },
+      bpm,
+      // Unconfirmed whenever detection didn't produce a grid it trusts — never
+      // a silently-assumed-fine grid. Cleared only by the user checking or
+      // editing it (BeatGridPanel, v0.3.0 sub-step d).
+      beatGridConfirmed: analysis.beatGridConfirmed,
+      beatGrid,
+      peaks: analysis.peaks,
+      bands: analysis.bands,
+    })
+    const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
+    setLibAfter({
+      tracks: libAfter.tracks.map((t) =>
+        t.id === track.id ? { ...t, contentHash, analysisState: 'analyzed', bpm: bpm ?? t.bpm } : t,
       ),
     })
-    // `firstCue` has nothing to read yet — cue points are not persisted with a
-    // track until v0.4, so there is no stored cue at load time and the answer
-    // is 0 either way. The Settings field carries that limitation in its own
-    // `pending` line rather than the app pretending the choice took effect.
-    const startSec = 0
-    patchDeck(deckId, {
-      track: { ...track, bpm: bpm ?? undefined, durationSec },
-      loading: false,
-      playing: false,
-      positionSec: startSec,
-      durationSec,
-      bpm,
-      beatGrid,
-      beatGridConfirmed,
-      syncActive: false,
-      peaks,
-      bands,
-      hotCues: [],
-      cuePointSec: startSec,
-      loopActive: false,
-    })
   } catch (err) {
-    console.error('load failed', err)
-    patchDeck(deckId, { loading: false })
-    throw err
+    console.error('analysis failed', err)
+    if (useStore.getState().decks[deckId].track?.id !== track.id) return
+    const message = err instanceof Error ? err.message : String(err)
+    patchDeck(deckId, {
+      track: { ...track, analysisState: 'failed', analysisError: message, durationSec },
+    })
+    const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
+    setLibAfter({
+      tracks: libAfter.tracks.map((t) =>
+        t.id === track.id ? { ...t, analysisState: 'failed', analysisError: message } : t,
+      ),
+    })
   }
 }
 

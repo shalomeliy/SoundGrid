@@ -13,9 +13,14 @@
  */
 import { bytesToHex } from '@/core/hash'
 
+/** Digests bytes already in memory — the deck-load and background-analysis paths both read the whole file anyway, so hashing costs nothing extra there. */
+export async function hashBytes(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return bytesToHex(digest)
+}
+
 export async function hashFile(handle: FileSystemFileHandle): Promise<string> {
   const file = await handle.getFile()
   const bytes = await file.arrayBuffer()
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return bytesToHex(digest)
+  return hashBytes(bytes)
 }
