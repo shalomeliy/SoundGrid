@@ -15,6 +15,9 @@ src/
     constants.ts        TEMPO_RANGE, EQ, צבעי hot cue
     recommend.ts        mixRecommendations() — טראקים תואמי BPM/סולם לדק המנגן
     mapping/mapping.ts  ControlAction + parseMessage + relativeDelta
+    hash.ts              bytesToHex — הפורמט הטהור של content‑hash (v0.4.0)
+    hotcues.ts            moveHotCue — רדוקטור relocate/swap טהור (v0.4.0)
+    analysis-cache.ts    resolveCacheEntry — מדיניות freshness טהורה (v0.4.0)
     ports/              ה‑interfaces: audio, source, transport, analyzer, clock,
                         persistence, capabilities, ai
 
@@ -26,13 +29,20 @@ src/
       scratch-processor.ts  ★ ה‑AudioWorklet עצמו. אסור שייבא כלום — אין לו DOM.
     source-fsaccess/
       library.ts        File System Access — pick/scan/restore, idb-keyval לתיקייה,
-                        readLibraryTags (פאס תגיות שני, batched)
+                        readLibraryTags (פאס תגיות שני, batched), queueLibraryAnalysis
+                        (פאס שלישי, רקע, v0.4.0)
       tags.ts           ★ readTags — ID3v2/MP4/Vorbis/RIFF/AIFF, parseKey → Camelot.
                         byte-range reads בלבד, אף פעם לא decode ולא כתיבה לקבצים
+      hash.ts           hashFile/hashBytes — SHA‑256 על בייטים (v0.4.0)
     transport-webmidi/
       manager.ts        ★ MidiManager singleton — Web MIDI, dispatch לפי mapping, Learn
       mappings/flx4.ts  פריסט DDJ-FLX4 (note/CC — best-effort, לתקן דרך Learn)
     analyzer-js/analyze.ts   analyzeWaveform, detectBeatGrid (math in core/beatgrid.ts, v0.3.0)
+    analyzer-worker/    Analyzer מעל Web Worker (v0.4.0) — decode נשאר ב‑thread הראשי
+    analyze-cache-idb/  AnalysisCache לפי content‑hash, ב‑IndexedDB (v0.4.0)
+    cues-idb/           בנק Hot Cues + נקודת CUE, לפי content‑hash (v0.4.0)
+    genre-overrides-idb/ override ז'אנר ידני — חנות ישנה (נתיב) + חנות חדשה (hash) +
+                        migrate.ts (מיגרציה חד‑פעמית, v0.4.0)
     clock-audio.ts      Clock יחיד מעל audioContext.currentTime
     capabilities.ts     מה נתמך בסביבה הזו — ה‑UI מתדרדר בחן לפיו
 
