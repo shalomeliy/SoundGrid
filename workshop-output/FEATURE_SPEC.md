@@ -138,11 +138,15 @@ that appears only on hover over an occupied pad (same hover-reveal idiom already
 for the Key-mode toggle and the v0.3.2 genre-cell dropdown) — clicking it deletes that
 cue and returns the pad to its empty look (the same neutral "no cue set" color/state
 already used for pads that were never set), so the owner can then click the empty pad
-to set a new cue at the current position. The `Shift`+click gesture and its hint text
-are removed — one discoverable mechanism instead of two. This is a same-version UI
-change to `PadGrid.tsx`, independent of the persistence work, but ships together with it
-since both touch the same component and the delete-then-redefine flow is what needs to
-survive a reload once cues persist.
+to set a new cue at the current position. The existing `Shift`+click gesture stays as a
+second way to do the same delete (by the owner's explicit choice — it doesn't hurt to
+keep it for muscle memory), so an occupied pad can be cleared either by hovering and
+clicking the `×` or by `Shift`+click; both do the identical delete. The static hint text
+next to the grid's header is updated to mention the `×` rather than only `Shift`+click,
+since the hover affordance is now the primary, discoverable one. This is a same-version
+UI change to `PadGrid.tsx`, independent of the persistence work, but ships together with
+it since both touch the same component and the delete-then-redefine flow is what needs
+to survive a reload once cues persist.
 
 **Identity unification.** `track.id` moves from `` `${prefix}${name}` `` (scan-relative
 path) to the same content hash used as the analysis-cache key. `genre-overrides-idb`'s
@@ -225,9 +229,9 @@ it is the documented escape hatch if the real-library measurement comes back bad
    reloading it (same session and after a full app reload), restores that state exactly.
 4a. Hovering an occupied pad shows a `×`; clicking it deletes that cue (pad returns to
    its empty look) and this deletion persists — reloading the track does not bring the
-   deleted cue back. Clicking the now-empty pad sets a new cue there, which also
-   persists. The old `Shift`+click gesture no longer does anything special (or is
-   removed outright) — hovering is the only way to see the delete option.
+   deleted cue back. `Shift`+click on an occupied pad does the identical delete, kept as
+   a second way to trigger it. Clicking the now-empty pad (either way) sets a new cue
+   there, which also persists.
 5. Moving a file to a different folder and rescanning: its genre override, hot cues, and
    cached analysis all survive — the track is recognized as the same track by content,
    not by path.
