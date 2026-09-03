@@ -23,6 +23,19 @@
 
 **מה פתוח בקוד: כלום.** פתוח רק מה שמופיע למטה — החובות הטכניים וההחלטות הממתינות.
 
+**תיקון עצמאי, לא קשור לגרסה (03/09):** כשל פענוח (`decodeAudioData`) ב‑`loadTrackToDeck`
+(`src/controls.ts`) — קובץ פגום, או קובץ שהסיומת שלו תואמת אבל התוכן לא ניתן לפענוח —
+היה נרשם ל‑console ונזרק (`throw`) לתוך Promise שאף קורא לא מחכה לו (`void
+ctl.loadTrackToDeck(...)` בכל שבעת מקומות הקריאה: Library.tsx, Deck.tsx, App.tsx,
+manager.ts) — כלומר unhandled rejection בקונסול ושום דבר על המסך. תוקן בתוך
+`loadTrackToDeck` עצמו: כשל פענוח כותב הודעה דרך `setNotice` (`source: 'load'`, אותו
+מנגנון ש‑`setTrackGenre` כבר משתמש בו) בשם הטראק והשגיאה, ומפסיק לזרוק — אף קורא לא
+תפס את הזריקה ממילא. אימות: `scripts/verify-load-failure-notice.mjs`
+(Playwright, 9/9) — דאבל-קליק על שורה לא-ניתנת-לפענוח וגרירה לדק B, שתיהן מציגות
+הודעה ואפס unhandled rejections. **לשים לב לענף `claude/tamshich-handoff-qoqu7o`
+(v0.4.0, לא ממוזג)** — ה‑`controls.ts` שם עדיין עם ההתנהגות הישנה (זורק), אז מיזוג
+עתידי צריך ליישב את שני הצדדים של הבלוק הזה.
+
 ---
 
 ## חובות טכניים ידועים

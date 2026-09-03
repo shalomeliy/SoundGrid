@@ -183,7 +183,17 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   } catch (err) {
     console.error('load failed', err)
     patchDeck(deckId, { loading: false })
-    throw err
+    // Every call site fires this with `void` (mouse, keyboard, MIDI) and none
+    // attaches its own `.catch` — a decode failure (corrupt file, or a file
+    // whose extension matches but Chromium can't actually decode) used to
+    // become only an unhandled rejection in the console while the UI looked
+    // idle. Surface it the same way setTrackGenre surfaces its own async
+    // failure, and stop re-throwing: nothing downstream was ever catching it.
+    setNotice({
+      text: `"${track.name}" didn't load — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'load',
+    })
   }
 }
 
