@@ -240,7 +240,18 @@ export function Library() {
     // because `applyAnalysisQueue` reads the hash-keyed store exactly once,
     // up front — a migration still in flight when that read happens would
     // miss the very entries it just wrote, on this first post-upgrade scan.
-    await migrateGenreOverridesToHash(queued)
+    const migration = await migrateGenreOverridesToHash(queued)
+    // A dropped entry here is exactly the class of gap this app's skipped/
+    // unreadable/unrecognized-genre badges exist for — a migration that ran
+    // once and quietly lost some overrides is worse than one the owner is
+    // told about.
+    if (migration && migration.orphaned > 0) {
+      useStore.getState().setNotice({
+        text: `${migration.orphaned} genre override${migration.orphaned === 1 ? '' : 's'} from before this version couldn't be matched to a file in this scan and were not carried forward.`,
+        tone: 'warn',
+        source: 'library',
+      })
+    }
     await applyGenreOverrides(scan)
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
@@ -615,12 +626,22 @@ function Th({ children, className = '' }: { children: React.ReactNode; className
  * internally. `'analyzed'` — the common case, most rows — shows nothing:
  * a checkmark on every row would be noise, not information.
  */
+/**
+ * This dot is also the "identity not yet confirmed" state the escape hatch
+ * in `workshop-output/FEATURE_SPEC.md` (identity unification section) calls
+ * for: `contentHash` — what a genre override or a saved cue is actually
+ * looked up by — is unknown until analysis reaches this row, so the genre
+ * shown before that (a folder guess, or a stale path-keyed override) can
+ * still change once it does. The queued/analyzing tooltips say so; the
+ * dot's presence at all is the visible signal, same as `analyzed` having
+ * none is the signal that nothing here is still provisional.
+ */
 function AnalysisIcon({ track }: { track: Track }) {
   if (track.analysisState === 'analyzing') {
     return (
       <span
         className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
-        title="Analyzing…"
+        title="Analyzing… genre and hot cues may still update once this finishes."
       />
     )
   }
@@ -638,7 +659,7 @@ function AnalysisIcon({ track }: { track: Track }) {
     return (
       <span
         className="h-1.5 w-1.5 shrink-0 rounded-full bg-grid-dim/40"
-        title="Queued for background analysis"
+        title="Queued for background analysis — genre and hot cues may still update once it runs."
       />
     )
   }

@@ -87,7 +87,7 @@ named in the UI, matching this repo's standing "never skip silently" rule.
 | --- | --- | --- |
 | When background analysis runs | Automatically, the moment a folder is picked/added — the owner never has to click "analyze" | Manual per-track or per-folder trigger only |
 | What "cue points" means in this version | Both `cuePointSec` (the single CUE-button point `onLoadPlayhead` refers to) **and** the full `HotCue[]` bank set via the pads | Only the single point |
-| Track identity | Unify: `track.id` becomes content-hash-based everywhere (genre overrides included), fixing the v0.3.2 file-move bug as a side effect | Leave genre-override identity on path, add a second hash-based identity only for the analysis cache |
+| Track identity | Unify: `track.id` becomes content-hash-based everywhere (genre overrides included), fixing the v0.3.2 file-move bug as a side effect — **superseded during planning, see the note under "Identity unification" below: `track.id` shipped path-based, `contentHash` as a separate field** | Leave genre-override identity on path, add a second hash-based identity only for the analysis cache — **this is closer to what actually shipped** |
 | Loading an unanalyzed/failed track | Loads immediately with whatever's already available (tag BPM, no waveform/grid/cue yet); completes live in the background if/when analysis finishes | Block the Load button until analysis is done |
 
 ## Proposed experience
@@ -185,6 +185,18 @@ cues/cache resolve by content hash only once it's ready — with a defined, visi
 for "identity not yet confirmed" in between. This fallback is **not** the default plan;
 it is the documented escape hatch if the real-library measurement comes back bad.
 
+> **Resolved during planning, not by the measurement above (recorded honestly, found in
+> independent review):** `workshop-output/PLAN.md` §4 took this fallback as the default
+> from the start — reasoning architecturally that hashing ~360 files before first paint
+> would be a worse regression than the problem being fixed — without first running the
+> real-library measurement this section says should gate that choice. The reasoning
+> holds on its own merits (blocking first paint for hundreds of file reads is a real
+> cost), but it was not the evidence-gated decision this section describes, and the
+> escape hatch's own requirement — a defined, visible "identity not yet confirmed"
+> state — was not built until this note prompted it (`Library.tsx`'s `AnalysisIcon`
+> tooltip, v0.4.0 step 10). `Track.id` stays path-based, as here; `Track.contentHash`
+> is the separate, lazily-populated field everything else in this document keys on.
+
 ## System / data implications
 
 - **`platform/analyzer-worker/`** (new) implements `core/ports/analyzer.ts`'s
@@ -216,8 +228,9 @@ it is the documented escape hatch if the real-library measurement comes back bad
 - **`platform/cues-idb/`** (new, dedicated store) holds `contentHash -> { hotCues,
   cuePointSec }`, written on every pad/CUE-button change via `controls.ts`, read once
   after each track's identity (content hash) is known.
-- **`Track.id`** becomes the content hash; `Track.analysisState: 'queued' | 'analyzing'
-  | 'analyzed' | 'failed'` and `Track.analysisError?: string` are added to
+- **`Track.id` stays path-based** — see the resolved-during-planning note above.
+  `Track.contentHash?: string` and `Track.analysisState: 'queued' | 'analyzing' |
+  'analyzed' | 'failed'` and `Track.analysisError?: string` are added to
   `core/types.ts` to drive the row indicator explicitly (not inferred).
 - **File System Access + Worker boundary**: a `FileSystemFileHandle` saved from a
   previous session can have its OS-level permission revoked outside the browser. A
@@ -349,9 +362,9 @@ it is the documented escape hatch if the real-library measurement comes back bad
 | --- | --- | --- |
 | Background analysis trigger | Automatic on folder pick/add | Manual per-folder/track button |
 | Cue scope persisted | `cuePointSec` **and** full `HotCue[]` bank | `cuePointSec` only |
-| Track identity | Unified to content hash (fixes v0.3.2 genre-move debt) | Two separate identities (path for genre, hash for cache) |
+| Track identity | Unified to content hash (fixes v0.3.2 genre-move debt) — **superseded during planning, not by a real-library measurement; see the note under "Identity unification" above** | Two separate identities (path for genre, hash for cache) — **this is what actually shipped** |
 | Loading an unanalyzed/failed track | Loads immediately with available data, fills in live | Blocks Load until analysis completes |
-| Scan-time hashing cost | Accepted, with a documented fallback (lazy hash + interim state) if real-library measurement is unacceptable | Silently defer the cost question to implementation |
+| Scan-time hashing cost | Accepted, with a documented fallback (lazy hash + interim state) if real-library measurement is unacceptable — **the fallback shipped as the default, without that measurement ever running** | Silently defer the cost question to implementation |
 
 No further open product questions remain for this spec. File-level implementation
 sequencing (exact Worker message protocol, exact IndexedDB schema fields, migration

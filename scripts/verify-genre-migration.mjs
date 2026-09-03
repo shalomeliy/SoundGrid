@@ -206,6 +206,35 @@ const WAV_BASE64 = wavBytes.toString('base64')
   await page.close()
 }
 
+// ── Scenario 3: an orphaned entry (its file already moved) is REPORTED, ────
+// not silently dropped — found in independent review: every other "some
+// entries couldn't be carried forward" case in this app is a named, counted
+// fact (skipped/unreadable/unrecognized-genre badges); the migration wasn't.
+{
+  const page = await browser.newPage({ viewport: VIEWPORT })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  await page.addInitScript(
+    harness({
+      folder: 'House',
+      fileName: 'track.wav',
+      seedPathOverride: {
+        'House/track.wav': 'Trance', // matches — migrates cleanly
+        'Techno/ghost.wav': 'Ambient', // no such file in this scan — orphaned
+      },
+    }),
+  )
+  await page.goto(URL, { waitUntil: 'domcontentloaded' })
+  await page.waitForTimeout(600)
+
+  const notice = await page.getByText(/couldn.t be matched/).first().innerText().catch(() => null)
+  ok('orphaned entry: the notice banner names how many could not be carried forward',
+    notice?.includes('1 genre override'), notice ?? 'not found')
+
+  ok('scenario 3: no console errors', errors.length === 0, errors[0])
+  await page.close()
+}
+
 await browser.close()
 const passed = results.filter((r) => r.pass).length
 console.log(`\n${passed}/${results.length} passed`)
