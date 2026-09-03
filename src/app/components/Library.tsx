@@ -7,6 +7,7 @@ import {
   fileSystemAccessSupported,
   pickLibraryFolder,
   pickTrackFiles,
+  queueLibraryAnalysis,
   readLibraryTags,
   restoreLibraryFolder,
   scanLibrary,
@@ -73,6 +74,13 @@ export function Library() {
     (a, b) => a + b,
     0,
   )
+  // Derived straight from the tracks themselves (v0.4.0) — same shape as the
+  // two counts above, no separate store slice needed. 'analyzing' counts as
+  // still-queued from the header's point of view: both mean "not done yet".
+  const queuedTotal = library.tracks.filter(
+    (t) => t.analysisState === 'queued' || t.analysisState === 'analyzing',
+  ).length
+  const analysisFailedTotal = library.tracks.filter((t) => t.analysisState === 'failed').length
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
 
@@ -213,8 +221,9 @@ export function Library() {
       return
     }
 
+    const queued = tracks.map((t) => ({ ...t, analysisState: 'queued' as const }))
     setLibrary({
-      tracks,
+      tracks: queued,
       skipped,
       unrecognizedGenre,
       boot: 'loaded',
@@ -224,7 +233,7 @@ export function Library() {
     })
 
     await applyGenreOverrides(scan)
-    await applyTags(tracks, scan)
+    await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
 
   /**
@@ -246,8 +255,9 @@ export function Library() {
       setLibrary({ scanMsg: `${picked.length} already in the library` })
       return
     }
+    const queued = fresh.map((t) => ({ ...t, analysisState: 'queued' as const }))
     setLibrary({
-      tracks: [...current, ...fresh].sort((a, b) => a.path.localeCompare(b.path)),
+      tracks: [...current, ...queued].sort((a, b) => a.path.localeCompare(b.path)),
       selectedId: fresh[0].id,
       folderName: useStore.getState().library.folderName ?? 'Added files',
       // tracks are on screen now, so the startup sentence must give way
@@ -255,7 +265,7 @@ export function Library() {
       scanMsg: `+${fresh.length} · reading tags…`,
     })
     await applyGenreOverrides(scan)
-    await applyTags(fresh, scan)
+    await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
 
   /**
@@ -300,6 +310,36 @@ export function Library() {
             progress.done < progress.total
               ? `${total} tracks · tags ${progress.done}/${progress.total}`
               : `${total} tracks · ${progress.tagged} with BPM`,
+        })
+      },
+      { signal: scan },
+    )
+  }
+
+  /**
+   * Third pass: background continuous analysis (v0.4.0), running alongside
+   * `applyTags` rather than after it — a track's identity and cache entry
+   * don't depend on its tags. Safe to run concurrently only because the
+   * merge below never trusts a value carried in the patch over one already
+   * on the track: same "existing wins" rule `applyTags` uses, so whichever
+   * pass fills in `bpm` first, a tag never loses to a detected guess.
+   */
+  async function applyAnalysisQueue(tracks: Track[], scan: { cancelled: boolean }) {
+    // Progress isn't read here — the header's "N queued"/"K failed" badges
+    // (below) derive straight from `library.tracks[].analysisState`, the
+    // same way the skipped/unrecognized-genre counts already do, so there is
+    // no separate counter to thread through this callback.
+    await queueLibraryAnalysis(
+      tracks,
+      (patch) => {
+        if (scan.cancelled || patch.size === 0) return
+        const store = useStore.getState()
+        store.setLibrary({
+          tracks: store.library.tracks.map((t) => {
+            const p = patch.get(t.id)
+            if (!p) return t
+            return { ...t, ...p, bpm: t.bpm ?? p.bpm, durationSec: t.durationSec ?? p.durationSec }
+          }),
         })
       },
       { signal: scan },
@@ -417,6 +457,22 @@ export function Library() {
               {unrecognizedGenreTotal} unrecognized genre
             </span>
           )}
+          {!library.scanning && queuedTotal > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
+              title="Waveform/BPM/beat-grid detection running behind the list — each track already plays, this fills in the row as it catches up."
+            >
+              {queuedTotal} queued
+            </span>
+          )}
+          {!library.scanning && analysisFailedTotal > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-warn"
+              title="Tracks whose background analysis failed — hover a row's dot for the reason. Still listed; loading one to a deck tries again."
+            >
+              {analysisFailedTotal} analysis failed
+            </span>
+          )}
         </span>
       </div>
 
@@ -531,6 +587,45 @@ function Th({ children, className = '' }: { children: React.ReactNode; className
   return <th className={`label py-1.5 font-semibold ${className}`}>{children}</th>
 }
 
+/**
+ * Title-cell leading icon (v0.4.0), driven by `track.analysisState` — never
+ * inferred from `bpm`, which fills in from a tag before analysis has run and
+ * would otherwise make an unanalyzed-but-tagged track look identical to an
+ * analyzed one. `undefined` (never queued at all, e.g. a `+ Files` import)
+ * and `'queued'` share the same neutral dot; the distinction only matters
+ * internally. `'analyzed'` — the common case, most rows — shows nothing:
+ * a checkmark on every row would be noise, not information.
+ */
+function AnalysisIcon({ track }: { track: Track }) {
+  if (track.analysisState === 'analyzing') {
+    return (
+      <span
+        className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+        title="Analyzing…"
+      />
+    )
+  }
+  if (track.analysisState === 'failed') {
+    return (
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn"
+        title={`Background analysis failed${
+          track.analysisError ? `: ${track.analysisError}` : ''
+        } — still listed; loading it to a deck tries analysis again.`}
+      />
+    )
+  }
+  if (!track.analysisState || track.analysisState === 'queued') {
+    return (
+      <span
+        className="h-1.5 w-1.5 shrink-0 rounded-full bg-grid-dim/40"
+        title="Queued for background analysis"
+      />
+    )
+  }
+  return null
+}
+
 function Row({
   track,
   selected,
@@ -567,6 +662,7 @@ function Row({
       >
         {selected && <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
         <span className="flex items-center gap-1.5">
+          <AnalysisIcon track={track} />
           {match && (
             <span
               className="h-1.5 w-1.5 shrink-0 rounded-full"
