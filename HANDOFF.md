@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **בעבודה** | אין. ‏`v0.3.0` ו‑`v0.3.2` סגורות. `v0.3.1` (מספר גרסה בקליינט) מאופיינת ועדיין לא נבנתה — לא לבלבל עם `v0.3.2` שכן נבנתה, מספר קטן ממנה. הרשומות המלאות ב‑[`docs/handoff/`](docs/handoff/) ו‑ב‑[`ROADMAP.md`](ROADMAP.md); מה בפועל על main — `git fetch && git log --oneline origin/main -5`, לא השורה הזאת |
-| **branch** | ‏`claude/tracks-genre-column-frk51b` — `v0.3.2` (עמודת ז'אנר), טרם מוזג ל‑`main`. `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
+| **branch** | אין PR פתוח כרגע — כל מה שנבנה כבר ב‑`main`. לפני כל עבודה חדשה: `git fetch --prune && git branch -r --no-merged origin/main` — ענף שלא מוזג הוא claim על גרסה, לא לדרוך עליו |
 | **גרסה נוכחית** | `v0.3.2` — וזה גם מה ש‑`package.json` אומר. בדיקה מקבעת את השוויון (`tests/repo/version-in-step.test.ts`); **לשנות את שניהם יחד** |
 | **`npm run check`** | ירוק — `tsc` + `oxlint` + `depcruise` + `vitest run`. **בלי לצטט כאן מספר בדיקות** — הוא מתיישן תוך קומיט אחד, ובדיקה אוסרת אותו (`tests/repo/handoff-counts.test.ts`). המספר המדויק יושב מתוארך ב‑`docs/handoff/`. להריץ לפני כל commit |
 | **הבא בתור** | **v0.4.0 — ניתוח מתמשך + מטא‑דאטה קבועה.** האיפיון ב‑[`ROADMAP.md`](ROADMAP.md). **`v0.4.6` (Mix Assist) מאופיין שם גם‑כן** (5 סקירות מומחים + החלטות משתמש, 02/09) — **חסום מאחורי v0.4.0**, לא לדלג אליו לפניה. **`v0.3.1`** (מספר גרסה בקליינט) עדיין לא בעבודה — לא נקבע אם היא לפני או אחרי v0.4.0 |
