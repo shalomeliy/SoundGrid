@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **בעבודה** | **שום דבר כרגע.** v0.4.0 נסגרה (03/09) — ר' [`docs/handoff/v0.4.0.md`](docs/handoff/v0.4.0.md) לתכולה המלאה ולמה שנמדד. |
-| **branch** | `claude/tamshich-handoff-qoqu7o` — כל 10 הצעדים של v0.4.0 דחופים אליו, **עדיין לא ממוזג ל‑`main`**. שיחה הבאה: למזג אותו (או לבקש מהמשתמש) לפני התחלת עבודה חדשה — **לא** להתייחס אליו כעבודה באמצע. `git fetch --prune && git branch -r --no-merged origin/main` זה עדיין הצעד הראשון, כרגיל |
+| **branch** | `main` — PR #9 (v0.4.0, כל 10 הצעדים) מוזג (03/09), `git merge-base --is-ancestor claude/tamshich-handoff-qoqu7o origin/main` יאשר. `git fetch --prune && git branch -r --no-merged origin/main` עדיין הצעד הראשון של כל שיחה, כרגיל |
 | **גרסה נוכחית** | `v0.4.0` |
 | **`npm run check`** | ירוק. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | לפי `ROADMAP.md`: `v0.3.1` (מספר גרסה בקליינט), `v0.4.5` (סימון "השיר הבא"), ו‑`v0.4.6` (Mix Assist — תלוי גם ב‑v0.3.0, שכבר סגורה) כולם פתוחים. הבחירה של המשתמש, לא הנחה מראש |
