@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as ctl from '@/controls'
+import { GENRES } from '@/core/genres'
+import { getGenreOverrides } from '@/platform/genre-overrides-idb/store'
 import {
   ensureReadPermission,
   fileSystemAccessSupported,
@@ -67,6 +69,10 @@ export function Library() {
   // nobody wants to relearn theirs, so it's a preference that sticks.
   const { keyMode, libraryTextScale } = useSettings()
   const skippedTotal = Object.values(library.skipped).reduce((a, b) => a + b, 0)
+  const unrecognizedGenreTotal = Object.values(library.unrecognizedGenre).reduce(
+    (a, b) => a + b,
+    0,
+  )
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
 
@@ -185,8 +191,9 @@ export function Library() {
 
     let tracks: Track[]
     let skipped: Record<string, number>
+    let unrecognizedGenre: Record<string, number>
     try {
-      ;({ tracks, skipped } = await scanLibrary(handle, (p) =>
+      ;({ tracks, skipped, unrecognizedGenre } = await scanLibrary(handle, (p) =>
         setLibrary({ scanMsg: `${p.found} tracks · ${p.currentDir}` }),
       ))
     } catch (err) {
@@ -201,6 +208,7 @@ export function Library() {
         scanMsg: '',
         tracks: [],
         skipped: {},
+        unrecognizedGenre: {},
       })
       return
     }
@@ -208,12 +216,14 @@ export function Library() {
     setLibrary({
       tracks,
       skipped,
+      unrecognizedGenre,
       boot: 'loaded',
       scanning: false,
       scanMsg: `${tracks.length} tracks · reading tags…`,
       selectedId: tracks[0]?.id ?? null,
     })
 
+    await applyGenreOverrides(scan)
     await applyTags(tracks, scan)
   }
 
@@ -244,7 +254,27 @@ export function Library() {
       boot: 'loaded',
       scanMsg: `+${fresh.length} · reading tags…`,
     })
+    await applyGenreOverrides(scan)
     await applyTags(fresh, scan)
+  }
+
+  /**
+   * Overlay stored manual genre overrides (v0.3.2) onto whatever tracks are
+   * currently on screen. Runs after the fast, synchronous folder-derived list
+   * is already visible — same two-pass shape as `applyTags` below — so a
+   * rescan of the same, unmoved files does not clobber a manual pick with the
+   * freshly re-derived folder genre.
+   */
+  async function applyGenreOverrides(scan: { cancelled: boolean }) {
+    const overrides = await getGenreOverrides()
+    if (scan.cancelled || overrides.size === 0) return
+    const store = useStore.getState()
+    store.setLibrary({
+      tracks: store.library.tracks.map((t) => {
+        const override = overrides.get(t.id)
+        return override ? { ...t, genre: override } : t
+      }),
+    })
   }
 
   /** Second pass: BPM/key/artist straight out of the file headers (v0.1.7). */
@@ -369,6 +399,24 @@ export function Library() {
               {library.unreadable} unreadable
             </span>
           )}
+          {/*
+            Folders that don't match a known genre (v0.3.2) — same shape and
+            reasoning as the skipped/unreadable badges: named, not silently
+            blank. `+ Files` tracks have no folder to report, so they never
+            add to this count.
+          */}
+          {!library.scanning && unrecognizedGenreTotal > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-warn"
+              title={`Tracks imported from folders not recognized as a genre — rename the folder to the genre name for it to be picked up automatically: ${Object.entries(
+                library.unrecognizedGenre,
+              )
+                .map(([folder, n]) => `${n} × ${folder}`)
+                .join(', ')}`}
+            >
+              {unrecognizedGenreTotal} unrecognized genre
+            </span>
+          )}
         </span>
       </div>
 
@@ -436,7 +484,10 @@ export function Library() {
                     number mean what it says. */}
                 <Th className="w-[25%] pl-3 text-left">Title</Th>
                 <Th className="w-[27%] text-left">Artist</Th>
-                <Th className="w-[8%] text-left">Type</Th>
+                {/* Reclaimed from Type (8%→4%) and Time (10%→7%) — Title, Artist,
+                    BPM, Key and Load are load-bearing and stay untouched. */}
+                <Th className="w-[7%] text-left">Genre</Th>
+                <Th className="w-[4%] text-left">Type</Th>
                 <Th className="w-[10%] text-right tnum">BPM</Th>
                 <Th className="w-[10%] text-right">
                   <button
@@ -453,7 +504,7 @@ export function Library() {
                     {keyMode === 'musical' ? 'Key' : 'Camelot'}
                   </button>
                 </Th>
-                <Th className="w-[10%] text-right tnum">Time</Th>
+                <Th className="w-[7%] text-right tnum">Time</Th>
                 <Th className="w-[10%] pr-3 text-right">Load</Th>
               </tr>
             </thead>
@@ -534,6 +585,38 @@ function Row({
         </span>
       </td>
       <td className="max-w-0 truncate py-1.5 pr-2 text-grid-muted">{track.artist}</td>
+      {/*
+        A native <select> rather than a plain cell that swaps to one on click:
+        it gets keyboard/focus/screen-reader semantics for free and isn't
+        clipped by the table's own scroll container. Transparent at rest,
+        matching the Key-mode header toggle's hover-reveal styling — the only
+        signal it's editable is the hover state, which is fine for this
+        mouse-driven, Chromium-only app. `stopPropagation` on both handlers
+        keeps opening it from also selecting the row or loading the deck.
+      */}
+      <td
+        className="max-w-0 py-1.5 pr-2"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <select
+          value={track.genre ?? ''}
+          onChange={(e) => e.target.value && ctl.setTrackGenre(track.id, e.target.value)}
+          title={track.genre ?? 'No genre — pick one'}
+          className={`w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 pl-1 pr-0.5 outline-none transition-colors hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
+            track.genre ? 'text-grid-muted' : 'text-grid-dim'
+          }`}
+        >
+          <option value="" disabled hidden>
+            –
+          </option>
+          {GENRES.map((g) => (
+            <option key={g} value={g}>
+              {g}
+            </option>
+          ))}
+        </select>
+      </td>
       <td className="py-1.5 pr-2 text-2xs uppercase text-grid-dim">{track.kind}</td>
       {/* BPM is a primary mixing datum, not metadata — it reads at full brightness */}
       <td className="tnum py-1.5 pr-2 text-right font-medium text-grid-text">
