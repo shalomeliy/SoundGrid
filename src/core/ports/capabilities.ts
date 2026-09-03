@@ -23,4 +23,6 @@ export interface Capabilities {
   sharedArrayBuffer: boolean
   /** waveform rendering off the main thread */
   offscreenCanvas: boolean
+  /** background analysis (v0.4.0) — no Worker means analysis falls back to the main thread */
+  webWorker: boolean
 }

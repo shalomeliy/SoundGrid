@@ -22,5 +22,6 @@ export function detectCapabilities(): Capabilities {
     setSinkId: typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype,
     sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
     offscreenCanvas: typeof OffscreenCanvas !== 'undefined',
+    webWorker: typeof Worker !== 'undefined',
   }
 }
