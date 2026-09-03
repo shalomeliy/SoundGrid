@@ -3,6 +3,11 @@ import { matchGenre, parentFolderName } from '@/core/genres'
 import type { SavedPermission } from '@/core/library-boot'
 import type { Track } from '@/core/types'
 import { readTags } from '@/platform/source-fsaccess/tags'
+import { hashBytes } from '@/platform/source-fsaccess/hash'
+import { engine } from '@/platform/audio-webaudio/engine'
+import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
+import { analyzerWorker } from '@/platform/analyzer-worker'
+import { analysisCache } from '@/platform/analyze-cache-idb/store'
 
 const HANDLE_KEY = 'soundgrid:libraryDir'
 
@@ -316,4 +321,96 @@ export async function readLibraryTags(
   await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker))
   flush()
   if (!opts.signal?.cancelled) onBatch(new Map(), { done, total, tagged, unreadable })
+}
+
+export interface AnalysisQueueProgress {
+  /** tracks whose analysis has settled (analyzed or failed) so far */
+  done: number
+  total: number
+  failed: number
+}
+
+/**
+ * Third pass: background continuous analysis (v0.4.0) — the same
+ * "scan renders immediately, this fills in behind it" shape as
+ * `readLibraryTags`, but heavier per track (hash + decode + Worker analysis,
+ * against tag-reading's byte-range peek), so it runs at a lower default
+ * concurrency and reports per-track rather than in batches: the point of
+ * `'analyzing'` as its own state is a live signal, and holding it back for a
+ * flush window would make the icon lie about what's happening right now.
+ *
+ * A cache hit (this exact file content already analyzed, by this analyzer
+ * version) skips `engine.decode` entirely — the expensive step — which is
+ * why this checks the cache itself rather than delegating to
+ * `analyzerWorker.analyze` the way `loadTrackToDeck` does: that path always
+ * needs the decoded buffer anyway (to hand to the deck), this one doesn't.
+ *
+ * A hash failure here is treated as an analysis failure, not "not yet
+ * identified" — unlike `loadTrackToDeck`, where the track still has to play,
+ * this pass exists *only* to produce an identity and a cached result, so a
+ * track it can't hash has nothing for it to do.
+ */
+export async function queueLibraryAnalysis(
+  tracks: Track[],
+  onUpdate: (patch: Map<string, Partial<Track>>, progress: AnalysisQueueProgress) => void,
+  opts: { concurrency?: number; signal?: { cancelled: boolean } } = {},
+): Promise<void> {
+  const concurrency = opts.concurrency ?? 2
+  const total = tracks.length
+  let next = 0
+  let done = 0
+  let failed = 0
+
+  async function worker() {
+    while (next < total) {
+      if (opts.signal?.cancelled) return
+      const track = tracks[next++]
+      onUpdate(new Map([[track.id, { analysisState: 'analyzing' }]]), { done, total, failed })
+      try {
+        const file = await track.handle.getFile()
+        const data = await file.arrayBuffer()
+        const contentHash = await hashBytes(data)
+        let analysis = await analysisCache.get(contentHash)
+        if (!analysis) {
+          const buffer = await engine.decode(data)
+          analysis = await analyzerWorker.analyze(pcmFromAudioBuffer(buffer))
+          await analysisCache.put(contentHash, analysis)
+        }
+        done++
+        if (opts.signal?.cancelled) return
+        // Raw detected values, not resolved against `track` here — `track` is
+        // this worker's snapshot from when the queue started, which can be
+        // stale by the time this settles (`applyTags` runs concurrently in
+        // `Library.tsx` and may have since filled in a tag's own bpm). The
+        // "existing wins" precedence is applied once, by the caller, against
+        // whatever the store actually holds at merge time.
+        onUpdate(
+          new Map([
+            [
+              track.id,
+              {
+                contentHash,
+                analysisState: 'analyzed',
+                bpm: analysis.bpm ?? undefined,
+                durationSec: analysis.durationSec,
+              },
+            ],
+          ]),
+          { done, total, failed },
+        )
+      } catch (err) {
+        done++
+        failed++
+        if (opts.signal?.cancelled) return
+        const message = err instanceof Error ? err.message : String(err)
+        onUpdate(new Map([[track.id, { analysisState: 'failed', analysisError: message }]]), {
+          done,
+          total,
+          failed,
+        })
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker))
 }

@@ -27,3 +27,5 @@ dist-ssr
 
 # Claude Code — machine-local permissions/skill overrides (settings.json is shared)
 .claude/settings.local.json
+# Claude Code — ephemeral per-agent worktrees (isolation:"worktree" subagents)
+.claude/worktrees/

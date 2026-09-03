@@ -1,4 +1,6 @@
-import { analyzeWaveform, detectBeatGrid } from '@/platform/analyzer-js/analyze'
+import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
+import { analysisCache } from '@/platform/analyze-cache-idb/store'
+import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
 import {
@@ -10,11 +12,14 @@ import {
   setDownbeatAt,
   shiftGrid,
 } from '@/core/beatgrid'
-import { setGenreOverride } from '@/platform/genre-overrides-idb/store'
+import { setGenreOverrideByHash } from '@/platform/genre-overrides-idb/store'
+import { getCues, putCues } from '@/platform/cues-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
+import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
+import { moveHotCue as moveHotCuePure } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
 import type { BeatGrid, DeckId, Track } from '@/core/types'
 
@@ -117,69 +122,23 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // wiped by the first track load, before the owner could read it.
   clearNotice('load')
   patchDeck(deckId, { loading: true })
+  let buffer: AudioBuffer
+  let contentHash: string | undefined
   try {
     const data = await readTrackData(track)
-    const buffer = await engine.decode(data)
-    // Read everything we need OUT of the buffer before handing it to the deck.
-    // Deliberately defensive rather than currently required: the worklet player
-    // copies the samples with copyFromChannel and transfers only those copies,
-    // so today's AudioBuffer is not detached (see the note in players.ts). A
-    // backend that took the buffer itself would detach it, and analysing after
-    // the handoff would then yield a flat waveform and a null BPM with nothing
-    // thrown. Cheap to keep the handoff last; invisible if it ever stops being.
-    const durationSec = buffer.duration
-    // One analysis bucket per ~1.3 rendered pixels. A fixed 2400 buckets meant
-    // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
-    // waveform came out as blocks — the old path fill hid it by interpolating.
-    const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(durationSec * 200)))
-    const { peaks, bands } = analyzeWaveform(buffer, buckets)
-    // A tag written by Serato still beats our own bpm guess — v0.1.7 measured
-    // tag accuracy at 97% across the user's library, and detection is still
-    // autocorrelation on an onset envelope, occasionally an octave off (see
-    // core/beatgrid.ts). What v0.3.0 changes: detection is the *only* source
-    // of phase (`offsetSec`) — tags carry no phase — so it always runs and its
-    // grid is always kept, even when the tag wins on the bpm number itself.
-    const detected = detectBeatGrid(buffer)
-    const bpm = track.bpm ?? detected?.grid.bpm ?? null
-    const beatGrid: BeatGrid | null = detected
-      ? { bpm: bpm ?? detected.grid.bpm, offsetSec: detected.grid.offsetSec }
-      : null
-    // Unconfirmed whenever detection didn't produce a grid it trusts — never a
-    // silently-assumed-fine grid. Cleared only by the user checking or editing
-    // it (BeatGridPanel, v0.3.0 sub-step d).
-    const beatGridConfirmed = detected ? detected.confident : false
-    engine.decks[deckId].load(buffer)
-    // write analysis back into the library entry so its BPM/Time columns
-    // populate and mix recommendations have data to work with
-    const { library, setLibrary } = useStore.getState()
-    setLibrary({
-      tracks: library.tracks.map((t) =>
-        t.id === track.id
-          ? { ...t, bpm: bpm ?? t.bpm, durationSec }
-          : t,
-      ),
-    })
-    // `firstCue` has nothing to read yet — cue points are not persisted with a
-    // track until v0.4, so there is no stored cue at load time and the answer
-    // is 0 either way. The Settings field carries that limitation in its own
-    // `pending` line rather than the app pretending the choice took effect.
-    const startSec = 0
-    patchDeck(deckId, {
-      track: { ...track, bpm: bpm ?? undefined, durationSec },
-      loading: false,
-      playing: false,
-      positionSec: startSec,
-      durationSec,
-      bpm,
-      beatGrid,
-      beatGridConfirmed,
-      syncActive: false,
-      peaks,
-      bands,
-      hotCues: [],
-      cuePointSec: startSec,
-      loopActive: false,
-    })
+    // Hashed from the raw file bytes, *before* decode — `decodeAudioData`
+    // neuters its input `ArrayBuffer` per spec (its `byteLength` becomes 0
+    // once decoding starts), so hashing `data` after `engine.decode(data)`
+    // would silently hash an empty buffer and give every track the same
+    // "identity". Caught on its own: a hash failure degrades to "not yet
+    // identified" (`contentHash` stays `undefined`) rather than blocking
+    // playback — the track still loads either way.
+    try {
+      contentHash = await hashBytes(data)
+    } catch (hashErr) {
+      console.error('hash failed', hashErr)
+    }
+    buffer = await engine.decode(data)
   } catch (err) {
     console.error('load failed', err)
     patchDeck(deckId, { loading: false })
@@ -193,6 +152,110 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       text: `"${track.name}" didn't load — ${err instanceof Error ? err.message : String(err)}`,
       tone: 'warn',
       source: 'load',
+    })
+    return
+  }
+  const durationSec = buffer.duration
+  // A hash failure above leaves `contentHash` `undefined` — "not yet
+  // identified", same as a track whose analysis hasn't reached it yet. Its
+  // cue bank simply isn't found, the same shape as a first-ever load.
+  const storedCues = contentHash ? await getCues(contentHash) : null
+  const cuePointSec = storedCues?.cuePointSec ?? 0
+  // "First cue point" (Settings › Feel › On track load) means this saved CUE
+  // point — the one thing `onLoadPlayhead` had nothing to read before this
+  // version (core/settings.ts's `pending` note on the field, now resolved).
+  const startSec = cfg.onLoadPlayhead === 'firstCue' ? cuePointSec : 0
+  // Load the deck the moment decode finishes — never wait on analysis to let
+  // the owner hear the track (v0.4.0: a not-yet-analyzed or failed-analysis
+  // track still plays, per the owner's explicit decision; see
+  // workshop-output/FEATURE_SPEC.md). `deck.load` only ever *copies* channel
+  // samples out (`copyFromChannel` inside the worklet player), so `buffer`'s
+  // own data is still fully intact and readable afterward — this is what
+  // makes it safe to hand `buffer` to the deck first and extract PCM for
+  // analysis second, below.
+  engine.decks[deckId].load(buffer)
+  if (startSec > 0) engine.decks[deckId].seek(startSec)
+  patchDeck(deckId, {
+    track: { ...track, contentHash, bpm: track.bpm ?? undefined, durationSec },
+    loading: false,
+    playing: false,
+    positionSec: startSec,
+    durationSec,
+    bpm: track.bpm ?? null,
+    beatGrid: null,
+    beatGridConfirmed: false,
+    syncActive: false,
+    peaks: null,
+    bands: null,
+    hotCues: storedCues?.hotCues ?? [],
+    cuePointSec,
+    loopActive: false,
+  })
+  const { library, setLibrary } = useStore.getState()
+  setLibrary({
+    tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, contentHash, durationSec } : t)),
+  })
+
+  // Analysis is best-effort from here: the track is already loaded and
+  // playable, so a failure here means "no waveform/grid yet", never "the
+  // load failed" — caught on its own, never re-thrown to this function's
+  // caller (v0.4.0 acceptance criterion 3).
+  try {
+    // No hash (a hashing failure above) means "not yet identified" — analysis
+    // still runs so this load gets its waveform/grid, it just can't be cached
+    // or looked up by identity yet.
+    let analysis = contentHash ? await analysisCache.get(contentHash) : null
+    if (!analysis) {
+      // `pcmFromAudioBuffer` only now, not before `deck.load` above: the
+      // Worker path transfers (detaches) these channel buffers, and nothing
+      // else needs to read `buffer` again after this point.
+      const pcm = pcmFromAudioBuffer(buffer)
+      analysis = await analyzerWorker.analyze(pcm)
+      if (contentHash) await analysisCache.put(contentHash, analysis)
+    }
+    // A fast second load on this same deck may have already replaced the
+    // track this analysis was for — don't let a late result clobber it.
+    if (useStore.getState().decks[deckId].track?.id !== track.id) return
+
+    // A tag written by Serato still beats our own bpm guess — v0.1.7 measured
+    // tag accuracy at 97% across the user's library, and detection is still
+    // autocorrelation on an onset envelope, occasionally an octave off (see
+    // core/beatgrid.ts). What v0.3.0 changes: detection is the *only* source
+    // of phase (`offsetSec`) — tags carry no phase — so it always runs and its
+    // grid is always kept, even when the tag wins on the bpm number itself.
+    const bpm = track.bpm ?? analysis.bpm
+    const beatGrid: BeatGrid | null = analysis.beatGrid
+      ? { bpm: bpm ?? analysis.beatGrid.bpm, offsetSec: analysis.beatGrid.offsetSec }
+      : null
+    patchDeck(deckId, {
+      track: { ...track, contentHash, analysisState: 'analyzed', bpm: bpm ?? undefined, durationSec },
+      bpm,
+      // Unconfirmed whenever detection didn't produce a grid it trusts — never
+      // a silently-assumed-fine grid. Cleared only by the user checking or
+      // editing it (BeatGridPanel, v0.3.0 sub-step d).
+      beatGridConfirmed: analysis.beatGridConfirmed,
+      beatGrid,
+      peaks: analysis.peaks,
+      bands: analysis.bands,
+    })
+    const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
+    setLibAfter({
+      tracks: libAfter.tracks.map((t) =>
+        t.id === track.id ? { ...t, contentHash, analysisState: 'analyzed', bpm: bpm ?? t.bpm } : t,
+      ),
+    })
+  } catch (err) {
+    console.error('analysis failed', err)
+    if (useStore.getState().decks[deckId].track?.id !== track.id) return
+    const message = err instanceof Error ? err.message : String(err)
+    patchDeck(deckId, {
+      track: { ...track, contentHash, analysisState: 'failed', analysisError: message, durationSec },
+    })
+    const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
+    setLibAfter({
+      tracks: libAfter.tracks.map((t) =>
+        t.id === track.id ? { ...t, contentHash, analysisState: 'failed', analysisError: message } : t,
+      ),
     })
   }
 }
@@ -231,6 +294,29 @@ export function pause(deckId: DeckId) {
   useStore.getState().patchDeck(deckId, { playing: false })
 }
 
+/**
+ * Persist the current cue bank + CUE point for whatever track is on this deck
+ * (v0.4.0). A no-op when the track has no `contentHash` yet (hash failed, or
+ * hasn't been computed — see `loadTrackToDeck`): the edit still applies on
+ * screen, it just isn't identified well enough to save yet. A write failure
+ * is surfaced, not swallowed — the central rule this whole project is built
+ * around — because a cue that looks set but silently isn't saved is worse
+ * than one the user never tried to set.
+ */
+function persistCues(deckId: DeckId) {
+  const { decks, setNotice } = useStore.getState()
+  const st = decks[deckId]
+  const hash = st.track?.contentHash
+  if (!hash) return
+  void putCues(hash, { hotCues: st.hotCues, cuePointSec: st.cuePointSec }).catch((err) => {
+    setNotice({
+      text: `Cue point set on screen but not saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'cues',
+    })
+  })
+}
+
 /** CUE button: if playing, stop and jump to cue point; if stopped, set cue point here. */
 export function cue(deckId: DeckId) {
   const deck = engine.decks[deckId]
@@ -245,6 +331,7 @@ export function cue(deckId: DeckId) {
     useStore.getState().patchDeck(deckId, { positionSec: st.cuePointSec })
   } else {
     useStore.getState().patchDeck(deckId, { cuePointSec: quantizeIfOn(deckId, deck.position) })
+    persistCues(deckId)
   }
 }
 
@@ -524,6 +611,7 @@ export function setHotCue(deckId: DeckId, index: number) {
       },
     ].sort((a, b) => a.index - b.index)
     patchDeck(deckId, { hotCues: next })
+    persistCues(deckId)
   }
 }
 
@@ -532,6 +620,22 @@ export function deleteHotCue(deckId: DeckId, index: number) {
   patchDeck(deckId, {
     hotCues: decks[deckId].hotCues.filter((c) => c.index !== index),
   })
+  persistCues(deckId)
+}
+
+/**
+ * Drag a hot cue pad onto another pad — relocate onto an empty one, swap with
+ * an occupied one (v0.4.0, `PadGrid.tsx`). Pure logic lives in
+ * `core/hotcues.ts`; this is the choke-point wrapper that patches the store
+ * and persists, same shape as `setHotCue`/`deleteHotCue`.
+ */
+export function moveHotCue(deckId: DeckId, fromIndex: number, toIndex: number) {
+  const { patchDeck, decks } = useStore.getState()
+  const cues = decks[deckId].hotCues
+  const next = moveHotCuePure(cues, fromIndex, toIndex)
+  if (next === cues) return
+  patchDeck(deckId, { hotCues: next })
+  persistCues(deckId)
 }
 
 export function toggleLoop(deckId: DeckId) {
@@ -877,24 +981,48 @@ export function filteredTracks(): Track[] {
 }
 
 /**
- * Manual genre pick (v0.3.2) — the choke point for this action, called from
- * the library table's dropdown. Updates the store immediately so the cell
+ * Manual genre pick — the choke point for this action, called from the
+ * library table's dropdown. Updates the store immediately so the cell
  * reflects the choice with no round-trip wait, then persists it; a write
  * failure keeps the in-memory value (an edit that silently reverts on the
  * next render is worse than one that silently fails to survive a reload) and
  * surfaces through the existing notice banner rather than a swallowed catch.
+ *
+ * Persisted by content hash since v0.4.0, not `trackId` (a scan-relative
+ * path) — this is what makes the override survive the file turning up in a
+ * different genre folder later. Most tracks already have `contentHash` by
+ * the time an owner gets around to overriding their genre (the background
+ * queue reaches them first); the ones that don't — a pick made right after a
+ * fresh scan, before that queue catches up — get a one-off single-file hash
+ * here (`hashFile`, the same on-demand path `core/types.ts`'s own doc
+ * comment names), and that hash is kept on the track so nothing re-hashes it
+ * a second time later.
  */
 export function setTrackGenre(trackId: string, genre: string) {
   const { library, setLibrary, setNotice } = useStore.getState()
   setLibrary({
     tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, genre } : t)),
   })
-  void setGenreOverride(trackId, genre).catch((err) => {
+  void persistGenreOverride(trackId, genre).catch((err) => {
     setNotice({
       text: `Genre change applied but not saved: ${err instanceof Error ? err.message : String(err)}`,
       tone: 'warn',
       source: 'library',
     })
   })
+}
+
+async function persistGenreOverride(trackId: string, genre: string): Promise<void> {
+  const track = useStore.getState().library.tracks.find((t) => t.id === trackId)
+  if (!track) return // rescanned/removed since the click — nothing left to persist against
+  let hash = track.contentHash
+  if (!hash) {
+    hash = await hashFile(track.handle)
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({
+      tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, contentHash: hash } : t)),
+    })
+  }
+  await setGenreOverrideByHash(hash, genre)
 }
 

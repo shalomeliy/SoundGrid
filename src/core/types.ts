@@ -25,6 +25,21 @@ export interface Track {
    * mistaken for "no genre folder exists".
    */
   genre?: string
+  /**
+   * SHA-256 of the file's full content (v0.4.0) — the identity genre
+   * overrides, hot cues and the analysis cache actually key on, not `id`
+   * (which stays scan-relative-path-based, unchanged, for React/selection
+   * stability). Filled in lazily: for free as a side effect of loading this
+   * track to a deck or of the background analysis queue reaching it, or
+   * on-demand for a single track (e.g. a genre edit from the library table
+   * before either of those has happened). Undefined means "not yet
+   * identified" — never treated as "this track has no identity".
+   */
+  contentHash?: string
+  /** Where this track's background analysis is, driving the library row icon — never inferred from `bpm` (that already fills from tags before analysis runs). */
+  analysisState?: 'queued' | 'analyzing' | 'analyzed' | 'failed'
+  /** Set only when `analysisState` is `'failed'` — a short, named reason, shown in the row icon's tooltip. */
+  analysisError?: string
 }
 
 export interface HotCue {
