@@ -1,4 +1,4 @@
-import { analyzeWaveform, detectBeatGrid } from '@/platform/analyzer-js/analyze'
+import { analyzeTrack, pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
 import { engine } from '@/platform/audio-webaudio/engine'
 import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
 import {
@@ -127,27 +127,28 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     // backend that took the buffer itself would detach it, and analysing after
     // the handoff would then yield a flat waveform and a null BPM with nothing
     // thrown. Cheap to keep the handoff last; invisible if it ever stops being.
-    const durationSec = buffer.duration
-    // One analysis bucket per ~1.3 rendered pixels. A fixed 2400 buckets meant
-    // ~16/sec, so at 150px/sec each bucket smeared across 9 pixels and the
-    // waveform came out as blocks — the old path fill hid it by interpolating.
-    const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(durationSec * 200)))
-    const { peaks, bands } = analyzeWaveform(buffer, buckets)
+    // One analysis bucket per ~1.3 rendered pixels, derived from duration
+    // inside `analyzeTrack` now (moved from an inline formula here in v0.4.0
+    // so every caller — this synchronous path, the Worker path, its
+    // main-thread fallback — computes it the same way).
+    const pcm = pcmFromAudioBuffer(buffer)
+    const analysis = analyzeTrack(pcm)
+    const { peaks, bands } = analysis
+    const durationSec = analysis.durationSec
     // A tag written by Serato still beats our own bpm guess — v0.1.7 measured
     // tag accuracy at 97% across the user's library, and detection is still
     // autocorrelation on an onset envelope, occasionally an octave off (see
     // core/beatgrid.ts). What v0.3.0 changes: detection is the *only* source
     // of phase (`offsetSec`) — tags carry no phase — so it always runs and its
     // grid is always kept, even when the tag wins on the bpm number itself.
-    const detected = detectBeatGrid(buffer)
-    const bpm = track.bpm ?? detected?.grid.bpm ?? null
-    const beatGrid: BeatGrid | null = detected
-      ? { bpm: bpm ?? detected.grid.bpm, offsetSec: detected.grid.offsetSec }
+    const bpm = track.bpm ?? analysis.bpm
+    const beatGrid: BeatGrid | null = analysis.beatGrid
+      ? { bpm: bpm ?? analysis.beatGrid.bpm, offsetSec: analysis.beatGrid.offsetSec }
       : null
     // Unconfirmed whenever detection didn't produce a grid it trusts — never a
     // silently-assumed-fine grid. Cleared only by the user checking or editing
     // it (BeatGridPanel, v0.3.0 sub-step d).
-    const beatGridConfirmed = detected ? detected.confident : false
+    const beatGridConfirmed = analysis.beatGridConfirmed
     engine.decks[deckId].load(buffer)
     // write analysis back into the library entry so its BPM/Time columns
     // populate and mix recommendations have data to work with

@@ -1,4 +1,5 @@
 import { estimateBeatGrid, type BeatGridEstimate } from '@/core/beatgrid'
+import type { PcmData, TrackAnalysis } from '@/core/ports/analyzer'
 
 /** Rare path: files with more than two channels. */
 function mixAt(chans: Float32Array[], i: number, invCh: number): number {
@@ -12,6 +13,20 @@ export interface WaveformAnalysis {
   peaks: Float32Array
   /** low/mid/high RMS per bucket — the colour */
   bands: Float32Array
+}
+
+/**
+ * The one place `AudioBuffer` meets this module (v0.4.0). `analyzeWaveform`/
+ * `detectBeatGrid` below take plain `PcmData` instead — a dedicated Worker has
+ * neither `AudioBuffer` nor `OfflineAudioContext` in this app's target
+ * Chromium (verified, not assumed — see `workshop-output/PLAN.md`), so the
+ * numeric work had to stop depending on a live Web Audio object to run there
+ * at all. This conversion stays main-thread, right after `engine.decode`.
+ */
+export function pcmFromAudioBuffer(buffer: AudioBuffer): PcmData {
+  const channels: Float32Array[] = []
+  for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c))
+  return { channels, sampleRate: buffer.sampleRate }
 }
 
 /**
@@ -31,11 +46,10 @@ export interface WaveformAnalysis {
  * Bands come from two one-pole low-passes splitting at ~200Hz and ~4kHz. Cheap
  * filters are right here: this drives a colour, not a crossover.
  */
-export function analyzeWaveform(buffer: AudioBuffer, buckets = 2000): WaveformAnalysis {
-  const nch = buffer.numberOfChannels
-  const chans: Float32Array[] = []
-  for (let c = 0; c < nch; c++) chans.push(buffer.getChannelData(c))
-  const len = buffer.length
+export function analyzeWaveform(pcm: PcmData, buckets = 2000): WaveformAnalysis {
+  const chans = pcm.channels
+  const nch = chans.length
+  const len = chans[0].length
   const invCh = 1 / nch
   const ch0 = chans[0]
   const ch1 = nch > 1 ? chans[1] : ch0
@@ -48,7 +62,7 @@ export function analyzeWaveform(buffer: AudioBuffer, buckets = 2000): WaveformAn
 
   const coeff = (hz: number) => {
     const rc = 1 / (2 * Math.PI * hz)
-    const dt = 1 / buffer.sampleRate
+    const dt = 1 / pcm.sampleRate
     return dt / (rc + dt)
   }
   const aLow = coeff(200)
@@ -121,19 +135,18 @@ const FRAMES_PER_SEC = 200
  * Onset envelope for beat detection: low-pass to isolate kick energy, then the
  * frame-to-frame rise (a plain low-pass alone flags every strong *sound*, not
  * just its *attack*). This is the only part of beat detection that has to
- * touch an `AudioBuffer`, so it stays here; everything from here on — scoring
+ * touch decoded samples, so it stays here; everything from here on — scoring
  * candidate tempos, finding phase, quantizing to the result — is pure and
- * lives in `core/beatgrid.ts` so it can be unit tested without one.
+ * lives in `core/beatgrid.ts` so it can be unit tested without any.
  */
-function buildOnsetEnvelope(buffer: AudioBuffer): { onsets: Float32Array; framesPerSec: number } {
-  const sr = buffer.sampleRate
+function buildOnsetEnvelope(pcm: PcmData): { onsets: Float32Array; framesPerSec: number } {
+  const sr = pcm.sampleRate
   // channels averaged inline: flattening to a full-length mono copy first cost
   // 63MB on a 6-minute stereo track, for an envelope we throw away immediately
-  const nch = buffer.numberOfChannels
-  const chans: Float32Array[] = []
-  for (let c = 0; c < nch; c++) chans.push(buffer.getChannelData(c))
+  const chans = pcm.channels
+  const nch = chans.length
   const invCh = 1 / nch
-  const len = buffer.length
+  const len = chans[0].length
   const ch0 = chans[0]
   const ch1 = nch > 1 ? chans[1] : ch0
   const stereo = nch === 2
@@ -176,9 +189,39 @@ function buildOnsetEnvelope(buffer: AudioBuffer): { onsets: Float32Array; frames
  * has something to show and quantize against while marking it unconfirmed.
  */
 export function detectBeatGrid(
-  buffer: AudioBuffer,
+  pcm: PcmData,
   opts?: { minBpm?: number; maxBpm?: number },
 ): BeatGridEstimate | null {
-  const { onsets, framesPerSec } = buildOnsetEnvelope(buffer)
+  const { onsets, framesPerSec } = buildOnsetEnvelope(pcm)
   return estimateBeatGrid(onsets, framesPerSec, opts)
+}
+
+/**
+ * `analyzeWaveform` + `detectBeatGrid`, packaged into one `TrackAnalysis`
+ * (v0.4.0's `Analyzer` port shape). The one place both are called together,
+ * so `platform/analyzer-worker/worker.ts` (inside the Worker) and its
+ * main-thread fallback (`platform/analyzer-worker/index.ts`, used when
+ * `capabilities.webWorker` is false) build the exact same result the exact
+ * same way — never two implementations of "what analysis means" to drift
+ * apart. Bucket count is derived here from duration (moved from
+ * `controls.ts`'s old inline formula, unchanged: ~1 bucket per 1.3 rendered
+ * pixels at 150px/sec) rather than passed in, so every caller gets the same
+ * waveform resolution without recomputing it themselves.
+ */
+export function analyzeTrack(
+  pcm: PcmData,
+  opts?: { minBpm?: number; maxBpm?: number },
+): TrackAnalysis {
+  const durationSec = pcm.channels[0].length / pcm.sampleRate
+  const buckets = Math.min(120_000, Math.max(2_000, Math.ceil(durationSec * 200)))
+  const { peaks, bands } = analyzeWaveform(pcm, buckets)
+  const detected = detectBeatGrid(pcm, opts)
+  return {
+    peaks,
+    bands,
+    bpm: detected?.grid.bpm ?? null,
+    durationSec,
+    beatGrid: detected?.grid ?? null,
+    beatGridConfirmed: detected?.confident ?? false,
+  }
 }
