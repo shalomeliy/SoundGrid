@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **בעבודה** | **`v0.4.6` (Mix Assist) — באמצע.** שלבים 1‑6/10 בוצעו (04/09): איפיון מתוקן ב‑`ROADMAP.md`, `core/recommend.ts` (צ'יפ + קודי סיבה), `core/structure.ts` (היוריסטיקת אנרגיה), `core/transition.ts` (עקומת crossfade + seek-then-sync), `Library.tsx` (הצעות דלוקות כברירת מחדל + באדג'ים כנים), `loadSuggestionToDeck` (רק לדק ריק), `TransitionPointsPanel.tsx` (פאנל נקודות מעבר — דלוק אוטומטית על דק טעון‑מושהה כשהשני מנגן, בלי קליק פתיחה נוסף; קליק על נקודה כרגע רק עושה seek — `startAutoTransition` עוד לא קיים). נשארו שלבים 7‑10: מנוע המעבר האוטונומי עצמו (הכי מסוכן — ר' ROADMAP §"תוכנית בנייה"), מדידה על ספרייה אמיתית, חלון 30 שניות, סגירה. |
-| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. שלב 6 נדחף ל‑`claude/continue-handoff-coding-hrbl95` (04/09) — לוודא עם `git log --oneline origin/main -1` שהיא כוללת "step 6/10" או אחריה. |
+| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. שלב 6 נדחף ל‑`claude/continue-handoff-coding-hrbl95` (04/09), **עדיין לא ממוזג** — לוודא עם `git log --oneline origin/claude/continue-handoff-coding-hrbl95 -1` שהיא כוללת "step 6/10" (`origin/main` עדיין יראה רק עד שלב 5 עד שה‑PR ימוזג). |
 | **גרסה נוכחית** | `v0.4.8` (`package.json`) — `v0.4.6` עדיין לא נסגרה, אין bump עדיין. |
 | **`npm run check`** | ירוק (04/09). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | להמשיך `v0.4.6` משלב 7/10. `v0.4.7` (קרבת אנרגיה) עדיין ממתינה, בלי איפיון. |

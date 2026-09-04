@@ -30,7 +30,12 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   // be brought in — loaded, not already playing, while the other deck is the
   // reference it would join against. Neither deck playing, or this one
   // already playing, and there is nothing to show a mix-in point for.
-  const showTransitionPoints = loaded && !deck.playing && otherPlaying
+  // `!deck.loading` matters on its own: `loadTrackToDeck` (controls.ts)
+  // leaves the *previous* track's `bands`/`beatGrid` in place until the new
+  // one's decode finishes and patches everything atomically — without this
+  // check, loading a new track over an already-eligible deck would keep
+  // showing the outgoing track's candidate points during that window.
+  const showTransitionPoints = loaded && !deck.loading && !deck.playing && otherPlaying
   const [dropActive, setDropActive] = useState(false)
   const [gridPanelOpen, setGridPanelOpen] = useState(false)
   const closeGridPanel = () => {
