@@ -2,7 +2,12 @@ import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
 import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS, TRANSITION_CROSSFADE_SEC } from '@/core/constants'
+import {
+  BEATGRID_NUDGE_SEC,
+  HOT_CUE_COLORS,
+  RECENTLY_REMOVED_WINDOW_SEC,
+  TRANSITION_CROSSFADE_SEC,
+} from '@/core/constants'
 import {
   bpmFromTaps,
   doubleGrid,
@@ -94,6 +99,32 @@ function syncScratchState() {
 // — which is the same one-shot mistake that left the pill dead in the first place.
 engine.onScratchStateChange = syncScratchState
 
+// ————————————————————————————————————————————————————————————————
+// Mix Assist (v0.4.6), build step 9 — the 30s "don't suggest it right back"
+// window. Module-level like `activeTransition` below, not the store: this is
+// bookkeeping for the suggestion list, not UI state anything renders
+// directly, and a `Map` with real timestamps has no reason to be
+// serializable. Library.tsx reads `recentlyRemovedTrackIds()` on its own
+// periodic tick so an id ages back out on its own, without this file having
+// to schedule anything.
+// ————————————————————————————————————————————————————————————————
+
+const recentlyRemovedAt = new Map<string, number>()
+
+function markRecentlyRemoved(trackId: string) {
+  recentlyRemovedAt.set(trackId, Date.now())
+}
+
+/** Track ids still inside the window — and a free place to drop anything that's aged out, so the map never grows unbounded. */
+export function recentlyRemovedTrackIds(nowMs: number = Date.now()): Set<string> {
+  const ids = new Set<string>()
+  for (const [id, at] of recentlyRemovedAt) {
+    if (nowMs - at < RECENTLY_REMOVED_WINDOW_SEC * 1000) ids.add(id)
+    else recentlyRemovedAt.delete(id)
+  }
+  return ids
+}
+
 export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   await initAudio()
   const { patchDeck, setNotice, clearNotice } = useStore.getState()
@@ -183,6 +214,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // own data is still fully intact and readable afterward — this is what
   // makes it safe to hand `buffer` to the deck first and extract PCM for
   // analysis second, below.
+  // Mix Assist (v0.4.6): whatever this deck held before is now "just came
+  // off a deck" — read before the overwrite below replaces it. Skipped when
+  // it's the same track reloading onto itself: that one never left.
+  const outgoingId = useStore.getState().decks[deckId].track?.id
+  if (outgoingId && outgoingId !== track.id) markRecentlyRemoved(outgoingId)
+
   engine.decks[deckId].load(buffer)
   if (startSec > 0) engine.decks[deckId].seek(startSec)
   patchDeck(deckId, {
@@ -311,7 +348,15 @@ function maybeAutoMaster(deckId: DeckId) {
 export function togglePlay(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) return
-  cancelTransitionIfOutgoingDeckTouched(deckId)
+  // Captured before the guard: cancelling pauses+repositions the *incoming*
+  // deck by itself (cancelTransition's own restore), and this is a *toggle* —
+  // calling deck.togglePlay() afterward would see it now paused and flip it
+  // right back to playing, undoing the very pause the user pressed for. The
+  // outgoing deck is untouched by a cancel, so its own toggle below still
+  // runs normally.
+  const wasIncomingDeckOfTransition = activeTransition?.toDeckId === deckId
+  cancelTransitionIfEitherDeckTouched(deckId)
+  if (wasIncomingDeckOfTransition) return
   deck.togglePlay()
   useStore.getState().patchDeck(deckId, { playing: deck.playing })
   if (deck.playing) maybeAutoMaster(deckId)
@@ -328,7 +373,7 @@ export function play(deckId: DeckId) {
 export function pause(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.playing) return
-  cancelTransitionIfOutgoingDeckTouched(deckId)
+  cancelTransitionIfEitherDeckTouched(deckId)
   deck.pause()
   useStore.getState().patchDeck(deckId, { playing: false })
 }
@@ -362,7 +407,7 @@ export function cue(deckId: DeckId) {
   if (!deck.hasTrack) return
   const st = useStore.getState().decks[deckId]
   if (deck.playing) {
-    cancelTransitionIfOutgoingDeckTouched(deckId)
+    cancelTransitionIfEitherDeckTouched(deckId)
     deck.pause()
     deck.seek(st.cuePointSec)
     useStore.getState().patchDeck(deckId, { playing: false, positionSec: st.cuePointSec })
@@ -380,6 +425,7 @@ export function cuePlayPreview(deckId: DeckId): () => void {
   const deck = engine.decks[deckId]
   const st = useStore.getState().decks[deckId]
   if (!deck.hasTrack) return () => {}
+  cancelTransitionIfEitherDeckTouched(deckId)
   deck.seek(st.cuePointSec)
   deck.play()
   useStore.getState().patchDeck(deckId, { playing: true })
@@ -403,6 +449,7 @@ export function seekDeck(deckId: DeckId, sec: number) {
 export function beginScratch(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) return
+  cancelTransitionIfEitherDeckTouched(deckId)
   deck.beginScratch()
   useStore.getState().patchDeck(deckId, { scratching: true, playing: deck.playing })
 }
@@ -541,6 +588,7 @@ export function jogTurn(deckId: DeckId, ticks: number) {
     reportJog(deckId, 'ignored — no track loaded')
     return
   }
+  cancelTransitionIfEitherDeckTouched(deckId)
 
   if (!deck.scratching) {
     const amount = Math.max(-0.5, Math.min(0.5, ticks * cfg.bendPerTick))
@@ -606,6 +654,7 @@ export function toggleVinylMode(deckId: DeckId) {
  * `dispatch` — down and up, not one message.
  */
 export function bendDeck(deckId: DeckId, amount: number) {
+  cancelTransitionIfEitherDeckTouched(deckId)
   engine.decks[deckId].holdBend(amount)
 }
 
@@ -1033,17 +1082,35 @@ interface ActiveTransition {
 let activeTransition: ActiveTransition | null = null
 
 /**
- * Any manual touch of `deckId` while it is the transition's *outgoing*
- * (already-playing) deck cancels it — ROADMAP.md: "any change to the
- * playing deck before the transition completes — the track stops, or the
- * user touches SYNC/pitch by hand — cancels automatically." Only the
- * outgoing deck is checked: this function's own internal calls only ever
- * touch the *incoming* deck (seek, play, setTempo, syncDeck as part of the
- * seek-then-sync handoff), so a guard keyed on the outgoing deck alone can
- * never see its own calls and self-cancel.
+ * For `setTempo`/`syncDeck` only: this file's own seek-then-sync handoff
+ * calls both of those, but only ever on the *incoming* deck (`syncDeck`
+ * internally calls `setTempo` too) — so a guard keyed on the outgoing deck
+ * alone can see a manual touch there without ever seeing its own internal
+ * calls and self-cancelling.
  */
 function cancelTransitionIfOutgoingDeckTouched(deckId: DeckId) {
   if (activeTransition && deckId === activeTransition.fromDeckId) cancelTransition()
+}
+
+/**
+ * For every other manual action this file itself never performs on *either*
+ * transition deck through these same wrapper functions (`startAutoTransition`
+ * drives the incoming deck through the raw engine object directly —
+ * `toEngine.seek`/`toEngine.play`, never `ctl.play`/`ctl.togglePlay`) — so
+ * both sides can be guarded with no self-cancel risk. ROADMAP.md: "any
+ * change to the playing deck before the transition completes — the track
+ * stops, or the user touches SYNC/pitch by hand — cancels automatically";
+ * this applies it to the *incoming* deck too, since pausing/re-cueing/
+ * scratching/bending the deck that's mid-join is just as much "taking the
+ * mix back by hand" as doing it to the deck that was already playing.
+ */
+function cancelTransitionIfEitherDeckTouched(deckId: DeckId) {
+  if (
+    activeTransition &&
+    (deckId === activeTransition.fromDeckId || deckId === activeTransition.toDeckId)
+  ) {
+    cancelTransition()
+  }
 }
 
 /**
@@ -1063,12 +1130,27 @@ function cancelTransitionIfOutgoingDeckTouched(deckId: DeckId) {
  * transition it cannot phase-align or that would land on a deck that is not
  * cleanly available — a deck already mid-load, or already playing.
  */
+/** `engine.setCrossfader`'s domain is -1 (A only) .. +1 (B only) — the extreme fully on `fromDeckId`. */
+function crossfaderExtremeFor(fromDeckId: DeckId): number {
+  return fromDeckId === 'A' ? -1 : 1
+}
+
 export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entrySec: number) {
-  if (activeTransition) return
   const { decks, setNotice } = useStore.getState()
+  if (activeTransition) {
+    setNotice({ text: 'A transition is already running — cancel it before starting another.', tone: 'warn', source: 'sync' })
+    return
+  }
   const from = decks[fromDeckId]
   const to = decks[toDeckId]
-  if (!from.playing || !to.track || to.playing || to.loading) return
+  if (!from.playing || !to.track || to.playing || to.loading) {
+    setNotice({
+      text: `Can't start that transition — deck ${fromDeckId} isn't playing, or deck ${toDeckId} isn't a loaded, paused track.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
   if (!from.beatGrid || !to.beatGrid) {
     setNotice({
       text: `Can't phase-align this transition — deck ${!from.beatGrid ? fromDeckId : toDeckId} has no beat grid yet.`,
@@ -1082,9 +1164,27 @@ export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entryS
   const toEngine = engine.decks[toDeckId]
   const enterSec = phaseAlignedEntrySec(entrySec, to.beatGrid, fromEngine.position, from.beatGrid)
 
+  // Establish the join point explicitly rather than trust whatever the live
+  // crossfader already happens to read — ROADMAP.md requires the incoming
+  // deck to start while the crossfader "still sits fully" on the outgoing
+  // one, and a manual nudge earlier (while only one deck was playing) could
+  // otherwise leave it short of that extreme.
+  const startExtreme = crossfaderExtremeFor(fromDeckId)
+  engine.setCrossfader(startExtreme)
+  useStore.getState().patchMixer({ crossfader: startExtreme })
+
   toEngine.seek(enterSec)
   toEngine.play()
   useStore.getState().patchDeck(toDeckId, { playing: true, positionSec: enterSec })
+  // The reference this transition is built on is `fromDeckId`, regardless of
+  // whatever `masterDeckId` happened to hold before — asserted explicitly so
+  // `syncDeck`'s "already master" no-op branch (only reachable if `toDeckId`
+  // happened to be a stale master from something it played earlier) can
+  // never silently skip the handoff and leave phase drift uncorrected for
+  // the rest of the fade.
+  if (useStore.getState().masterDeckId !== fromDeckId) {
+    useStore.setState({ masterDeckId: fromDeckId })
+  }
   syncDeck(toDeckId)
 
   const startedAtSec = engine.currentTime
@@ -1148,7 +1248,7 @@ export function cancelTransition() {
     syncActive: false,
   })
 
-  const x = t.fromDeckId === 'A' ? -1 : 1
+  const x = crossfaderExtremeFor(t.fromDeckId)
   engine.setCrossfader(x)
   useStore.getState().patchMixer({ crossfader: x })
 }

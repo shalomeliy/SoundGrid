@@ -151,3 +151,13 @@ export const LONG_PRESS_MS = 500
  * haven't heard yet.
  */
 export const TRANSITION_CROSSFADE_SEC = 8
+
+/**
+ * Mix Assist (v0.4.6): once a track comes off a deck (replaced by another
+ * load), it stays out of the suggestion list for this long — ROADMAP.md's
+ * "אותו טראק לא חוזר ומוצע שוב מיד אחרי שהוא בדיוק ירד מדק". A fixed
+ * constant like the rest of this section: the point is to stop an
+ * immediate flicker back into the list the DJ just took it out of, not a
+ * tunable preference.
+ */
+export const RECENTLY_REMOVED_WINDOW_SEC = 30

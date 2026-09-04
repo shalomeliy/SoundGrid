@@ -97,6 +97,16 @@ export function Library() {
       s.decks.B.track?.camelot ?? null,
     ]),
   )
+  // Mix Assist (v0.4.6): a track that just came off a deck stays out of the
+  // suggestion list for 30s (`ctl.recentlyRemovedTrackIds`) — this ticks the
+  // memo below on its own timer so an id ages back out without needing any
+  // *other* state to change first. 5s granularity is plenty against a 30s
+  // window; nothing here needs frame-accurate timing.
+  const [recentlyRemovedTick, setRecentlyRemovedTick] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setRecentlyRemovedTick((n) => n + 1), 5000)
+    return () => window.clearInterval(id)
+  }, [])
   const recommendations = useMemo(
     () =>
       mixRecommendations(
@@ -105,8 +115,10 @@ export function Library() {
           { id: 'B', playing: bP, bpm: bB, tempo: bT, trackId: bId, camelot: bK },
         ],
         library.tracks,
+        ctl.recentlyRemovedTrackIds(),
       ),
-    [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recentlyRemovedTick only forces a recheck of the time-based exclusion set, its value is never read
+    [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks, recentlyRemovedTick],
   )
   const recs = recommendations.matches
   const anyPlaying = aP || bP

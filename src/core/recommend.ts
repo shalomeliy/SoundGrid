@@ -64,6 +64,9 @@ export function keysCompatible(a: string, b: string): boolean {
 export function mixRecommendations(
   decks: DeckMixState[],
   tracks: Track[],
+  /** Mix Assist (v0.4.6): ids to leave out regardless of tempo/key fit — a
+   * track that just came off a deck, still inside its 30s cooldown. */
+  excludeIds?: ReadonlySet<string>,
 ): MixRecommendations {
   const anyPlaying = decks.some((d) => d.playing)
   const refs = decks
@@ -87,7 +90,7 @@ export function mixRecommendations(
   const onDeck = new Set(refs.map((r) => r.trackId))
   let noBpmSkipped = 0
   for (const t of tracks) {
-    if (onDeck.has(t.id)) continue
+    if (onDeck.has(t.id) || excludeIds?.has(t.id)) continue
     if (t.bpm == null) {
       noBpmSkipped++
       continue
