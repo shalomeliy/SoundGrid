@@ -16,7 +16,7 @@
 | | |
 | --- | --- |
 | **בעבודה** | **שום דבר כרגע.** v0.4.8 נסגרה (04/09) — ר' [`docs/handoff/v0.4.8.md`](docs/handoff/v0.4.8.md). v0.4.5 נסגרה קודם (04/09) — ר' [`docs/handoff/v0.4.5.md`](docs/handoff/v0.4.5.md). |
-| **branch** | ברגיל **עובדים ישירות על `main`** (החלטת המשתמש, 03/09). v0.4.8 נבנתה על `claude/hint-mode-settings-hifo89` כי כך הוגדרה משימת Claude Code on the web שפתחה אותה — לבדוק אם מוזגה ל‑`main` עם `git merge-base --is-ancestor HEAD origin/main`. |
+| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09). v0.4.8 נבנתה על `claude/hint-mode-settings-hifo89` (כך הוגדרה משימת Claude Code on the web שפתחה אותה) ומוזגה ל‑`main` ב‑fast-forward (04/09) — לוודא עם `git log --oneline origin/main -1` שהיא `7a948c9` או אחריה. הענף עצמו נשאר קיים ב‑remote, מיותר עכשיו. |
 | **גרסה נוכחית** | `v0.4.8` |
 | **`npm run check`** | ירוק. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | לפי `ROADMAP.md`: `v0.4.6` (Mix Assist — תלוי גם ב‑v0.3.0, שכבר סגורה) ו‑`v0.4.7` (קרבת אנרגיה, נדחתה מ‑v0.4.5, בלי איפיון עדיין) פתוחים. הבחירה של המשתמש, לא הנחה מראש |
