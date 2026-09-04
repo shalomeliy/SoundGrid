@@ -68,39 +68,42 @@ describe('keysCompatible', () => {
 
 describe('mixRecommendations', () => {
   it('matches a track already at the deck tempo (1x)', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 128)])
+    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 128)]).matches
     expect(recs.get('t')?.strong).toBe(true)
   })
 
   it('matches a track at half the deck tempo (0.5x, half-time)', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 64)])
+    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 64)]).matches
     expect(recs.has('t')).toBe(true)
   })
 
   it('matches a track at double the deck tempo (2x, double-time)', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 256)])
+    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 256)]).matches
     expect(recs.has('t')).toBe(true)
   })
 
   it('exactly 3% error is still a strong match (inclusive boundary)', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 103)])
+    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 103)]).matches
     expect(recs.get('t')?.strong).toBe(true)
   })
 
   it('exactly 8% error is included but not strong', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 108)])
+    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 108)]).matches
     const m = recs.get('t')
     expect(m).toBeDefined()
     expect(m?.strong).toBe(false)
   })
 
   it('just over 8% error is excluded entirely', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 108.1)])
+    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 108.1)]).matches
     expect(recs.has('t')).toBe(false)
   })
 
   it('both keys unknown is still a strong match — key alone never excludes', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 128, camelot: null })], [track('t', 128)])
+    const recs = mixRecommendations(
+      [deck('A', { bpm: 128, camelot: null })],
+      [track('t', 128)],
+    ).matches
     const m = recs.get('t')
     expect(m?.strong).toBe(true)
     expect(m?.keyMatch).toBeUndefined()
@@ -110,7 +113,7 @@ describe('mixRecommendations', () => {
     const recs = mixRecommendations(
       [deck('A', { bpm: 128, camelot: '8A' })],
       [track('t', 128, '3B')],
-    )
+    ).matches
     const m = recs.get('t')
     expect(m?.strong).toBe(false)
     expect(m?.keyMatch).toBe(false)
@@ -120,39 +123,45 @@ describe('mixRecommendations', () => {
     const recs = mixRecommendations(
       [deck('A', { bpm: 128, trackId: 'onDeck' })],
       [track('onDeck', 128)],
-    )
+    ).matches
     expect(recs.has('onDeck')).toBe(false)
   })
 
-  it('a track with no BPM is excluded', () => {
+  it('a track with no BPM is excluded, and counted as skipped', () => {
     const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', undefined)])
-    expect(recs.has('t')).toBe(false)
+    expect(recs.matches.has('t')).toBe(false)
+    expect(recs.noBpmSkipped).toBe(1)
   })
 
   it('a deck that is not playing is never used as a reference', () => {
-    const recs = mixRecommendations([deck('A', { bpm: 128, playing: false })], [track('t', 128)])
+    const recs = mixRecommendations(
+      [deck('A', { bpm: 128, playing: false })],
+      [track('t', 128)],
+    ).matches
     expect(recs.has('t')).toBe(false)
   })
 
   it('a playing deck with no BPM is never used as a reference', () => {
     const recs = mixRecommendations([deck('A', { bpm: null })], [track('t', 128)])
-    expect(recs.has('t')).toBe(false)
+    expect(recs.matches.has('t')).toBe(false)
   })
 
-  it('an empty deck list returns an empty map', () => {
-    expect(mixRecommendations([], [track('t', 128)]).size).toBe(0)
+  it('an empty deck list returns an empty map and no reason (nothing is playing)', () => {
+    const recs = mixRecommendations([], [track('t', 128)])
+    expect(recs.matches.size).toBe(0)
+    expect(recs.reason).toBeUndefined()
   })
 
   it('an empty track list returns an empty map', () => {
-    expect(mixRecommendations([deck('A')], []).size).toBe(0)
+    expect(mixRecommendations([deck('A')], []).matches.size).toBe(0)
   })
 
   it('the tempo fader shifts the reference BPM before matching', () => {
     // TEMPO_RANGE = 0.08, so tempo=0.5 lifts a 120 BPM deck to 124.8 effective.
     const decks = [deck('A', { bpm: 120, tempo: 0.5, trackId: 'onDeck' })]
-    const atShiftedBpm = mixRecommendations(decks, [track('shifted', 124.8)])
+    const atShiftedBpm = mixRecommendations(decks, [track('shifted', 124.8)]).matches
     expect(atShiftedBpm.get('shifted')?.strong).toBe(true)
-    const atUnshiftedBpm = mixRecommendations(decks, [track('unshifted', 120)])
+    const atUnshiftedBpm = mixRecommendations(decks, [track('unshifted', 120)]).matches
     // 120 vs effective 124.8 is a ~3.85% error — matches, but not strong.
     expect(atUnshiftedBpm.get('unshifted')?.strong).toBe(false)
   })
@@ -167,7 +176,7 @@ describe('mixRecommendations', () => {
         deck('B', { bpm: 128, camelot: '9A', trackId: 'onB' }),
       ],
       [track('t', 128, '8A')],
-    )
+    ).matches
     expect(recs.get('t')?.deck).toBe('B')
   })
 
@@ -179,7 +188,39 @@ describe('mixRecommendations', () => {
         deck('B', { bpm: 128, camelot: '9A', trackId: 'onB' }),
       ],
       [track('t', 128, '8A')],
-    )
+    ).matches
     expect(recs.get('t')?.deck).toBe('A')
+  })
+
+  it('reports the winning multiplier and both raw BPMs for the chip', () => {
+    const recs = mixRecommendations([deck('A', { bpm: 130 })], [track('t', 65)]).matches
+    const m = recs.get('t')
+    expect(m?.multiplier).toBe(2)
+    expect(m?.refBpm).toBe(130)
+    expect(m?.trackBpm).toBe(65)
+  })
+
+  it('a 1:1 match reports multiplier 1', () => {
+    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 128)]).matches
+    expect(recs.get('t')?.multiplier).toBe(1)
+  })
+
+  it('no playing deck has a BPM yet — reason names it, not just an empty map', () => {
+    const recs = mixRecommendations([deck('A', { bpm: null })], [track('t', 128)])
+    expect(recs.matches.size).toBe(0)
+    expect(recs.reason).toBe('no-bpm-on-playing-deck')
+  })
+
+  it('a playing deck has a BPM but nothing in range — reason says so', () => {
+    // 150 vs 100 is out of range at every multiplier: 0.5x->75 (25%), 1x->150
+    // (50%), 2x->300 (200%) — unlike 200, which is an exact 0.5x half-time match.
+    const recs = mixRecommendations([deck('A', { bpm: 100 })], [track('t', 150)])
+    expect(recs.matches.size).toBe(0)
+    expect(recs.reason).toBe('none-in-range')
+  })
+
+  it('no reason is set when there are matches', () => {
+    const recs = mixRecommendations([deck('A', { bpm: 128 })], [track('t', 128)])
+    expect(recs.reason).toBeUndefined()
   })
 })

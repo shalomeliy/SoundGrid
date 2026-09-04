@@ -97,7 +97,7 @@ export function Library() {
       s.decks.B.track?.camelot ?? null,
     ]),
   )
-  const recs = useMemo(
+  const recommendations = useMemo(
     () =>
       mixRecommendations(
         [
@@ -108,6 +108,7 @@ export function Library() {
       ),
     [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks],
   )
+  const recs = recommendations.matches
 
   /**
    * Every path below can throw something the browser invented, and an async
