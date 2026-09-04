@@ -65,12 +65,20 @@ export function mixRecommendations(
     if (t.bpm == null || onDeck.has(t.id)) continue
     let bestErr = Infinity
     let best = refs[0]
+    // A tie on tempo error used to fall to array order regardless of which
+    // deck actually mixes better — two decks at the same BPM would always
+    // highlight for deck A, even when only deck B's key was compatible. An
+    // exact tie now yields to the key-compatible side; anything else (a
+    // strictly smaller error) still wins outright, as before.
+    let bestKeyOk = false
     for (const ref of refs) {
       for (const mult of [0.5, 1, 2]) {
         const err = Math.abs(t.bpm * mult - ref.bpm) / ref.bpm
-        if (err < bestErr) {
+        const keyOk = ref.camelot != null && t.camelot != null && keysCompatible(ref.camelot, t.camelot)
+        if (err < bestErr || (err === bestErr && keyOk && !bestKeyOk)) {
           bestErr = err
           best = ref
+          bestKeyOk = keyOk
         }
       }
     }

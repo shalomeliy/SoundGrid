@@ -415,21 +415,32 @@ export function Library() {
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
         )}
 
-        {recs.size > 0 && (
-          <Button
-            variant="toggle"
-            size="sm"
-            active={mixOnly}
-            tone="var(--color-live)"
-            className="ml-auto"
-            onClick={() => setMixOnly((v) => !v)}
-            title="Show only tracks that mix with what's playing"
-          >
-            ♫ {recs.size} mixable
-          </Button>
-        )}
+        {(aP || bP) &&
+          (recs.size > 0 ? (
+            <Button
+              variant="toggle"
+              size="sm"
+              active={mixOnly}
+              tone="var(--color-live)"
+              className="ml-auto"
+              onClick={() => setMixOnly((v) => !v)}
+              title="Show only tracks that mix with what's playing"
+            >
+              ♫ {recs.size} mixable
+            </Button>
+          ) : (
+            // A deck is playing but nothing in the library currently mixes —
+            // said explicitly, not left as an absent button a first-time user
+            // can't tell apart from "this feature isn't here."
+            <span
+              className="ml-auto rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
+              title="No track in the library currently mixes with what's playing."
+            >
+              ♫ no mixable tracks
+            </span>
+          ))}
 
-        <label className={`relative ${recs.size > 0 ? '' : 'ml-auto'}`}>
+        <label className={`relative ${aP || bP ? '' : 'ml-auto'}`}>
           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-grid-dim">⌕</span>
           <input
             value={library.query}
@@ -681,6 +692,16 @@ function Row({
 }) {
   const key = keyLabel(track, keyMode)
   const tone = keyColor(track.camelot)
+  const matchTitle = match
+    ? `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
+      (match.keyMatch === undefined ? '' : match.keyMatch ? ' · key compatible' : ' · key clashes')
+    : undefined
+  // aria-describedby's value is parsed as a whitespace-separated list of
+  // IDREFs — track.id is a scan-relative file path, and any space in a
+  // filename or folder name (the common case in a real library) would split
+  // the reference and silently break it for assistive tech. encodeURIComponent
+  // leaves no whitespace and stays unique per track.
+  const matchDescId = match ? `match-desc-${encodeURIComponent(track.id)}` : undefined
   return (
     <tr
       draggable
@@ -691,6 +712,11 @@ function Row({
       onClick={onSelect}
       onDoubleClick={() => void ctl.loadTrackToDeck('A', track)}
       aria-selected={selected}
+      // The match reason otherwise lived only in a hover title — undiscoverable
+      // without a mouse. aria-describedby appends to the row's own computed
+      // name (title/artist/bpm/key) instead of replacing it, which aria-label
+      // would have done.
+      aria-describedby={matchDescId}
       className={`h-9 cursor-grab border-b border-hairline/50 transition-colors active:cursor-grabbing ${
         selected ? 'bg-accent/15' : 'hover:bg-surface-2'
       }`}
@@ -704,18 +730,29 @@ function Row({
         <span className="flex items-center gap-1.5">
           <AnalysisIcon track={track} />
           {match && (
+            // Strong = filled disc, loose = hollow ring — a shape difference,
+            // not a shade of the same dot. Opacity alone measured at ~4.6px
+            // physical on the owner's screen and wasn't reliably legible while
+            // scrolling; a ring survives that scale where a faded fill doesn't.
             <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: DECK_COLOR[match.deck], opacity: match.strong ? 1 : 0.5 }}
-              title={
-                `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
-                (match.keyMatch === undefined
-                  ? ''
-                  : match.keyMatch
-                    ? ' · key compatible'
-                    : ' · key clashes')
+              aria-hidden="true"
+              className={
+                match.strong
+                  ? 'ms-0.5 h-2 w-2 shrink-0 rounded-full'
+                  : 'ms-0.5 h-2 w-2 shrink-0 rounded-full border-[1.5px] bg-transparent'
               }
+              style={
+                match.strong
+                  ? { background: DECK_COLOR[match.deck] }
+                  : { borderColor: DECK_COLOR[match.deck] }
+              }
+              title={matchTitle}
             />
+          )}
+          {match && (
+            <span id={matchDescId} className="sr-only">
+              {matchTitle}
+            </span>
           )}
           <span className="truncate">{track.title ?? track.name}</span>
         </span>
