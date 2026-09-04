@@ -763,7 +763,13 @@ function Row({
         e.dataTransfer.effectAllowed = 'copy'
       }}
       onClick={onSelect}
-      onDoubleClick={() => void ctl.loadTrackToDeck('A', track)}
+      // A suggested row (has a `match`) is a Mix Assist pick — it must land on
+      // the empty deck, never always deck A, and never overwrite a paused-
+      // but-loaded deck (`loadSuggestionToDeck`'s own rule). A plain row keeps
+      // today's manual-load behaviour unchanged.
+      onDoubleClick={() =>
+        match ? ctl.loadSuggestionToDeck(track, match.deck) : void ctl.loadTrackToDeck('A', track)
+      }
       aria-selected={selected}
       // The match reason otherwise lived only in a hover title — undiscoverable
       // without a mouse. aria-describedby appends to the row's own computed

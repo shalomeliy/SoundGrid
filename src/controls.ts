@@ -261,6 +261,33 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
 }
 
 /**
+ * Mix Assist (v0.4.6): loading a suggested track is stricter than a manual
+ * load — it must never land on a deck that already has *any* track on it,
+ * even one that's merely paused (`loadTrackToDeck`'s own
+ * `lockPlayingDeck` guard only refuses a deck that's actively playing). A
+ * thin wrapper rather than a change to `loadTrackToDeck` itself: manual
+ * double-click/drag loading keeps behaving exactly as it does today: this
+ * only tightens the one new path a suggestion click takes.
+ *
+ * `awayFromDeck` is the deck the suggestion was matched against (`MixMatch.
+ * deck`) — the suggestion belongs on the *other* deck, never on the one
+ * already playing the track it was matched to.
+ */
+export function loadSuggestionToDeck(track: Track, awayFromDeck: DeckId) {
+  const target: DeckId = awayFromDeck === 'A' ? 'B' : 'A'
+  const { decks, setNotice } = useStore.getState()
+  if (decks[target].track) {
+    setNotice({
+      text: `Deck ${target} already has a track loaded — unload it before loading a suggestion there.`,
+      tone: 'warn',
+      source: 'load',
+    })
+    return
+  }
+  void loadTrackToDeck(target, track)
+}
+
+/**
  * First deck to start playing becomes master by default (v0.3.0) — the
  * automatic half of "auto + manual override". A no-op once a master already
  * exists, whether set this way or by an explicit long-press. Deliberately not
