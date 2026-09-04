@@ -139,3 +139,15 @@ export const BEATGRID_NUDGE_SEC = 0.01
  * never fires it by accident, short enough not to feel unresponsive.
  */
 export const LONG_PRESS_MS = 500
+
+/**
+ * Mix Assist (v0.4.6) autonomous transition: crossfade length in seconds.
+ * ROADMAP.md names this "a starting point, tuned by ear in testing" rather
+ * than a measured value — there is no real library or a human ear in this
+ * remote session to tune it against, so 8s stands as a plain, unverified
+ * first guess (a typical quick blend) until the owner's own listening says
+ * otherwise. Not in Settings, same reasoning as every other constant in this
+ * section: a control here is a way to let the user break a transition they
+ * haven't heard yet.
+ */
+export const TRANSITION_CROSSFADE_SEC = 8

@@ -152,7 +152,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               durationSec={deck.durationSec}
               beatGrid={deck.beatGrid}
               analysisFailed={deck.track?.analysisState === 'failed'}
-              onSelect={(sec) => ctl.seekDeck(deckId, sec)}
+              onSelect={(sec) => ctl.startAutoTransition(otherDeckId, deckId, sec)}
             />
           )}
         </div>

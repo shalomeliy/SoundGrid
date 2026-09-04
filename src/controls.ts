@@ -2,7 +2,7 @@ import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
 import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS } from '@/core/constants'
+import { BEATGRID_NUDGE_SEC, HOT_CUE_COLORS, TRANSITION_CROSSFADE_SEC } from '@/core/constants'
 import {
   bpmFromTaps,
   doubleGrid,
@@ -12,6 +12,7 @@ import {
   setDownbeatAt,
   shiftGrid,
 } from '@/core/beatgrid'
+import { crossfadeProgress, phaseAlignedEntrySec } from '@/core/transition'
 import { setGenreOverrideByHash } from '@/platform/genre-overrides-idb/store'
 import { getCues, putCues } from '@/platform/cues-idb/store'
 import { clock } from '@/platform/clock-audio'
@@ -121,6 +122,15 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // "your audio device is not connected" warning is set at startup and was
   // wiped by the first track load, before the owner could read it.
   clearNotice('load')
+  // A track swap on either side of a running autonomous transition would
+  // pull the buffer out from under a live crossfade — `lockPlayingDeck`
+  // (when the user has it on) already refuses this for whichever deck is
+  // currently `playing`, but a transition can involve a deck this check
+  // doesn't cover on its own, so cancel outright rather than let the load
+  // proceed underneath it.
+  if (activeTransition && (deckId === activeTransition.fromDeckId || deckId === activeTransition.toDeckId)) {
+    cancelTransition()
+  }
   patchDeck(deckId, { loading: true })
   let buffer: AudioBuffer
   let contentHash: string | undefined
@@ -301,6 +311,7 @@ function maybeAutoMaster(deckId: DeckId) {
 export function togglePlay(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.hasTrack) return
+  cancelTransitionIfOutgoingDeckTouched(deckId)
   deck.togglePlay()
   useStore.getState().patchDeck(deckId, { playing: deck.playing })
   if (deck.playing) maybeAutoMaster(deckId)
@@ -317,6 +328,7 @@ export function play(deckId: DeckId) {
 export function pause(deckId: DeckId) {
   const deck = engine.decks[deckId]
   if (!deck.playing) return
+  cancelTransitionIfOutgoingDeckTouched(deckId)
   deck.pause()
   useStore.getState().patchDeck(deckId, { playing: false })
 }
@@ -350,6 +362,7 @@ export function cue(deckId: DeckId) {
   if (!deck.hasTrack) return
   const st = useStore.getState().decks[deckId]
   if (deck.playing) {
+    cancelTransitionIfOutgoingDeckTouched(deckId)
     deck.pause()
     deck.seek(st.cuePointSec)
     useStore.getState().patchDeck(deckId, { playing: false, positionSec: st.cuePointSec })
@@ -613,6 +626,13 @@ export function nudgeDeck(deckId: DeckId, deltaSec: number) {
  * affected — only a caller that patches `tempo` alone, i.e. a manual touch.
  */
 export function setTempo(deckId: DeckId, tempo: number) {
+  // Safe against this same function's own internal callers (syncDeck /
+  // setMasterDeck, re-matching the *incoming* or *outgoing* deck's tempo):
+  // during an active transition those only ever target `toDeckId`, and by
+  // the time `finishTransition` re-matches `fromDeckId` through
+  // `setMasterDeck`, `activeTransition` is already cleared — so this only
+  // ever fires for a genuine manual touch of the tempo fader.
+  cancelTransitionIfOutgoingDeckTouched(deckId)
   const t = Math.max(-1, Math.min(1, tempo))
   engine.decks[deckId].setTempo(t)
   useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
@@ -719,6 +739,12 @@ export function setFilter(deckId: DeckId, v: number) {
 }
 
 export function setCrossfader(v: number) {
+  // Not a spec'd cancel trigger by itself (ROADMAP.md only names the outgoing
+  // deck stopping or its SYNC/tempo being touched) — this exists so a manual
+  // drag mid-transition takes the fader over cleanly instead of fighting the
+  // autonomous fade, which drives the crossfader every frame via
+  // `engine.setCrossfader` directly and never through this function.
+  if (activeTransition) cancelTransition()
   engine.setCrossfader(v)
   useStore.getState().patchMixer({ crossfader: v })
 }
@@ -908,6 +934,10 @@ function runSyncCorrection() {
  */
 export function syncDeck(deckId: DeckId) {
   if (!engine.decks[deckId].hasTrack) return
+  // This function's own internal caller (`startAutoTransition`'s
+  // seek-then-sync handoff) only ever targets the *incoming* deck, so this
+  // can only cancel on a genuine manual SYNC tap on the outgoing deck.
+  cancelTransitionIfOutgoingDeckTouched(deckId)
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
   const { decks, masterDeckId, patchDeck, setNotice } = useStore.getState()
   const st = decks[deckId]
@@ -978,6 +1008,149 @@ export function setMasterDeck(deckId: DeckId) {
   setTempo(other, tempo)
   patchDeck(other, { syncActive: true })
   ensureSyncLoop()
+}
+
+// ————————————————————————————————————————————————————————————————
+// Mix Assist (v0.4.6), build step 7 — the autonomous transition itself.
+// ROADMAP.md flags this as the riskiest step in the version: it drives the
+// live crossfader and a second deck's playback on a timer, unattended. The
+// module-level `activeTransition` below is the imperative half (the running
+// rAF-driven fade, the state to cancel back to) — same split as
+// `ensureSyncLoop`'s own module-level subscription just above. The store's
+// `activeTransition` field is only the serializable half Mixer.tsx reads to
+// show its cancel button.
+// ————————————————————————————————————————————————————————————————
+
+interface ActiveTransition {
+  fromDeckId: DeckId
+  toDeckId: DeckId
+  /** what the incoming deck looked like right before this transition touched it — what `cancelTransition` restores. */
+  toPreState: { positionSec: number; playing: boolean }
+  startedAtSec: number
+  unsubscribe: () => void
+}
+
+let activeTransition: ActiveTransition | null = null
+
+/**
+ * Any manual touch of `deckId` while it is the transition's *outgoing*
+ * (already-playing) deck cancels it — ROADMAP.md: "any change to the
+ * playing deck before the transition completes — the track stops, or the
+ * user touches SYNC/pitch by hand — cancels automatically." Only the
+ * outgoing deck is checked: this function's own internal calls only ever
+ * touch the *incoming* deck (seek, play, setTempo, syncDeck as part of the
+ * seek-then-sync handoff), so a guard keyed on the outgoing deck alone can
+ * never see its own calls and self-cancel.
+ */
+function cancelTransitionIfOutgoingDeckTouched(deckId: DeckId) {
+  if (activeTransition && deckId === activeTransition.fromDeckId) cancelTransition()
+}
+
+/**
+ * Seek-then-sync (ROADMAP.md v0.4.6): the incoming deck is aligned and
+ * started while the crossfader still sits fully on the outgoing deck (so the
+ * join is inaudible), then handed to the existing `syncDeck`/`ensureSyncLoop`
+ * for continuous correction exactly like a manually-pressed SYNC would be.
+ * From there a `clock`-driven loop (the same shared rAF source
+ * `ensureSyncLoop` itself subscribes to) drives the crossfader through
+ * `core/transition.ts`'s `crossfadeProgress` over `TRANSITION_CROSSFADE_SEC`,
+ * via `engine.setCrossfader` — the exact equal-power law
+ * `core/transition.ts`'s own `crossfadeGains` documents and
+ * `tests/core/transition.test.ts` pins, so the autonomous fade sounds like
+ * the same crossfader curve the user's hand already knows.
+ *
+ * Refuses (with a notice, never a silent no-op) rather than start a
+ * transition it cannot phase-align or that would land on a deck that is not
+ * cleanly available — a deck already mid-load, or already playing.
+ */
+export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entrySec: number) {
+  if (activeTransition) return
+  const { decks, setNotice } = useStore.getState()
+  const from = decks[fromDeckId]
+  const to = decks[toDeckId]
+  if (!from.playing || !to.track || to.playing || to.loading) return
+  if (!from.beatGrid || !to.beatGrid) {
+    setNotice({
+      text: `Can't phase-align this transition — deck ${!from.beatGrid ? fromDeckId : toDeckId} has no beat grid yet.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+
+  const fromEngine = engine.decks[fromDeckId]
+  const toEngine = engine.decks[toDeckId]
+  const enterSec = phaseAlignedEntrySec(entrySec, to.beatGrid, fromEngine.position, from.beatGrid)
+
+  toEngine.seek(enterSec)
+  toEngine.play()
+  useStore.getState().patchDeck(toDeckId, { playing: true, positionSec: enterSec })
+  syncDeck(toDeckId)
+
+  const startedAtSec = engine.currentTime
+  const unsubscribe = clock.subscribe((t) => {
+    const progress = crossfadeProgress(t - startedAtSec, TRANSITION_CROSSFADE_SEC)
+    // engine.setCrossfader's own domain is -1 (A only) .. +1 (B only); this
+    // maps `progress` onto whichever half of that range moves *away* from
+    // `fromDeckId`, in either direction.
+    const x = fromDeckId === 'A' ? -1 + 2 * progress : 1 - 2 * progress
+    engine.setCrossfader(x)
+    useStore.getState().patchMixer({ crossfader: x })
+    if (progress >= 1) finishTransition()
+  })
+
+  activeTransition = {
+    fromDeckId,
+    toDeckId,
+    toPreState: { positionSec: to.positionSec, playing: to.playing },
+    startedAtSec,
+    unsubscribe,
+  }
+  useStore.setState({ activeTransition: { fromDeckId, toDeckId } })
+}
+
+/**
+ * Crossfade reached 100% (ROADMAP.md): the incoming deck becomes
+ * master-sync automatically, and the cancel button disappearing (via
+ * `activeTransition` clearing) is the only signal the transition ended.
+ */
+function finishTransition() {
+  const t = activeTransition
+  if (!t) return
+  activeTransition = null
+  t.unsubscribe()
+  useStore.setState({ activeTransition: null })
+  setMasterDeck(t.toDeckId)
+}
+
+/**
+ * The cancel button (Mixer.tsx): fixed, prominent, no confirmation dialog.
+ * Both decks return to exactly their pre-transition state — the outgoing
+ * deck was never touched by this code, so only the crossfader (back to
+ * fully on it) and the incoming deck (paused, seeked back) need restoring —
+ * and no further automatic correction fires afterward: clearing
+ * `syncActive` here is what keeps `runSyncCorrection`'s loop from touching
+ * the incoming deck again once it is silent and paused.
+ */
+export function cancelTransition() {
+  const t = activeTransition
+  if (!t) return
+  activeTransition = null
+  t.unsubscribe()
+  useStore.setState({ activeTransition: null })
+
+  const toEngine = engine.decks[t.toDeckId]
+  toEngine.pause()
+  toEngine.seek(t.toPreState.positionSec)
+  useStore.getState().patchDeck(t.toDeckId, {
+    playing: t.toPreState.playing,
+    positionSec: t.toPreState.positionSec,
+    syncActive: false,
+  })
+
+  const x = t.fromDeckId === 'A' ? -1 : 1
+  engine.setCrossfader(x)
+  useStore.getState().patchMixer({ crossfader: x })
 }
 
 export function selectedTrack(): Track | undefined {

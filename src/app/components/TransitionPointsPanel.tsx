@@ -4,15 +4,14 @@ import type { BeatGrid } from '@/core/types'
 import { Pill } from '@/app/components/controls'
 
 /**
- * Mix Assist (v0.4.6), build step 6: the popover that lists this deck's own
- * candidate mix-in points, once it is loaded and paused while the other deck
- * plays. Picking a point is meant to be the flow's second and last click
- * (ROADMAP.md v0.4.6, "בחירת נקודה היא הקליק השני והאחרון") — so this panel
- * is shown automatically whenever it applies, never behind an extra open
- * click of its own. `onSelect` only seeks the deck for now: `startAutoTransition`
- * (step 7) does not exist yet, so a plain seek is the honest, complete thing
- * this step can already do — a preview of where the autonomous join will
- * later start from, not a stub.
+ * Mix Assist (v0.4.6): the popover that lists this deck's own candidate
+ * mix-in points, once it is loaded and paused while the other deck plays.
+ * Picking a point is the flow's second and last click (ROADMAP.md v0.4.6,
+ * "בחירת נקודה היא הקליק השני והאחרון") — so this panel is shown
+ * automatically whenever it applies, never behind an extra open click of its
+ * own. `onSelect` drives `startAutoTransition` (build step 7) — the deck's
+ * own `showTransitionPoints` eligibility already retires this panel the
+ * instant that starts (it flips `playing`), so there is no double-fire path.
  *
  * The "based on energy" wording is load-bearing, not decoration: this is an
  * RMS-envelope heuristic, never real structure detection (see the doc

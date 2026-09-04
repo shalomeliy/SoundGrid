@@ -61,6 +61,17 @@ export interface AppState {
    */
   quantize: boolean
 
+  /**
+   * Mix Assist's autonomous transition in progress (v0.4.6, step 7), or
+   * `null` when none is running — this is the UI half only (which decks, so
+   * Mixer.tsx can show its cancel button and the answer to "is one already
+   * running"). The imperative half — the rAF-driven crossfade loop, the
+   * saved pre-transition state to cancel back to — lives in `controls.ts`'s
+   * own module-level state, same split as `masterDeckId` (serializable)
+   * versus `ensureSyncLoop`'s subscription (imperative, not in the store).
+   */
+  activeTransition: { fromDeckId: DeckId; toDeckId: DeckId } | null
+
   library: {
     folderName: string | null
     tracks: Track[]
@@ -157,6 +168,7 @@ export const useStore = create<AppState>((set) => ({
   decks: { A: emptyDeck('A'), B: emptyDeck('B') },
   masterDeckId: null,
   quantize: false,
+  activeTransition: null,
   mixer: {
     crossfader: 0,
     masterVolume: 0.85,

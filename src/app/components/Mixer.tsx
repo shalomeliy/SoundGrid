@@ -40,9 +40,26 @@ function ChannelStrip({ deckId }: { deckId: DeckId }) {
 
 export function Mixer() {
   const mixer = useStore((s) => s.mixer)
+  const activeTransition = useStore((s) => s.activeTransition)
   return (
     <section className="panel flex flex-col items-center gap-2.5 overflow-hidden p-2.5">
       <span className="label self-start">Mix</span>
+
+      {/* Mix Assist (v0.4.6): fixed, always in the same spot, no menu, no
+          confirmation dialog — ROADMAP.md is explicit this must be an
+          instant emergency exit, not a click buried anywhere a DJ mid-set
+          would have to hunt for it. Bigger and louder than every other
+          control in this panel on purpose. */}
+      {activeTransition && (
+        <button
+          type="button"
+          onClick={() => ctl.cancelTransition()}
+          className="w-full rounded-[var(--radius-md)] py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-[var(--shadow-control)] transition-transform active:translate-y-px"
+          style={{ background: 'var(--color-danger)' }}
+        >
+          Cancel transition
+        </button>
+      )}
 
       <div className="flex items-start gap-4">
         <ChannelStrip deckId="A" />
