@@ -113,7 +113,7 @@ export const DEFAULTS: Settings = {
   onLoadPlayhead: 'start',
   lockPlayingDeck: true,
   outputDeviceId: null,
-  hintMode: false,
+  hintMode: true, // temporary — user asked for hints on by default until further notice (2026-09-04)
 }
 
 // ————————————————————————————————————————————————————————————————
