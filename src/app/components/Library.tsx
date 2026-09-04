@@ -109,6 +109,18 @@ export function Library() {
     [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, library.tracks],
   )
   const recs = recommendations.matches
+  const anyPlaying = aP || bP
+  // Mix Assist (v0.4.6): suggestions must be "always available", not one more
+  // click behind the toggle a DJ's hands are busy to reach. This defaults the
+  // existing toggle on at the instant either deck starts playing (edge-
+  // triggered off a ref, since the effect must fire only on that transition,
+  // not on every render while a deck keeps playing) — a manual click back to
+  // the full list during that same playback is still respected afterward.
+  const wasPlayingForMixOnly = useRef(false)
+  useEffect(() => {
+    if (anyPlaying && !wasPlayingForMixOnly.current) setMixOnly(true)
+    wasPlayingForMixOnly.current = anyPlaying
+  }, [anyPlaying])
 
   /**
    * Every path below can throw something the browser invented, and an async
@@ -428,7 +440,7 @@ export function Library() {
           <HintIcon id="library.rows" className="absolute left-1 top-1/2 -translate-y-1/2" />
         </span>
 
-        {(aP || bP) &&
+        {anyPlaying &&
           (recs.size > 0 ? (
             <span className="relative ml-auto inline-flex">
               <Button
@@ -446,14 +458,31 @@ export function Library() {
           ) : (
             // A deck is playing but nothing in the library currently mixes —
             // said explicitly, not left as an absent button a first-time user
-            // can't tell apart from "this feature isn't here."
+            // can't tell apart from "this feature isn't here." When the
+            // reason is a missing BPM on the playing deck itself (rather than
+            // "nothing in the library is in range"), name that too — the
+            // difference matters: one is fixed by waiting for analysis, the
+            // other isn't fixed by anything.
             <span
               className="ml-auto rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
               title="No track in the library currently mixes with what's playing."
             >
               ♫ no mixable tracks
+              {recommendations.reason === 'no-bpm-on-playing-deck' &&
+                ` · BPM unknown on deck ${[aP && aB == null ? 'A' : null, bP && bB == null ? 'B' : null].filter(Boolean).join(' & ')}`}
             </span>
           ))}
+        {/* Tracks the scan excluded from suggestions for carrying no BPM tag
+            at all — counted, not just silently absent from the list above.
+            Same shape as the library-wide "skipped" badge further down. */}
+        {anyPlaying && recommendations.noBpmSkipped > 0 && (
+          <span
+            className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
+            title="Tracks with no BPM tag are never suggested as a mix, but still counted here."
+          >
+            {recommendations.noBpmSkipped} skipped · no BPM
+          </span>
+        )}
 
         <label className={`relative ${aP || bP ? '' : 'ml-auto'}`}>
           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-grid-dim">⌕</span>
@@ -708,8 +737,16 @@ function Row({
 }) {
   const key = keyLabel(track, keyMode)
   const tone = keyColor(track.camelot)
+  // The one fact not already visible elsewhere in the row: BPM and key are
+  // already dedicated columns, so the chip carries only the tempo transform —
+  // and nothing at all for a plain 1:1 match, keeping the common case quiet.
+  // multiplier is what `t.bpm` is multiplied by to reach the reference bpm —
+  // 2 means the candidate's own tag is *half* the reference tempo (so it
+  // plays in half-time relative to what's on the deck), and 0.5 the mirror.
+  const chipLabel = match?.multiplier === 2 ? 'half-time' : match?.multiplier === 0.5 ? 'double-time' : null
   const matchTitle = match
     ? `Mixes with deck ${match.deck}${match.strong ? '' : ' (loose)'}` +
+      (chipLabel ? ` · ${match.trackBpm}→${match.refBpm} ${chipLabel}` : '') +
       (match.keyMatch === undefined ? '' : match.keyMatch ? ' · key compatible' : ' · key clashes')
     : undefined
   // aria-describedby's value is parsed as a whitespace-separated list of
@@ -771,6 +808,7 @@ function Row({
             </span>
           )}
           <span className="truncate">{track.title ?? track.name}</span>
+          {chipLabel && <span className="shrink-0 text-2xs text-grid-dim">{chipLabel}</span>}
         </span>
       </td>
       <td className="max-w-0 truncate py-1.5 pr-2 text-grid-muted">{track.artist}</td>
