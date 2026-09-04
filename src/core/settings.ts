@@ -87,6 +87,8 @@ export interface Settings {
   lockPlayingDeck: boolean
   /** Chosen audio output device, or null for the system default. */
   outputDeviceId: string | null
+  /** Show a "?" beside every control, with a short explanation on hover/focus. */
+  hintMode: boolean
 }
 
 export const DEFAULTS: Settings = {
@@ -111,6 +113,7 @@ export const DEFAULTS: Settings = {
   onLoadPlayhead: 'start',
   lockPlayingDeck: true,
   outputDeviceId: null,
+  hintMode: false,
 }
 
 // ————————————————————————————————————————————————————————————————
@@ -128,7 +131,7 @@ export const DEFAULTS: Settings = {
  * `tests/repo/settings-layer3.test.ts` fails if a name from that list ever
  * appears here. A named set, not an omission: the same rule as `COMPANION_EXT`.
  */
-export type FieldGroup = 'hardware' | 'feel' | 'display' | 'library'
+export type FieldGroup = 'hardware' | 'feel' | 'display' | 'library' | 'help'
 
 interface FieldBase {
   key: keyof Settings
@@ -379,6 +382,14 @@ export const FIELDS: Field[] = [
     max: 1.5,
     step: 0.05,
     unit: '×',
+  },
+
+  {
+    kind: 'toggle',
+    key: 'hintMode',
+    label: 'Hint mode',
+    help: 'A "?" beside every control, app-wide — hover or focus it for a short explanation, including the matching FLX4 button where one exists.',
+    group: 'help',
   },
 ]
 

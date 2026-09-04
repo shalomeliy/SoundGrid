@@ -19,11 +19,11 @@ function ChannelStrip({ deckId }: { deckId: DeckId }) {
       {/* EQ + filter in a recessed well, laid out horizontally to keep the
           mixer short enough that the library still gets real estate */}
       <div className="flex items-start gap-1 rounded-[var(--radius-md)] bg-surface-0/60 px-2 py-1.5 shadow-[inset_0_0_0_1px_var(--color-hairline)]">
-        <Knob label="Hi" size={30} value={ch.eqHigh} tone={color} onChange={(v) => ctl.setEq(deckId, 'high', v)} />
-        <Knob label="Mid" size={30} value={ch.eqMid} tone={color} onChange={(v) => ctl.setEq(deckId, 'mid', v)} />
-        <Knob label="Low" size={30} value={ch.eqLow} tone={color} onChange={(v) => ctl.setEq(deckId, 'low', v)} />
+        <Knob label="Hi" size={30} value={ch.eqHigh} tone={color} onChange={(v) => ctl.setEq(deckId, 'high', v)} hint="mixer.eqHigh" />
+        <Knob label="Mid" size={30} value={ch.eqMid} tone={color} onChange={(v) => ctl.setEq(deckId, 'mid', v)} hint="mixer.eqMid" />
+        <Knob label="Low" size={30} value={ch.eqLow} tone={color} onChange={(v) => ctl.setEq(deckId, 'low', v)} hint="mixer.eqLow" />
         <div className="mx-0.5 h-9 w-px self-center bg-hairline" />
-        <Knob label="Filter" size={30} value={ch.filter} tone="var(--color-accent)" onChange={(v) => ctl.setFilter(deckId, v)} />
+        <Knob label="Filter" size={30} value={ch.filter} tone="var(--color-accent)" onChange={(v) => ctl.setFilter(deckId, v)} hint="mixer.filter" />
       </div>
       <Fader
         label="Vol"
@@ -31,6 +31,7 @@ function ChannelStrip({ deckId }: { deckId: DeckId }) {
         onChange={(v) => ctl.setChannelVolume(deckId, v)}
         color={color}
         length={92}
+        hint="mixer.channelVolume"
         format={(v) => `${Math.round(v * 100)}`}
       />
     </div>
@@ -57,10 +58,11 @@ export function Mixer() {
           max={1}
           tone="var(--color-grid-text)"
           onChange={ctl.setMasterVolume}
+          hint="mixer.masterVolume"
           format={(v) => `${Math.round(v * 100)}`}
         />
-        <Knob label="Cue Vol" size={32} value={mixer.cueVolume} min={0} max={1} tone="var(--color-live)" onChange={ctl.setCueVolume} />
-        <Knob label="Cue Mix" size={32} value={mixer.cueMix} min={0} max={1} tone="var(--color-live)" onChange={ctl.setCueMix} />
+        <Knob label="Cue Vol" size={32} value={mixer.cueVolume} min={0} max={1} tone="var(--color-live)" onChange={ctl.setCueVolume} hint="mixer.cueVolume" />
+        <Knob label="Cue Mix" size={32} value={mixer.cueMix} min={0} max={1} tone="var(--color-live)" onChange={ctl.setCueMix} hint="mixer.cueMix" />
       </div>
 
       <div className="mt-auto flex w-full flex-col items-center gap-1.5 pt-2">
@@ -72,6 +74,7 @@ export function Mixer() {
           onChange={ctl.setCrossfader}
           length={188}
           detent
+          hint="mixer.crossfader"
         />
         <div className="flex w-[188px] justify-between">
           <span className="text-2xs font-bold" style={{ color: DECK_COLOR.A }}>

@@ -1,7 +1,7 @@
 import * as ctl from '@/controls'
 import { BEATGRID_NUDGE_SEC } from '@/core/constants'
 import type { BeatGrid, DeckId } from '@/core/types'
-import { Button } from '@/app/components/controls'
+import { Button, HintIcon } from '@/app/components/controls'
 
 interface Props {
   deckId: DeckId
@@ -57,6 +57,7 @@ export function BeatGridPanel({ deckId, beatGrid, onClose }: Props) {
         >
           +
         </Button>
+        <HintIcon id="beatgrid.nudge" />
       </div>
 
       <div className="mb-1.5 flex items-center gap-1.5">
@@ -67,15 +68,18 @@ export function BeatGridPanel({ deckId, beatGrid, onClose }: Props) {
         <Button variant="ghost" size="sm" onClick={() => ctl.doubleBeatGrid(deckId)} disabled={!beatGrid}>
           ×2
         </Button>
+        <HintIcon id="beatgrid.halveDouble" />
       </div>
 
       <div className="flex items-center gap-1.5">
         <Button variant="ghost" size="sm" onClick={() => ctl.tapTempo(deckId)}>
           Tap
         </Button>
+        <HintIcon id="beatgrid.tap" />
         <Button variant="ghost" size="sm" onClick={() => ctl.setDownbeatHere(deckId)}>
           Set downbeat here
         </Button>
+        <HintIcon id="beatgrid.setDownbeat" />
       </div>
     </div>
   )

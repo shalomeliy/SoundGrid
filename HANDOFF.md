@@ -15,9 +15,9 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **שום דבר כרגע.** v0.4.5 נסגרה (04/09) — ר' [`docs/handoff/v0.4.5.md`](docs/handoff/v0.4.5.md). v0.3.1 וv0.4.0 נסגרו קודם (03/09) — ר' [`docs/handoff/v0.3.1.md`](docs/handoff/v0.3.1.md) / [`docs/handoff/v0.4.0.md`](docs/handoff/v0.4.0.md). |
-| **branch** | **עובדים ישירות על `main` מעכשיו** (החלטת המשתמש, 03/09) — אין יותר ענף נפרד לכל גרסה. `git status` מאמת שאנחנו עליו. |
-| **גרסה נוכחית** | `v0.4.5` |
+| **בעבודה** | **שום דבר כרגע.** v0.4.8 נסגרה (04/09) — ר' [`docs/handoff/v0.4.8.md`](docs/handoff/v0.4.8.md). v0.4.5 נסגרה קודם (04/09) — ר' [`docs/handoff/v0.4.5.md`](docs/handoff/v0.4.5.md). |
+| **branch** | ברגיל **עובדים ישירות על `main`** (החלטת המשתמש, 03/09). v0.4.8 נבנתה על `claude/hint-mode-settings-hifo89` כי כך הוגדרה משימת Claude Code on the web שפתחה אותה — לבדוק אם מוזגה ל‑`main` עם `git merge-base --is-ancestor HEAD origin/main`. |
+| **גרסה נוכחית** | `v0.4.8` |
 | **`npm run check`** | ירוק. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | לפי `ROADMAP.md`: `v0.4.6` (Mix Assist — תלוי גם ב‑v0.3.0, שכבר סגורה) ו‑`v0.4.7` (קרבת אנרגיה, נדחתה מ‑v0.4.5, בלי איפיון עדיין) פתוחים. הבחירה של המשתמש, לא הנחה מראש |
 

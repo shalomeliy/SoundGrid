@@ -21,7 +21,7 @@ import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { KeyMode } from '@/core/settings'
 import type { Track } from '@/core/types'
-import { Button } from '@/app/components/controls'
+import { Button, HintIcon } from '@/app/components/controls'
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
@@ -401,6 +401,7 @@ export function Library() {
           disabled={!library.supported}
         >
           {library.boot === 'new' ? 'Load my music folder' : 'Change folder'}
+          <HintIcon id="library.folder" className="absolute -right-1.5 -top-1.5" />
         </Button>
         <Button
           variant="ghost"
@@ -410,10 +411,17 @@ export function Library() {
           title="Pick one or more individual tracks and add them to the list"
         >
           + Files
+          <HintIcon id="library.addFiles" className="absolute -right-1.5 -top-1.5" />
         </Button>
         {library.folderName && (
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
         )}
+        {/* Zero-size anchor: the badge is absolutely placed off it, so it never
+            grows this header row (the row wraps to the search box at some
+            widths, and a real flex sibling here would move that wrap point). */}
+        <span className="relative h-0 w-0">
+          <HintIcon id="library.rows" className="absolute left-1 top-1/2 -translate-y-1/2" />
+        </span>
 
         {(aP || bP) &&
           (recs.size > 0 ? (
@@ -427,6 +435,7 @@ export function Library() {
               title="Show only tracks that mix with what's playing"
             >
               ♫ {recs.size} mixable
+              <HintIcon id="library.mixOnly" className="absolute -right-1.5 -top-1.5" />
             </Button>
           ) : (
             // A deck is playing but nothing in the library currently mixes —
@@ -448,6 +457,7 @@ export function Library() {
             placeholder="Filter tracks…"
             className="w-52 rounded-[var(--radius-sm)] border border-hairline bg-surface-0 py-1 pl-6 pr-2 text-xs outline-none transition-colors focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
           />
+          <HintIcon id="library.search" className="absolute -right-1.5 -top-1.5" />
         </label>
         <span className="tnum flex items-center gap-1.5 text-xs text-grid-muted">
           {library.scanning && (

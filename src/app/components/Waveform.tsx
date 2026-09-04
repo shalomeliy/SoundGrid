@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettings } from '@/app/hooks/useSettings'
+import { HintIcon } from '@/app/components/controls'
 import type { DeckId, HotCue } from '@/core/types'
 
 interface Props {
@@ -268,6 +269,7 @@ export function Waveform({
           Load a track to see its waveform
         </span>
       )}
+      <HintIcon id="deck.waveform" className="absolute right-1 top-1" />
     </div>
   )
 }

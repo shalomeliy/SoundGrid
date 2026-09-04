@@ -1,5 +1,6 @@
 import * as ctl from '@/controls'
 import { HOT_CUE_COLORS } from '@/core/constants'
+import { HintIcon } from '@/app/components/controls'
 import type { DeckId, HotCue } from '@/core/types'
 
 interface Props {
@@ -24,7 +25,14 @@ export function PadGrid({ deckId, hotCues }: Props) {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <span className="label">Hot Cues</span>
+        <span className="relative inline-flex">
+          <span className="label">Hot Cues</span>
+          {/* absolute, not a flex sibling: a 16px badge next to an 11px label
+              would otherwise grow this row's line height and nudge every
+              control below it — the exact footprint Hint mode must not have
+              when it explains itself. */}
+          <HintIcon id="deck.padGrid" className="absolute left-full top-1/2 ml-1 -translate-y-1/2" />
+        </span>
         <span className="text-2xs text-grid-dim">× or shift-click to clear</span>
       </div>
       <div className="grid grid-cols-4 gap-1">

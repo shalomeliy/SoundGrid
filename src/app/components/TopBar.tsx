@@ -4,7 +4,7 @@ import { initAudio, toggleQuantize } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
 import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
-import { Button, Pill, type PillTone } from '@/app/components/controls'
+import { Button, HintIcon, Pill, type PillTone } from '@/app/components/controls'
 
 export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const audioReady = useStore((s) => s.audioReady)
@@ -80,6 +80,7 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       {!audioReady ? (
         <Button variant="toggle" active tone="var(--color-accent)" onClick={start} disabled={busy}>
           {busy ? 'Starting…' : 'Start audio engine'}
+          <HintIcon id="topbar.startEngine" className="absolute -right-1.5 -top-1.5" />
         </Button>
       ) : (
         <>
@@ -98,6 +99,9 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
                 </option>
               ))}
             </select>
+            <span className="relative h-0 w-0">
+              <HintIcon id="topbar.output" className="absolute left-1 top-1/2 -translate-y-1/2" />
+            </span>
           </label>
           <Pill
             tone={output.multichannel ? 'live' : 'warn'}
@@ -114,6 +118,7 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
               as precise as before until the user opts in. */}
           <Button variant="toggle" active={quantize} tone="var(--color-accent)" onClick={toggleQuantize}>
             Quantize
+            <HintIcon id="topbar.quantize" className="absolute -right-1.5 -top-1.5" />
           </Button>
         </>
       )}
@@ -140,10 +145,12 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         {midiState.status === 'idle' && audioReady && (
           <Button variant="ghost" size="sm" onClick={() => midi.init()}>
             Connect MIDI
+            <HintIcon id="topbar.connectMidi" className="absolute -right-1.5 -top-1.5" />
           </Button>
         )}
         <Button variant="ghost" size="sm" onClick={onOpenSettings}>
           Settings
+          <HintIcon id="topbar.settings" className="absolute -right-1.5 -top-1.5" />
         </Button>
       </div>
     </header>

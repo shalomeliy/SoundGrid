@@ -4,7 +4,7 @@ import { LONG_PRESS_MS, PLATTER_SIZE } from '@/core/constants'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
-import { Button, Fader, Pill } from '@/app/components/controls'
+import { Button, Fader, HintIcon, Pill } from '@/app/components/controls'
 import { BeatGridPanel } from '@/app/components/BeatGridPanel'
 import { PadGrid } from '@/app/components/PadGrid'
 import { Platter } from '@/app/components/Platter'
@@ -147,6 +147,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             aria-label="Edit beat grid"
             aria-expanded={gridPanelOpen}
           >
+            <HintIcon id="deck.bpm" className="absolute -top-1 -right-1" />
             <div
               className="tnum text-xl font-semibold leading-none"
               style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
@@ -209,6 +210,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               disabled={!loaded}
             >
               Cue
+              <HintIcon id="deck.cue" className="absolute -right-1.5 -top-1.5" />
             </Button>
             <Button
               variant="transport"
@@ -218,6 +220,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               disabled={!loaded}
             >
               {deck.playing ? 'Pause' : 'Play'}
+              <HintIcon id="deck.play" className="absolute -right-1.5 -top-1.5" />
             </Button>
             <Button
               variant="transport"
@@ -228,6 +231,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               title="Tap: sync to master. Hold: make this deck master."
             >
               Sync
+              <HintIcon id="deck.sync" className="absolute -right-1.5 -top-1.5" />
             </Button>
           </div>
 
@@ -240,6 +244,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               disabled={!loaded}
             >
               Loop
+              <HintIcon id="deck.loop" className="absolute -right-1.5 -top-1.5" />
             </Button>
             <Button
               variant="ghost"
@@ -266,6 +271,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               onClick={() => ctl.toggleCueMonitor(deckId)}
             >
               PFL
+              <HintIcon id="deck.pfl" className="absolute -right-1.5 -top-1.5" />
             </Button>
           </div>
 
@@ -283,16 +289,19 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               almost always. Moving the control is the change here; its weight
               stays what it was. */}
           <div className="flex flex-col items-center gap-1">
-            <Platter
-              deckId={deckId}
-              positionSec={deck.positionSec}
-              durationSec={deck.durationSec}
-              playing={deck.playing}
-              scratching={deck.scratching}
-              hasTrack={!!deck.track}
-              color={color}
-              size={PLATTER_SIZE}
-            />
+            <span className="relative inline-block">
+              <Platter
+                deckId={deckId}
+                positionSec={deck.positionSec}
+                durationSec={deck.durationSec}
+                playing={deck.playing}
+                scratching={deck.scratching}
+                hasTrack={!!deck.track}
+                color={color}
+                size={PLATTER_SIZE}
+              />
+              <HintIcon id="deck.platter" className="absolute -bottom-1 -right-1" />
+            </span>
             <Button
               variant="toggle"
               active={deck.vinylMode}
@@ -301,6 +310,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               title="Vinyl mode: stop and start spin down and up instead of cutting"
             >
               Vinyl
+              <HintIcon id="deck.vinyl" className="absolute -right-1.5 -top-1.5" />
             </Button>
           </div>
           <Fader
@@ -312,6 +322,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             color={color}
             length={160}
             detent
+            hint="deck.tempo"
             format={(v) =>
               `${v * tempoRange * 100 > 0 ? '+' : ''}${(v * tempoRange * 100).toFixed(1)}%`
             }

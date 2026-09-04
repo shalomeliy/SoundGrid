@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
+import { useSettings } from '@/app/hooks/useSettings'
+import { hint as hintText, type HintId } from '@/core/hints'
 
 /* ------------------------------------------------------------------ *
  * Pill — a named, visible degraded/status state (moved here in       *
@@ -25,6 +27,83 @@ export function Pill({ tone, label }: { tone: PillTone; label: string }) {
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: c }} />
       {label}
+    </span>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * HintIcon — Hint mode's "?" badge (v0.4.6). Unmounted entirely, not  *
+ * just hidden, while the setting is off — zero DOM, zero layout cost, *
+ * zero Tab stop during real mixing.                                   *
+ * ------------------------------------------------------------------ */
+
+export function HintIcon({ id, className = 'relative' }: { id: HintId; className?: string }) {
+  const hintMode = useSettings().hintMode
+  const [open, setOpen] = useState(false)
+  const [flip, setFlip] = useState<{ h: 'left' | 'right' | 'center'; v: 'down' | 'up' }>({
+    h: 'center',
+    v: 'down',
+  })
+  const showTimer = useRef(0)
+  const wrapRef = useRef<HTMLSpanElement>(null)
+
+  if (!hintMode) return null
+
+  const show = () => {
+    window.clearTimeout(showTimer.current)
+    showTimer.current = window.setTimeout(() => {
+      const r = wrapRef.current?.getBoundingClientRect()
+      if (r) {
+        setFlip({
+          h: r.left < 100 ? 'left' : r.right + 110 > window.innerWidth ? 'right' : 'center',
+          v: r.bottom + 90 > window.innerHeight ? 'up' : 'down',
+        })
+      }
+      setOpen(true)
+    }, 150)
+  }
+  const hide = () => {
+    window.clearTimeout(showTimer.current)
+    setOpen(false)
+  }
+
+  const text = hintText(id)
+  const tooltipId = `hint-${id}`
+
+  return (
+    <span ref={wrapRef} className={`inline-flex ${className}`}>
+      {/* span[role=button], not a real <button>: this is nested inside real
+          <button>s throughout the app, and HTML forbids interactive
+          descendants of a button — the same call PadGrid's own delete badge
+          already made, for the same reason. */}
+      <span
+        role="button"
+        tabIndex={0}
+        aria-describedby={open ? tooltipId : undefined}
+        title={text}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') hide()
+        }}
+        className="grid h-4 w-4 shrink-0 cursor-help place-items-center rounded-full border border-hairline-strong bg-surface-3 text-[9px] font-bold normal-case leading-none text-grid-dim outline-none transition-colors hover:text-grid-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
+      >
+        ?
+      </span>
+      {open && (
+        <span
+          role="tooltip"
+          id={tooltipId}
+          className={`pointer-events-none absolute z-50 w-[200px] rounded-[var(--radius-sm)] border border-hairline-strong bg-surface-3 px-2 py-1.5 text-2xs normal-case leading-snug text-grid-text shadow-[var(--shadow-pop)] ${
+            flip.v === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'
+          } ${flip.h === 'left' ? 'left-0' : flip.h === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2'}`}
+        >
+          {text}
+        </span>
+      )}
     </span>
   )
 }
@@ -146,6 +225,7 @@ interface KnobProps {
   size?: number
   tone?: string
   format?: (v: number) => string
+  hint?: HintId
 }
 
 const ARC = 270
@@ -161,6 +241,7 @@ export function Knob({
   size = 42,
   tone = 'var(--color-grid-text)',
   format,
+  hint,
 }: KnobProps) {
   const [hover, setHover] = useState(false)
   const bipolar = min < 0 && max > 0
@@ -246,6 +327,7 @@ export function Knob({
         <circle cx={cx} cy={cy} r={2} fill={tone} />
       </svg>
       <span className="label">{label}</span>
+      {hint && <HintIcon id={hint} className="absolute -top-1 -right-1 z-10" />}
     </div>
   )
 }
@@ -267,6 +349,7 @@ interface FaderProps {
   /** draw a centre notch + snap toward it */
   detent?: boolean
   format?: (v: number) => string
+  hint?: HintId
 }
 
 export function Fader({
@@ -280,6 +363,7 @@ export function Fader({
   length = 130,
   detent = false,
   format,
+  hint,
 }: FaderProps) {
   const [hover, setHover] = useState(false)
   const range = max - min
@@ -308,10 +392,11 @@ export function Fader({
 
   return (
     <div
-      className="flex flex-col items-center gap-1.5"
+      className="relative flex flex-col items-center gap-1.5"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
+      {hint && <HintIcon id={hint} className="absolute -top-1 -right-1 z-10" />}
       <div
         role="slider"
         aria-label={label}

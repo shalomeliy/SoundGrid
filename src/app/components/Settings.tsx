@@ -25,6 +25,7 @@ const GROUPS: { id: FieldGroup | 'system'; label: string; blurb: string }[] = [
   { id: 'feel', label: 'Feel', blurb: 'How the decks respond to a hand.' },
   { id: 'display', label: 'Display', blurb: 'What is drawn, and how often.' },
   { id: 'library', label: 'Library', blurb: 'The track list and how keys are named.' },
+  { id: 'help', label: 'Help', blurb: 'Explain every control before you touch it.' },
   { id: 'system', label: 'System', blurb: 'What this machine supports, and what SoundGrid does with it.' },
 ]
 
