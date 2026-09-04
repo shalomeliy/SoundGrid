@@ -8,6 +8,7 @@ import { Button, Fader, HintIcon, Pill } from '@/app/components/controls'
 import { BeatGridPanel } from '@/app/components/BeatGridPanel'
 import { PadGrid } from '@/app/components/PadGrid'
 import { Platter } from '@/app/components/Platter'
+import { TransitionPointsPanel } from '@/app/components/TransitionPointsPanel'
 import { Waveform } from '@/app/components/Waveform'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
@@ -21,8 +22,15 @@ function fmt(sec: number): string {
 
 export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
+  const otherDeckId: DeckId = deckId === 'A' ? 'B' : 'A'
+  const otherPlaying = useStore((s) => s.decks[otherDeckId].playing)
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
+  // Mix Assist (v0.4.6): relevant exactly when this deck is the one about to
+  // be brought in — loaded, not already playing, while the other deck is the
+  // reference it would join against. Neither deck playing, or this one
+  // already playing, and there is nothing to show a mix-in point for.
+  const showTransitionPoints = loaded && !deck.playing && otherPlaying
   const [dropActive, setDropActive] = useState(false)
   const [gridPanelOpen, setGridPanelOpen] = useState(false)
   const closeGridPanel = () => {
@@ -112,7 +120,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
         >
           {deckId}
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <div
             className={`truncate text-base font-semibold leading-tight ${
               loaded ? '' : 'text-grid-dim'
@@ -133,6 +141,15 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               </>
             )}
           </div>
+          {showTransitionPoints && (
+            <TransitionPointsPanel
+              bands={deck.bands}
+              durationSec={deck.durationSec}
+              beatGrid={deck.beatGrid}
+              analysisFailed={deck.track?.analysisState === 'failed'}
+              onSelect={(sec) => ctl.seekDeck(deckId, sec)}
+            />
+          )}
         </div>
         <div className="relative shrink-0">
           <button
