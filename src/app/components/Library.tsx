@@ -393,26 +393,30 @@ export function Library() {
           twice next to a third, louder button read as three ways out of one
           situation.
         */}
-        <Button
-          variant="toggle"
-          active={library.boot === 'new'}
-          tone="var(--color-accent)"
-          onClick={pickNew}
-          disabled={!library.supported}
-        >
-          {library.boot === 'new' ? 'Load my music folder' : 'Change folder'}
+        <span className="relative inline-flex">
+          <Button
+            variant="toggle"
+            active={library.boot === 'new'}
+            tone="var(--color-accent)"
+            onClick={pickNew}
+            disabled={!library.supported}
+          >
+            {library.boot === 'new' ? 'Load my music folder' : 'Change folder'}
+          </Button>
           <HintIcon id="library.folder" className="absolute -right-1.5 -top-1.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={addFiles}
-          disabled={!library.supported}
-          title="Pick one or more individual tracks and add them to the list"
-        >
-          + Files
+        </span>
+        <span className="relative inline-flex">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={addFiles}
+            disabled={!library.supported}
+            title="Pick one or more individual tracks and add them to the list"
+          >
+            + Files
+          </Button>
           <HintIcon id="library.addFiles" className="absolute -right-1.5 -top-1.5" />
-        </Button>
+        </span>
         {library.folderName && (
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
         )}
@@ -425,18 +429,19 @@ export function Library() {
 
         {(aP || bP) &&
           (recs.size > 0 ? (
-            <Button
-              variant="toggle"
-              size="sm"
-              active={mixOnly}
-              tone="var(--color-live)"
-              className="ml-auto"
-              onClick={() => setMixOnly((v) => !v)}
-              title="Show only tracks that mix with what's playing"
-            >
-              ♫ {recs.size} mixable
+            <span className="relative ml-auto inline-flex">
+              <Button
+                variant="toggle"
+                size="sm"
+                active={mixOnly}
+                tone="var(--color-live)"
+                onClick={() => setMixOnly((v) => !v)}
+                title="Show only tracks that mix with what's playing"
+              >
+                ♫ {recs.size} mixable
+              </Button>
               <HintIcon id="library.mixOnly" className="absolute -right-1.5 -top-1.5" />
-            </Button>
+            </span>
           ) : (
             // A deck is playing but nothing in the library currently mixes —
             // said explicitly, not left as an absent button a first-time user

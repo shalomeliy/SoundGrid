@@ -32,7 +32,7 @@ export function Pill({ tone, label }: { tone: PillTone; label: string }) {
 }
 
 /* ------------------------------------------------------------------ *
- * HintIcon — Hint mode's "?" badge (v0.4.6). Unmounted entirely, not  *
+ * HintIcon — Hint mode's "?" badge (v0.4.8). Unmounted entirely, not  *
  * just hidden, while the setting is off — zero DOM, zero layout cost, *
  * zero Tab stop during real mixing.                                   *
  * ------------------------------------------------------------------ */
@@ -72,10 +72,14 @@ export function HintIcon({ id, className = 'relative' }: { id: HintId; className
 
   return (
     <span ref={wrapRef} className={`inline-flex ${className}`}>
-      {/* span[role=button], not a real <button>: this is nested inside real
-          <button>s throughout the app, and HTML forbids interactive
-          descendants of a button — the same call PadGrid's own delete badge
-          already made, for the same reason. */}
+      {/* span[role=button], not a real <button> — it needs its own keyboard
+          focus (unlike PadGrid's mouse-only delete badge, which has no
+          tabindex and can afford to nest inside its pad). That tabIndex is
+          exactly why HintIcon must never be rendered as a DOM *child* of a
+          real <button>: the HTML spec forbids any tabindex-bearing
+          descendant of one, not just nested interactive elements. Every call
+          site renders it as a sibling instead — see Deck.tsx, TopBar.tsx,
+          Library.tsx for the wrapping pattern. */}
       <span
         role="button"
         tabIndex={0}

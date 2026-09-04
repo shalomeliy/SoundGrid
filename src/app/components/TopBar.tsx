@@ -78,10 +78,12 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       </h1>
 
       {!audioReady ? (
-        <Button variant="toggle" active tone="var(--color-accent)" onClick={start} disabled={busy}>
-          {busy ? 'Starting…' : 'Start audio engine'}
+        <span className="relative inline-flex">
+          <Button variant="toggle" active tone="var(--color-accent)" onClick={start} disabled={busy}>
+            {busy ? 'Starting…' : 'Start audio engine'}
+          </Button>
           <HintIcon id="topbar.startEngine" className="absolute -right-1.5 -top-1.5" />
-        </Button>
+        </span>
       ) : (
         <>
           <label className="flex items-center gap-2 text-xs text-grid-muted">
@@ -116,10 +118,12 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           )}
           {/* Off by default (v0.3.0 decision) — CUE/hot cues/loops stay exactly
               as precise as before until the user opts in. */}
-          <Button variant="toggle" active={quantize} tone="var(--color-accent)" onClick={toggleQuantize}>
-            Quantize
+          <span className="relative inline-flex">
+            <Button variant="toggle" active={quantize} tone="var(--color-accent)" onClick={toggleQuantize}>
+              Quantize
+            </Button>
             <HintIcon id="topbar.quantize" className="absolute -right-1.5 -top-1.5" />
-          </Button>
+          </span>
         </>
       )}
 
@@ -143,15 +147,19 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           </span>
         )}
         {midiState.status === 'idle' && audioReady && (
-          <Button variant="ghost" size="sm" onClick={() => midi.init()}>
-            Connect MIDI
+          <span className="relative inline-flex">
+            <Button variant="ghost" size="sm" onClick={() => midi.init()}>
+              Connect MIDI
+            </Button>
             <HintIcon id="topbar.connectMidi" className="absolute -right-1.5 -top-1.5" />
-          </Button>
+          </span>
         )}
-        <Button variant="ghost" size="sm" onClick={onOpenSettings}>
-          Settings
+        <span className="relative inline-flex">
+          <Button variant="ghost" size="sm" onClick={onOpenSettings}>
+            Settings
+          </Button>
           <HintIcon id="topbar.settings" className="absolute -right-1.5 -top-1.5" />
-        </Button>
+        </span>
       </div>
     </header>
   )

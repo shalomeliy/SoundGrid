@@ -147,7 +147,6 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             aria-label="Edit beat grid"
             aria-expanded={gridPanelOpen}
           >
-            <HintIcon id="deck.bpm" className="absolute -top-1 -right-1" />
             <div
               className="tnum text-xl font-semibold leading-none"
               style={{ color: effectiveBpm ? color : 'var(--color-grid-dim)' }}
@@ -164,6 +163,11 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               )}
             </div>
           </button>
+          {/* Sibling of the button, not a child: HintIcon carries its own
+              tabIndex, and HTML forbids any tabindex-bearing descendant of a
+              <button> — this div is already `relative`, so the badge anchors
+              to it exactly as it would have anchored to the button itself. */}
+          <HintIcon id="deck.bpm" className="absolute -top-1 -right-1" />
           {/* A grid detection wasn't confident about, or found nothing at all,
               is shown — never silently trusted (CLAUDE.md's central rule).
               Cleared once the user checks or edits it (BeatGridPanel). */}
@@ -195,57 +199,75 @@ export function Deck({ deckId }: { deckId: DeckId }) {
       <div className="flex gap-3">
         {/* left: transport + pads ------------------------------------- */}
         <div className="flex flex-1 flex-col gap-1.5">
+          {/* Each grid cell holds a wrapping span, not the Button directly:
+              HintIcon must be a sibling of the button (see the note by
+              HintIcon's definition), and the span needs `flex` + the button
+              `flex-1` so the button still fills the grid track exactly as it
+              did before — a grid item stretches by default, and a plain
+              wrapper without this would leave the button its own
+              content-width, shrunk to the left of its cell. */}
           <div className="grid grid-cols-[1fr_1.4fr_1fr] gap-2">
-            <Button
-              variant="transport"
-              onPointerDown={() => {
-                const release = ctl.cuePlayPreview(deckId)
-                const up = () => {
-                  release()
-                  window.removeEventListener('pointerup', up)
-                }
-                if (!deck.playing) window.addEventListener('pointerup', up)
-                else ctl.cue(deckId)
-              }}
-              disabled={!loaded}
-            >
-              Cue
+            <span className="relative flex">
+              <Button
+                variant="transport"
+                className="flex-1"
+                onPointerDown={() => {
+                  const release = ctl.cuePlayPreview(deckId)
+                  const up = () => {
+                    release()
+                    window.removeEventListener('pointerup', up)
+                  }
+                  if (!deck.playing) window.addEventListener('pointerup', up)
+                  else ctl.cue(deckId)
+                }}
+                disabled={!loaded}
+              >
+                Cue
+              </Button>
               <HintIcon id="deck.cue" className="absolute -right-1.5 -top-1.5" />
-            </Button>
-            <Button
-              variant="transport"
-              active={deck.playing}
-              tone={color}
-              onClick={() => ctl.togglePlay(deckId)}
-              disabled={!loaded}
-            >
-              {deck.playing ? 'Pause' : 'Play'}
+            </span>
+            <span className="relative flex">
+              <Button
+                variant="transport"
+                className="flex-1"
+                active={deck.playing}
+                tone={color}
+                onClick={() => ctl.togglePlay(deckId)}
+                disabled={!loaded}
+              >
+                {deck.playing ? 'Pause' : 'Play'}
+              </Button>
               <HintIcon id="deck.play" className="absolute -right-1.5 -top-1.5" />
-            </Button>
-            <Button
-              variant="transport"
-              active={deck.syncActive}
-              tone={color}
-              onPointerDown={onSyncDown}
-              disabled={!loaded}
-              title="Tap: sync to master. Hold: make this deck master."
-            >
-              Sync
+            </span>
+            <span className="relative flex">
+              <Button
+                variant="transport"
+                className="flex-1"
+                active={deck.syncActive}
+                tone={color}
+                onPointerDown={onSyncDown}
+                disabled={!loaded}
+                title="Tap: sync to master. Hold: make this deck master."
+              >
+                Sync
+              </Button>
               <HintIcon id="deck.sync" className="absolute -right-1.5 -top-1.5" />
-            </Button>
+            </span>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <Button
-              variant="toggle"
-              active={deck.loopActive}
-              tone={color}
-              onClick={() => ctl.toggleLoop(deckId)}
-              disabled={!loaded}
-            >
-              Loop
+            <span className="relative inline-flex">
+              <Button
+                variant="toggle"
+                active={deck.loopActive}
+                tone={color}
+                onClick={() => ctl.toggleLoop(deckId)}
+                disabled={!loaded}
+              >
+                Loop
+              </Button>
               <HintIcon id="deck.loop" className="absolute -right-1.5 -top-1.5" />
-            </Button>
+            </span>
             <Button
               variant="ghost"
               size="sm"
@@ -263,16 +285,17 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             >
               ×2
             </Button>
-            <Button
-              className="ml-auto"
-              variant="toggle"
-              active={deck.cueMonitor}
-              tone="var(--color-live)"
-              onClick={() => ctl.toggleCueMonitor(deckId)}
-            >
-              PFL
+            <span className="relative ml-auto inline-flex">
+              <Button
+                variant="toggle"
+                active={deck.cueMonitor}
+                tone="var(--color-live)"
+                onClick={() => ctl.toggleCueMonitor(deckId)}
+              >
+                PFL
+              </Button>
               <HintIcon id="deck.pfl" className="absolute -right-1.5 -top-1.5" />
-            </Button>
+            </span>
           </div>
 
           <PadGrid deckId={deckId} hotCues={deck.hotCues} />
@@ -302,16 +325,18 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               />
               <HintIcon id="deck.platter" className="absolute -bottom-1 -right-1" />
             </span>
-            <Button
-              variant="toggle"
-              active={deck.vinylMode}
-              tone={color}
-              onClick={() => ctl.toggleVinylMode(deckId)}
-              title="Vinyl mode: stop and start spin down and up instead of cutting"
-            >
-              Vinyl
+            <span className="relative inline-flex">
+              <Button
+                variant="toggle"
+                active={deck.vinylMode}
+                tone={color}
+                onClick={() => ctl.toggleVinylMode(deckId)}
+                title="Vinyl mode: stop and start spin down and up instead of cutting"
+              >
+                Vinyl
+              </Button>
               <HintIcon id="deck.vinyl" className="absolute -right-1.5 -top-1.5" />
-            </Button>
+            </span>
           </div>
           <Fader
             label="Tempo"
