@@ -16,10 +16,10 @@
 | | |
 | --- | --- |
 | **בעבודה** | **`v0.4.6` (Mix Assist) — באמצע.** שלבים 1‑7,9/10 בוצעו (04/09): הליבה הטהורה, `Library.tsx`/`loadSuggestionToDeck` (הצעות), `TransitionPointsPanel.tsx` (בחירת נקודה), `startAutoTransition`/`cancelTransition` ב‑`controls.ts` (המנוע האוטונומי — הכי מסוכן בגרסה, **סקירת change-reviewer ראשונה החזירה REPAIR עם 2 BLOCKER + 2 WARNING, תוקנו כולם + באג נוסף שנמצא תוך כדי, סקירה שנייה = PASS**), וחלון 30 השניות ל"לא להציע שוב" (שלב 9). נשאר שלב 8 (מדידה על ספרייה אמיתית — לא אפשרי בקונטיינר מרוחק, צריך את `C:\Users\Shalom\Music\Tracks`) ושלב 10 (סגירה). |
-| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. עד שלב 9 נדחף ל‑`claude/continue-handoff-coding-hrbl95` (04/09), **עדיין לא ממוזג** — לוודא עם `git log --oneline origin/claude/continue-handoff-coding-hrbl95 -1`. |
+| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. `claude/continue-handoff-coding-hrbl95` (עד שלב 9) אוחד ל‑`claude/handoff-documentation-a8inr7` (04/09, sha זהה) — **עדיין לא ממוזג ל‑`main`**, לוודא עם `git log --oneline origin/claude/handoff-documentation-a8inr7 -1`. |
 | **גרסה נוכחית** | `v0.4.8` (`package.json`) — `v0.4.6` עדיין לא נסגרה, אין bump עדיין. |
-| **`npm run check`** | ירוק (04/09). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
-| **הבא בתור** | שלב 8 דורש ספרייה אמיתית — **מחכה לשיחה על המחשב של המשתמש**, לא כאן. אם ממשיכים כאן: שלב 10 (סגירה) אפשרי חלקית, אבל התלות בשלב 8 אמיתית. `v0.4.7` עדיין ממתינה, בלי איפיון. |
+| **`npm run check`** | ירוק (04/09, אחרי `git fetch --unshallow` — clone רדוד בקונטיינר מרוחק גרם ל‑SHA-check כושל שווא). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **הבא בתור** | שלב 8 דורש ספרייה אמיתית — **מחכה לשיחה על המחשב של המשתמש**, לא כאן. **הוכן (04/09, לא הורץ עדיין):** `scripts/verify-mix-assist-transition-quality.mjs` — מריץ `startAutoTransition` האמיתי מול קבצים אמיתיים (הדפדפן עצמו מפענח, אין decoder ב‑Node), מודד `phaseDeltaSec` מול `POSITION_EPSILON_SEC` בשתי נקודות (מיד עם ה‑join, ואחרי 3s תיקון). `node scripts/verify-mix-assist-transition-quality.mjs "C:\Users\Shalom\Music\Tracks" 8`. עשן‑נבדק כאן מול WAV סינתטיים בלבד (Playwright לא dependency בפרויקט — מותקן global; ב‑Windows ייתכן שצריך `npm install -g playwright` קודם). המספרים האמיתיים עדיין לא נמדדו. |
 
 **מה פתוח בקוד:** `v0.4.6` באמצע (שלבים 1‑7,9/10). כל שינוי חדש בקוד ממשיך אותה, לא פותח גרסה מקבילה.
 

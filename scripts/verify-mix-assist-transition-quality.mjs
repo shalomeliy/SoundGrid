@@ -1,0 +1,325 @@
+/**
+ * v0.4.6 step 8 — phase-alignment measurement on the real library.
+ *
+ * Run against `npm run dev` on :5173, on a machine that actually has the
+ * library (this cannot run in a sandboxed/remote session — see HANDOFF.md):
+ *
+ *   node scripts/verify-mix-assist-transition-quality.mjs "C:\Users\Shalom\Music\Tracks" 8
+ *
+ * (both args optional — default library dir is the Windows path above,
+ * default pair count is 8)
+ *
+ * What this measures, and why it can't be a unit test: `core/beatgrid.ts`
+ * and `core/transition.ts` are pure and already have unit tests (synthetic
+ * envelopes, boundary values) — what those *cannot* tell us is whether
+ * `estimateBeatGrid`'s autocorrelation actually locks a clean grid on real,
+ * messy audio, and whether the live seek-then-sync (`startAutoTransition` in
+ * controls.ts) holds that lock once real playback timing (rAF scheduling,
+ * audio buffer boundaries) is in the loop. Steps 6/7/9 verified *behaviour*
+ * with synthetic sine-wave WAVs; this is the same live engine, driven the
+ * same way, against real tracks — because that's the only thing that can
+ * expose "detection is confident but wrong on this kind of file" or "the
+ * live loop doesn't converge as fast on real material as the synthetic
+ * check suggested".
+ *
+ * For each of N real track pairs: load real track A onto deck A and play it
+ * (same `KeyQ` path a user takes), drag-drop real track B onto deck B
+ * (paused — same drop path `Library.tsx` rows already support), wait for
+ * both decks' background analysis to produce a `beatGrid` (or record the
+ * pair as skipped, never silently dropped — this file's own central rule),
+ * then call the *real*, already-shipped `startAutoTransition('A','B', 0)`
+ * from inside the page — reached via `import('/src/controls.ts')` against
+ * the Vite dev server, which resolves to the exact same live module
+ * instance the running app already uses (browsers dedupe ES modules by
+ * resolved URL), so this is not a reimplementation of the transition, it is
+ * the transition. `core/beatgrid.ts`'s own `phaseDeltaSec` (imported the
+ * same way) measures how far deck B's live position sits from deck A's beat
+ * phase — once right after the seek (`atJoin`), and again 3s later after a
+ * few `SYNC_LOOP_INTERVAL_SEC` corrections (`after3s`) — against
+ * `core/scratch.ts`'s real `POSITION_EPSILON_SEC`, not a value copied here
+ * that could drift from it.
+ *
+ * Same fake-`showDirectoryPicker`/fake-`indexedDB` harness as the other
+ * verify-*.mjs scripts, but backed by real file bytes read from disk instead
+ * of synthetic WAVs — each pair gets its own page/folder so a slow or
+ * unanalyzable file can't stall the rest of the run.
+ */
+import { chromium } from 'playwright'
+import fs from 'node:fs'
+import path from 'node:path'
+
+const URL = 'http://localhost:5173/'
+const VIEWPORT = { width: 1536, height: 710 }
+const DEFAULT_DIR = String.raw`C:\Users\Shalom\Music\Tracks`
+const LIBRARY_DIR = process.argv[2] || DEFAULT_DIR
+const PAIR_COUNT = Number(process.argv[3] || 8)
+/** Keeps the inlined-base64 init script fast; real WAVs are the outlier, mp3/m4a dominate the library (v0.1.7). */
+const MAX_FILE_BYTES = 15 * 1024 * 1024
+const ANALYSIS_TIMEOUT_MS = 20_000
+const AFTER_DELAY_MS = 3_000
+
+const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'm4a', 'm4b', 'mp4', 'aac', 'ogg', 'oga', 'opus', 'weba', 'webm', 'aiff', 'aif'])
+
+function walk(dir) {
+  const out = []
+  let entries
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch (err) {
+    console.error(`Can't read ${dir}: ${err.message}`)
+    return out
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) {
+      out.push(...walk(full))
+    } else {
+      const ext = e.name.split('.').pop()?.toLowerCase() ?? ''
+      if (!AUDIO_EXT.has(ext)) continue
+      let size = 0
+      try {
+        size = fs.statSync(full).size
+      } catch {
+        continue
+      }
+      if (size > 0 && size <= MAX_FILE_BYTES) out.push({ full, base: e.name, folder: path.dirname(full) })
+    }
+  }
+  return out
+}
+
+function pickPairs(files, count) {
+  const byFolder = new Map()
+  for (const f of files) {
+    if (!byFolder.has(f.folder)) byFolder.set(f.folder, [])
+    byFolder.get(f.folder).push(f)
+  }
+  const pairs = []
+  const usedBase = new Set()
+  const folders = [...byFolder.values()].filter((list) => list.length >= 2)
+  // Prefer same-folder pairs (genre-consistent, closer to how Mix Assist is
+  // actually used) before falling back to cross-folder ones.
+  for (const list of shuffle(folders)) {
+    if (pairs.length >= count) break
+    const shuffled = shuffle(list)
+    const a = shuffled.find((f) => !usedBase.has(f.base))
+    if (!a) continue
+    const b = shuffled.find((f) => f !== a && !usedBase.has(f.base))
+    if (!b) continue
+    usedBase.add(a.base)
+    usedBase.add(b.base)
+    pairs.push([a, b])
+  }
+  const remaining = shuffle(files.filter((f) => !usedBase.has(f.base)))
+  while (pairs.length < count && remaining.length >= 2) {
+    const a = remaining.pop()
+    const b = remaining.pop()
+    if (a.base === b.base) continue
+    pairs.push([a, b])
+  }
+  return pairs
+}
+
+function shuffle(arr) {
+  const out = [...arr]
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+function harness(fileA, fileB) {
+  const files = {
+    [fileA.base]: fs.readFileSync(fileA.full).toString('base64'),
+    [fileB.base]: fs.readFileSync(fileB.full).toString('base64'),
+  }
+  return `(() => {
+  window.__unhandled = [];
+  addEventListener('unhandledrejection', (e) => window.__unhandled.push(String(e.reason)));
+  const files = ${JSON.stringify(files)};
+  const makeFile = (name) => ({
+    kind: 'file', name,
+    getFile: async () => {
+      const bytes = Uint8Array.from(atob(files[name]), (c) => c.charCodeAt(0));
+      return new File([bytes], name);
+    },
+  });
+  const makeDir = (name) => ({
+    kind: 'directory', name,
+    queryPermission: async () => 'granted',
+    requestPermission: async () => 'granted',
+    entries: async function* () { for (const n of Object.keys(files)) yield [n, makeFile(n)]; },
+  });
+  Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: async () => makeDir('Tracks') });
+  const mem = new Map();
+  mem.set('soundgrid:libraryDir', makeDir('Tracks'));
+  const fire = (obj, prop, value) => setTimeout(() => { obj.result = value; obj[prop] && obj[prop](); }, 0);
+  Object.defineProperty(window, 'indexedDB', { configurable: true, value: {
+    open() {
+      const req = {};
+      setTimeout(() => {
+        const db = { transaction: () => {
+          const tx = {};
+          tx.objectStore = () => ({
+            transaction: tx,
+            get: (k) => { const r = {}; fire(r, 'onsuccess', mem.get(k)); return r; },
+            put: (v, k) => { mem.set(k, v); const r = {}; fire(r, 'onsuccess', undefined); return r; },
+          });
+          setTimeout(() => tx.oncomplete && tx.oncomplete(), 1);
+          return tx;
+        } };
+        req.result = db;
+        req.onsuccess && req.onsuccess();
+      }, 0);
+      return req;
+    },
+  } });
+})()`
+}
+
+const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || undefined })
+
+async function measurePair(fileA, fileB) {
+  const page = await browser.newPage({ viewport: VIEWPORT })
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  try {
+    await page.addInitScript(harness(fileA, fileB))
+    await page.goto(URL, { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(1000)
+
+    // The library shows a track's display name (extension stripped, per
+    // `library.ts`'s `name: name.replace(/\.[^.]+$/, '')`), not the raw
+    // filename — matching on the full filename here just times out.
+    const displayName = (base) => base.replace(/\.[^.]+$/, '')
+    const row = (text) => page.locator('tbody tr', { hasText: new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })
+    await row(displayName(fileA.base)).dblclick()
+    await page.waitForTimeout(500)
+    await page.keyboard.press('KeyQ')
+    await page.waitForTimeout(500)
+
+    await page.evaluate(
+      ({ trackId }) => {
+        const dt = new DataTransfer()
+        dt.setData('application/x-soundgrid-track', trackId)
+        const target = document.querySelectorAll('section')[2] // Deck A, Mixer, Deck B, Library
+        target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }))
+        target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }))
+      },
+      { trackId: fileB.base },
+    )
+    await page.waitForTimeout(300)
+
+    const result = await page.evaluate(
+      async ({ timeoutMs, afterDelayMs }) => {
+        const { useStore } = await import('/src/app/state/store.ts')
+        const deadline = Date.now() + timeoutMs
+        while (Date.now() < deadline) {
+          const { decks } = useStore.getState()
+          if (decks.A.beatGrid && decks.B.beatGrid) break
+          await new Promise((r) => setTimeout(r, 300))
+        }
+        const before = useStore.getState().decks
+        if (!before.A.beatGrid || !before.B.beatGrid) {
+          return {
+            skipped: true,
+            reason: !before.A.beatGrid && !before.B.beatGrid ? 'neither deck got a beat grid' : !before.A.beatGrid ? 'deck A got no beat grid' : 'deck B got no beat grid',
+          }
+        }
+        const gridAConfirmed = before.A.beatGridConfirmed
+        const gridBConfirmed = before.B.beatGridConfirmed
+
+        const { engine } = await import('/src/platform/audio-webaudio/engine.ts')
+        const { phaseDeltaSec } = await import('/src/core/beatgrid.ts')
+        const { POSITION_EPSILON_SEC } = await import('/src/core/scratch.ts')
+        const ctl = await import('/src/controls.ts')
+
+        if (!before.A.playing || before.B.playing || before.B.loading) {
+          return { skipped: true, reason: `deck state not ready for a transition (A.playing=${before.A.playing}, B.playing=${before.B.playing}, B.loading=${before.B.loading})` }
+        }
+
+        ctl.startAutoTransition('A', 'B', 0)
+        // startAutoTransition itself is synchronous — read positions on the
+        // very next turn, before the rAF-driven crossfade loop has run at all.
+        await new Promise((r) => setTimeout(r, 0))
+        const gridA = useStore.getState().decks.A.beatGrid
+        const gridB = useStore.getState().decks.B.beatGrid
+        const atJoinSec = phaseDeltaSec(engine.decks.B.position, gridB, engine.decks.A.position, gridA)
+
+        await new Promise((r) => setTimeout(r, afterDelayMs))
+        const after3sSec = phaseDeltaSec(engine.decks.B.position, gridB, engine.decks.A.position, gridA)
+
+        ctl.cancelTransition()
+
+        return {
+          skipped: false,
+          atJoinMs: atJoinSec * 1000,
+          after3sMs: after3sSec * 1000,
+          epsilonMs: POSITION_EPSILON_SEC * 1000,
+          gridAConfirmed,
+          gridBConfirmed,
+        }
+      },
+      { timeoutMs: ANALYSIS_TIMEOUT_MS, afterDelayMs: AFTER_DELAY_MS },
+    )
+
+    return { fileA: fileA.base, fileB: fileB.base, consoleErrors: errors, ...result }
+  } catch (err) {
+    return { fileA: fileA.base, fileB: fileB.base, skipped: true, reason: `script error: ${err.message}`, consoleErrors: errors }
+  } finally {
+    await page.close()
+  }
+}
+
+console.log(`Library: ${LIBRARY_DIR}`)
+const files = walk(LIBRARY_DIR)
+console.log(`${files.length} playable files found (<= ${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)}MB each)`)
+if (files.length < 2) {
+  console.error('Not enough files to form a pair — check the library path.')
+  await browser.close()
+  process.exit(2)
+}
+
+const pairs = pickPairs(files, PAIR_COUNT)
+console.log(`Measuring ${pairs.length} pair(s)...\n`)
+
+const results = []
+for (const [a, b] of pairs) {
+  console.log(`  ${a.base}  <->  ${b.base}`)
+  const r = await measurePair(a, b)
+  results.push(r)
+  if (r.skipped) {
+    console.log(`    SKIPPED — ${r.reason}`)
+  } else {
+    console.log(
+      `    at join: ${r.atJoinMs.toFixed(2)}ms   after 3s: ${r.after3sMs.toFixed(2)}ms   epsilon: ${r.epsilonMs}ms` +
+        (r.gridAConfirmed && r.gridBConfirmed ? '' : `   (grid unconfirmed: ${!r.gridAConfirmed ? a.base : ''} ${!r.gridBConfirmed ? b.base : ''})`.trimEnd()),
+    )
+  }
+  if (r.consoleErrors?.length) console.log(`    console errors: ${r.consoleErrors.join(' | ')}`)
+}
+
+await browser.close()
+
+const measured = results.filter((r) => !r.skipped)
+const skipped = results.filter((r) => r.skipped)
+
+console.log('\n=== summary ===')
+console.log(`${measured.length}/${results.length} pairs measured, ${skipped.length} skipped`)
+if (skipped.length) {
+  console.log('skipped:')
+  for (const r of skipped) console.log(`  - ${r.fileA} / ${r.fileB}: ${r.reason}`)
+}
+if (measured.length) {
+  const epsilonMs = measured[0].epsilonMs
+  const avg = (key) => measured.reduce((sum, r) => sum + Math.abs(r[key]), 0) / measured.length
+  const maxAbs = (key) => Math.max(...measured.map((r) => Math.abs(r[key])))
+  const withinPct = (key) => (100 * measured.filter((r) => Math.abs(r[key]) <= epsilonMs).length) / measured.length
+  console.log(`\nat join   — mean |error| ${avg('atJoinMs').toFixed(2)}ms, max ${maxAbs('atJoinMs').toFixed(2)}ms, within ${epsilonMs}ms epsilon: ${withinPct('atJoinMs').toFixed(0)}%`)
+  console.log(`after 3s  — mean |error| ${avg('after3sMs').toFixed(2)}ms, max ${maxAbs('after3sMs').toFixed(2)}ms, within ${epsilonMs}ms epsilon: ${withinPct('after3sMs').toFixed(0)}%`)
+  const unconfirmed = measured.filter((r) => !r.gridAConfirmed || !r.gridBConfirmed).length
+  if (unconfirmed) console.log(`${unconfirmed}/${measured.length} pair(s) had an unconfirmed beat grid on at least one side — their numbers are included above, not hidden.`)
+}
+
+process.exit(0)
