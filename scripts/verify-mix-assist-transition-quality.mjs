@@ -198,48 +198,46 @@ async function measurePair(fileA, fileB) {
     await page.goto(URL, { waitUntil: 'domcontentloaded' })
     await page.waitForTimeout(1000)
 
-    // The library shows a track's display name (extension stripped, per
-    // `library.ts`'s `name: name.replace(/\.[^.]+$/, '')`), not the raw
-    // filename — matching on the full filename here just times out.
-    const displayName = (base) => base.replace(/\.[^.]+$/, '')
-    const row = (text) => page.locator('tbody tr', { hasText: new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) })
-    await row(displayName(fileA.base)).dblclick()
-    await page.waitForTimeout(500)
-    await page.keyboard.press('KeyQ')
-    await page.waitForTimeout(500)
-
-    await page.evaluate(
-      ({ trackId }) => {
-        const dt = new DataTransfer()
-        dt.setData('application/x-soundgrid-track', trackId)
-        const target = document.querySelectorAll('section')[2] // Deck A, Mixer, Deck B, Library
-        target.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }))
-        target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt }))
-      },
-      { trackId: fileB.base },
-    )
-    await page.waitForTimeout(300)
-
+    // Not driven through the DOM (dblclick a row / drag a row onto a deck)
+    // any more: `Library.tsx` shows `track.title ?? track.name` (line ~828),
+    // and a real tagged file's ID3 title is almost never the filename — the
+    // very first real-library run above timed out on every single pair
+    // because it went looking for filename text that was never on screen.
+    // `loadTrackToDeck`/`togglePlay` (`controls.ts`) are the same functions
+    // that DOM path ultimately calls anyway, reached the same way
+    // `startAutoTransition` already is below — a direct dynamic import
+    // against the Vite dev server resolves to the exact same live module
+    // instance the running app uses. Matching tracks by `id` (the scan's
+    // `prefix+filename`, per `library.ts`) instead of by displayed text
+    // sidesteps the whole "what does this row actually say" problem.
     const result = await page.evaluate(
-      async ({ timeoutMs, afterDelayMs }) => {
+      async ({ idA, idB, scanTimeoutMs, timeoutMs, afterDelayMs }) => {
         const { useStore } = await import('/src/app/state/store.ts')
+        const ctl = await import('/src/controls.ts')
+
+        const scanDeadline = Date.now() + scanTimeoutMs
+        let trackA, trackB
+        while (Date.now() < scanDeadline) {
+          const { tracks } = useStore.getState().library
+          trackA = tracks.find((t) => t.id === idA)
+          trackB = tracks.find((t) => t.id === idB)
+          if (trackA && trackB) break
+          await new Promise((r) => setTimeout(r, 200))
+        }
+        if (!trackA || !trackB) {
+          return { skipped: true, reason: `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() }
+        }
+
+        await ctl.loadTrackToDeck('A', trackA)
+        await ctl.loadTrackToDeck('B', trackB)
 
         // A decode failure (controls.ts's loadTrackToDeck) is caught, logged,
-        // and surfaced as a visible notice within a couple of seconds — it
-        // never gets to set `track` at all. No point burning the full
-        // analysis timeout to discover that; check for it first and, if
-        // that's what happened, report the actual notice text instead of a
-        // generic "no beat grid".
-        const loadDeadline = Date.now() + 10_000
-        while (Date.now() < loadDeadline) {
-          const { decks } = useStore.getState()
-          if (decks.A.track && decks.B.track) break
-          await new Promise((r) => setTimeout(r, 300))
-        }
-        const afterLoad = useStore.getState()
-        if (!afterLoad.decks.A.track || !afterLoad.decks.B.track) {
-          const which = !afterLoad.decks.A.track && !afterLoad.decks.B.track ? 'A and B' : !afterLoad.decks.A.track ? 'A' : 'B'
-          return { skipped: true, reason: `deck ${which} never got a track loaded — notice: ${afterLoad.notice?.text ?? '(none)'}` }
+        // and surfaced as a visible notice — it never gets to set `track` at
+        // all. Report that real notice text rather than a generic failure.
+        const afterLoad = useStore.getState().decks
+        if (!afterLoad.A.track || !afterLoad.B.track) {
+          const which = !afterLoad.A.track && !afterLoad.B.track ? 'A and B' : !afterLoad.A.track ? 'A' : 'B'
+          return { skipped: true, reason: `deck ${which} never got a track loaded — notice: ${useStore.getState().notice?.text ?? '(none)'}` }
         }
 
         const deadline = Date.now() + timeoutMs
@@ -257,7 +255,7 @@ async function measurePair(fileA, fileB) {
           const describe = (id) => {
             const d = before[id]
             if (d.beatGrid) return `${id}: ok`
-            const state = d.track?.analysisState ?? '(no track loaded)'
+            const state = d.track?.analysisState ?? '(unknown)'
             const err = d.track?.analysisError ? ` — ${d.track.analysisError}` : ''
             return `${id}: analysisState=${state}${err}`
           }
@@ -269,10 +267,14 @@ async function measurePair(fileA, fileB) {
         const { engine } = await import('/src/platform/audio-webaudio/engine.ts')
         const { phaseDeltaSec } = await import('/src/core/beatgrid.ts')
         const { POSITION_EPSILON_SEC } = await import('/src/core/scratch.ts')
-        const ctl = await import('/src/controls.ts')
 
-        if (!before.A.playing || before.B.playing || before.B.loading) {
-          return { skipped: true, reason: `deck state not ready for a transition (A.playing=${before.A.playing}, B.playing=${before.B.playing}, B.loading=${before.B.loading})` }
+        ctl.togglePlay('A')
+        // Give the engine a moment to actually start before reading its
+        // position or handing it to startAutoTransition (which refuses
+        // outright if `from.playing` hasn't flipped yet).
+        await new Promise((r) => setTimeout(r, 300))
+        if (!useStore.getState().decks.A.playing) {
+          return { skipped: true, reason: 'deck A did not start playing after togglePlay' }
         }
 
         ctl.startAutoTransition('A', 'B', 0)
@@ -297,7 +299,7 @@ async function measurePair(fileA, fileB) {
           gridBConfirmed,
         }
       },
-      { timeoutMs: ANALYSIS_TIMEOUT_MS, afterDelayMs: AFTER_DELAY_MS },
+      { idA: fileA.base, idB: fileB.base, scanTimeoutMs: 15_000, timeoutMs: ANALYSIS_TIMEOUT_MS, afterDelayMs: AFTER_DELAY_MS },
     )
 
     return { fileA: fileA.base, fileB: fileB.base, consoleErrors: errors, ...result }
