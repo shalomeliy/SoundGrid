@@ -265,11 +265,18 @@ async function measurePair(fileA, fileB) {
           // (core/library-boot.ts's bootCopy).
           const domText = document.body.innerText || ''
           const domMatchesBoot = domText.includes('Looking for your library') || domText.includes('No music loaded yet') || domText.includes("didn't load")
+          // App.tsx renders Deck A, Mixer, Deck B, Library as siblings in
+          // that order — Library is last, so a short slice from the start
+          // (Deck A/Mixer alone run well past 200 chars) never reaches it.
+          // Find it by content instead of by a fixed offset that assumes a
+          // page layout this script doesn't otherwise know.
+          const libIdx = domText.toLowerCase().indexOf('librar')
+          const domSnippet = libIdx >= 0 ? domText.slice(Math.max(0, libIdx - 50), libIdx + 400) : domText.slice(-600)
           return {
             skipped: true,
             reason:
               `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() +
-              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; initScriptError: ${window.__initScriptError ?? 'none'}; unhandled: ${JSON.stringify(window.__unhandled ?? [])}; domMatchesBoot=${domMatchesBoot}; domSnippet: ${JSON.stringify(domText.slice(0, 200))})`,
+              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; initScriptError: ${window.__initScriptError ?? 'none'}; unhandled: ${JSON.stringify(window.__unhandled ?? [])}; domMatchesBoot=${domMatchesBoot}; domTextLength=${domText.length}; domSnippet(near ${libIdx >= 0 ? "'librar'" : 'end, none found'}): ${JSON.stringify(domSnippet)})`,
           }
         }
 
