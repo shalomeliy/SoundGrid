@@ -513,6 +513,18 @@ beatgrid.test.ts`, אימות דפדפן חי בכל תת‑צעד), ושני ה
 10. סגירה: `npm run check`, `change-reviewer`, `ROADMAP.md` ✅, `HANDOFF.md`,
     הוראות בדיקה בעברית, `context_check.py`.
 
+### פתוח לגרסה עתידית: דיוק ומהירות ההצטרפות במעבר האוטונומי
+נמדד בפועל על הספרייה האמיתית (שלב 8, 05/09, 10 זוגות תואמי-BPM): שגיאת פאזה
+ב"הצטרפות" (`atJoin`) חצתה 1ms-epsilon ב‑7/10 זוגות (עד 280ms), אבל תוך 3 שניות
+לולאת ה‑SYNC כיווצה כמעט את כולן לכמעט אפס — חוץ מזוג אחד שנשאר על ~100ms
+(ל‑beat grid שם היה `unconfirmed`). שני כיוונים לבדוק בגרסה שתטפל בזה:
+- **לצמצם את פער ה‑`atJoin` עצמו**, לא רק לסמוך על ה‑SYNC לתקן אחר כך — ייתכן
+  שהפער נובע מפער זמן אמיתי בין החישוב (`phaseAlignedEntrySec`) לרגע ה‑seek
+  בפועל, לא מהמתמטיקה עצמה; דורש מדידה ישירה בתוך `controls.ts`, לא רק חיצונית.
+- **מעבר לדק עם beat grid `unconfirmed`** — האם `startAutoTransition` צריך לסרב
+  או להזהיר, כמו שהוא כבר מסרב כשאין grid בכלל?
+המספרים המלאים: `scripts/verify-mix-assist-transition-quality.mjs`.
+
 ## v0.5.0 — Pad Modes
 **מטרה:** גריד הפדים עושה יותר מ‑hot cues.
 - מצבים: Hot Cue, Auto Loop, Loop Roll, Beat Jump, Sampler (מעבר במצב + shift)
