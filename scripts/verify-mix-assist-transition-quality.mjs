@@ -257,11 +257,19 @@ async function measurePair(fileA, fileB) {
           // never got that far at all (hung, not failed).
           const lib = useStore.getState().library
           const sample = lib.tracks.slice(0, 5).map((t) => t.id)
+          // Does the rendered page actually show the stuck state too, or is
+          // this useStore read landing on a disconnected copy of the module
+          // (Vite serving a different instance than the one main.tsx booted)
+          // while the real page moved on? "Looking for your library…" is the
+          // exact copy Library.tsx shows for boot === 'checking'
+          // (core/library-boot.ts's bootCopy).
+          const domText = document.body.innerText || ''
+          const domMatchesBoot = domText.includes('Looking for your library') || domText.includes('No music loaded yet') || domText.includes("didn't load")
           return {
             skipped: true,
             reason:
               `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() +
-              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; initScriptError: ${window.__initScriptError ?? 'none'}; unhandled: ${JSON.stringify(window.__unhandled ?? [])})`,
+              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; initScriptError: ${window.__initScriptError ?? 'none'}; unhandled: ${JSON.stringify(window.__unhandled ?? [])}; domMatchesBoot=${domMatchesBoot}; domSnippet: ${JSON.stringify(domText.slice(0, 200))})`,
           }
         }
 
