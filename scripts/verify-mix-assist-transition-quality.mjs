@@ -9,6 +9,16 @@
  * (both args optional — default library dir is the Windows path above,
  * default pair count is 8)
  *
+ * **Restart the dev server right before running this** (stop it, `npm run
+ * dev` again). Confirmed the hard way: against a dev server that had been
+ * running for a while (many page loads' worth of Vite's own module-cache
+ * history), this script's `import('/src/app/state/store.ts')` resolved to a
+ * *different* store instance than the one the actual rendered page was
+ * using — the DOM showed a fully scanned, working library while this
+ * script's own `useStore.getState()` read an empty one stuck on
+ * `boot: 'checking'` forever. A fresh dev server does not have that stale
+ * cache yet, and the same script run against one worked immediately.
+ *
  * What this measures, and why it can't be a unit test: `core/beatgrid.ts`
  * and `core/transition.ts` are pure and already have unit tests (synthetic
  * envelopes, boundary values) — what those *cannot* tell us is whether
