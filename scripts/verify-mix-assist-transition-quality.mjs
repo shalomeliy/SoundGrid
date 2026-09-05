@@ -140,7 +140,27 @@ function harness(fileA, fileB) {
   }
   return `(() => {
   window.__unhandled = [];
+  window.__initScriptError = null;
   addEventListener('unhandledrejection', (e) => window.__unhandled.push(String(e.reason)));
+  // Object.defineProperty throws outright on a property the real browser
+  // already defines as non-configurable (a real Chromium — unlike whatever
+  // this was first written and smoke-tested against — may genuinely define
+  // showDirectoryPicker that way). An uncaught throw here aborts the rest of
+  // this whole init script, silently skipping the indexedDB mock below it —
+  // library.boot stuck on 'checking' forever looks exactly like that, with
+  // no error anywhere a normal run would think to look. Plain assignment
+  // only needs the property to be writable, not configurable, so it's the
+  // fallback; the error is recorded either way instead of swallowed.
+  const define = (name, value) => {
+    try {
+      Object.defineProperty(window, name, { configurable: true, value });
+    } catch (err) {
+      try { window[name] = value } catch (err2) {
+        window.__initScriptError = name + ': defineProperty failed (' + err.message + '), assignment failed (' + err2.message + ')';
+      }
+    }
+  };
+  try {
   const files = ${JSON.stringify(files)};
   const makeFile = (name) => ({
     kind: 'file', name,
@@ -160,11 +180,12 @@ function harness(fileA, fileB) {
     requestPermission: async () => 'granted',
     entries: async function* () { for (const n of Object.keys(files)) yield [n, makeFile(n)]; },
   });
-  Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: async () => makeDir('Tracks') });
   const mem = new Map();
   mem.set('soundgrid:libraryDir', makeDir('Tracks'));
   const fire = (obj, prop, value) => setTimeout(() => { obj.result = value; obj[prop] && obj[prop](); }, 0);
-  Object.defineProperty(window, 'indexedDB', { configurable: true, value: {
+  // indexedDB first: it's the one restoreLibraryFolder actually depends on,
+  // so if only one override can land, it should be this one.
+  define('indexedDB', {
     open() {
       const req = {};
       setTimeout(() => {
@@ -183,7 +204,11 @@ function harness(fileA, fileB) {
       }, 0);
       return req;
     },
-  } });
+  });
+  define('showDirectoryPicker', async () => makeDir('Tracks'));
+  } catch (err) {
+    window.__initScriptError = 'harness setup threw: ' + err.message;
+  }
 })()`
 }
 
@@ -236,7 +261,7 @@ async function measurePair(fileA, fileB) {
             skipped: true,
             reason:
               `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() +
-              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; unhandled: ${JSON.stringify(window.__unhandled ?? [])})`,
+              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; initScriptError: ${window.__initScriptError ?? 'none'}; unhandled: ${JSON.stringify(window.__unhandled ?? [])})`,
           }
         }
 
