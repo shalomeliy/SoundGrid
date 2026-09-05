@@ -55,7 +55,11 @@ const LIBRARY_DIR = process.argv[2] || DEFAULT_DIR
 const PAIR_COUNT = Number(process.argv[3] || 8)
 /** Keeps the inlined-base64 init script fast; real WAVs are the outlier, mp3/m4a dominate the library (v0.1.7). */
 const MAX_FILE_BYTES = 15 * 1024 * 1024
-const ANALYSIS_TIMEOUT_MS = 20_000
+// Real tracks are full-length (3-6 minutes of PCM to run the onset envelope
+// over), not the 20s synthetic clips this was first smoke-tested against —
+// 20s was enough for those and not for a real library (first real run: 8/8
+// pairs timed out). 90s per side, checked well before that on real material.
+const ANALYSIS_TIMEOUT_MS = 90_000
 const AFTER_DELAY_MS = 3_000
 
 const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'm4a', 'm4b', 'mp4', 'aac', 'ogg', 'oga', 'opus', 'weba', 'webm', 'aiff', 'aif'])
@@ -141,7 +145,12 @@ function harness(fileA, fileB) {
   const makeFile = (name) => ({
     kind: 'file', name,
     getFile: async () => {
-      const bytes = Uint8Array.from(atob(files[name]), (c) => c.charCodeAt(0));
+      // A plain for-loop, not Uint8Array.from(atob(...), cb) — the latter's
+      // per-element callback made real multi-MB files visibly slower to
+      // stage than this cost justifies.
+      const binary = atob(files[name]);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       return new File([bytes], name);
     },
   });
@@ -222,10 +231,18 @@ async function measurePair(fileA, fileB) {
         }
         const before = useStore.getState().decks
         if (!before.A.beatGrid || !before.B.beatGrid) {
-          return {
-            skipped: true,
-            reason: !before.A.beatGrid && !before.B.beatGrid ? 'neither deck got a beat grid' : !before.A.beatGrid ? 'deck A got no beat grid' : 'deck B got no beat grid',
+          // Never a bare "no beat grid" — that could mean "still analyzing,
+          // just needs more time", "analysis errored" (with a real message),
+          // or "analysed fine but found no periodicity at all", and those
+          // call for three different fixes.
+          const describe = (id) => {
+            const d = before[id]
+            if (d.beatGrid) return `${id}: ok`
+            const state = d.track?.analysisState ?? '(no track loaded)'
+            const err = d.track?.analysisError ? ` — ${d.track.analysisError}` : ''
+            return `${id}: analysisState=${state}${err}`
           }
+          return { skipped: true, reason: `${describe('A')} | ${describe('B')}` }
         }
         const gridAConfirmed = before.A.beatGridConfirmed
         const gridBConfirmed = before.B.beatGridConfirmed
