@@ -1,193 +1,174 @@
-# FEATURE_SPEC — v0.4.5: "השיר הבא" — hardening the already-shipped mix highlighter
+# FEATURE_SPEC — v0.4.7: קרבת אנרגיה בנקודת המעבר
 
-Status: approved-pending-user-confirmation. Written from a fan-out of product-expert,
-architecture-expert, design-expert and qa-expert reviews (security not triggered — no
-new external input, no new file/library access, no new dependency), plus three scope
-decisions the owner made directly in this session (see "Open decisions" below).
-`SECURITY NOT TRIGGERED — no trust boundary crossed by this change.`
+סטטוס: מאושר לתכנון טכני (05/09). נכתב מסבב סקירות product-expert / architecture-expert /
+design-expert / qa-expert, ועוד סבב שני ממוקד ל-architecture-expert ו-design-expert אחרי
+שהיקף הפיצ'ר השתנה תוך כדי (ראה "איך הגענו לזה" למטה). כל החלטות המוצר אושרו ישירות מול
+שלום בשיחה זו.
 
-## Context and observed problem
+`SECURITY NOT TRIGGERED` — אין קלט חיצוני חדש, אין גישה חדשה לקבצים/ספרייה, אין תלות חדשה.
+כל החישוב טהור על נתונים שכבר קיימים בזיכרון (bands של שני הדקים), אין שינוי בהרשאות קובץ.
 
-`ROADMAP.md`'s original v0.4.5 spec called for three things: BPM proximity (incl.
-half/double-time), Camelot key compatibility, and energy proximity, driving a graded
-highlight in the library while a deck plays. Two of the three are already built and live
-on `main` — `src/core/recommend.ts` (`mixRecommendations`, `keysCompatible`) wired into
-`src/app/components/Library.tsx` (a `useMemo` recompute keyed on both decks'
-playing/bpm/tempo/track/camelot, a combined "♫ N mixable" toggle+filter button, and
-per-row bold+colored-dot / dim-dot rendering) — but nobody verified it against the
-version's own written acceptance criteria, and it has zero automated tests despite being
-pure `core/` logic. The third piece, energy proximity, does not exist anywhere in the
-codebase: there is no per-track energy/loudness metric today (`bands` in
-`core/types.ts` is a waveform-*coloring* artifact, not a track-level score).
+## איך הגענו לזה (חשוב לקרוא לפני שממשיכים לקוד)
 
-An independent four-angle review (product/architecture/design/QA) surfaced concrete,
-verified gaps in what's already shipped:
+ROADMAP.md תיאר את v0.4.7 כ"קרבת אנרגיה בין טראקים" — השוואת עוצמת קול ממוצעת בין שני
+שירים שלמים, שדורשת מעבר ניתוח חדש וגרסת מטמון חדשה. **שלום דחה את המסגור הזה נכון**: לשיר
+יכול להיות ממוצע "רועש" בזמן שהוא מתחיל שקט, אז מספר אחד לכל השיר מטעה. הפיצ'ר הנכון הוא
+להשוות **את הרגע הספציפי שבו נכנסים** (נקודת המעבר שנבחרת) **מול מה שמתנגן עכשיו בפועל** —
+לא שיר מול שיר, אלא רגע מול רגע.
 
-- **Doc/code mismatch**: `ROADMAP.md` says "±6% BPM"; the code actually gates any match
-  at 8% error and a *strong* (bold) match at 3% (`recommend.ts:77,82`). Found
-  independently by three of four reviewers.
-- **No tests**: `tests/core/` has 9 files covering beatgrid, hotcues, genres, etc. —
-  none for `recommend.ts`, the exact logic that decides what gets highlighted.
-- **A real tie-break bug**: when a track matches two playing decks with equal tempo
-  error, `err < bestErr` (strict) picks the first deck by array order regardless of
-  which is the actually-better match (`recommend.ts:67-75`).
-- **Legibility at real scale**: the match dot and the unrelated analysis-state dot are
-  both `h-1.5 w-1.5` (6 CSS px → ~4.6px physical on the owner's 125%-scaled 14" laptop,
-  per `CLAUDE.md`'s 0.76 multiplier). Strong-vs-loose is opacity-graded on that same
-  sub-5px dot — not reliably legible while scrolling a live list.
-- **Silent zero-state**: the "♫ N mixable" button is conditionally rendered only when
-  `recs.size > 0` (`Library.tsx:418`). A deck playing with nothing currently mixing shows
-  *nothing* — no way to tell "no matches right now" from "feature isn't here." This is
-  the same class of silent gap `CLAUDE.md`'s central rule forbids elsewhere in the app.
-- **No keyboard/screen-reader path**: the match reason lives only in a native `title`
-  attribute on a non-focusable `<tr>` (`Library.tsx:685-717`) — hover-only, which
-  undercuts the original spec's own "never rely on color alone (accessibility)" bullet
-  for anyone not using a mouse.
+זה גם אומר שהפיצ'ר לא נוגע בטבלת הספרייה (BPM/מפתח, "N מתאימים") בכלל — הוא משפר את הפאנל
+שכבר קיים מ-v0.4.6 (`TransitionPointsPanel`) שבו בוחרים איפה בדיוק להיכנס לשיר החדש.
+בבדיקת הארכיטקטורה התברר שזה גם **לא דורש ניתוח חדש ולא גרסת מטמון חדשה** — כל הנתונים
+הדרושים (עקומת עוצמה לפי שנייה, לשני הדקים) כבר מחושבים ונמצאים בזיכרון; זו תוספת חישוב
+טהור, לא ניתוח מחדש של הספרייה.
 
-## Target user and decision
+תוך כדי הסבב שלום הוסיף דרישה נוספת: הנקודה שנבחרת בפאנל לא רק מפעילה את המעבר (כמו היום)
+— היא גם נשמרת כהוט-קיו עם שם, כדי שבפעם הבאה שהשיר נטען אפשר לקפוץ ישר לשם מפאד בקונטרולר.
 
-The owner: a solo DJ, non-programmer, glancing at the library while a deck is already
-playing live, in front of people. The decision this feature serves is "which track do I
-reach for next" — it has to be trustworthy at a glance, in under a second, without
-requiring a hover or a second look.
+## הקשר והבעיה שנצפתה
 
-## User and business outcome
+`core/recommend.ts` (v0.4.6) כבר מסמן בטבלת הספרייה אילו שירים תואמי-BPM/מפתח לדק שמנגן.
+`TransitionPointsPanel.tsx` (v0.4.6) כבר מציע נקודות מעבר בתוך השיר שנבחר, לפי היוריסטיקת
+עוצמה טהורה (`core/structure.ts`, "energy builds"/"energy drops"/"quiet passage") — אבל
+כל נקודה מתויגת רק לפי **צורת השיר של עצמה**, בלי שום קשר למה שבאמת מתנגן באותו רגע בדק
+השני. די-ג'יי יכול לבחור נקודה "אחרי האינטרו" שנשמעת מצוין בתוך השיר שלה, ועדיין תיפול
+כמו רעם על דק שכרגע נמצא בפזורה שקטה.
 
-Every track that genuinely mixes with what's playing is highlighted correctly and
-legibly at the screen's real physical size, updates within 100ms of a deck swap, is
-explained through more than color and more than a mouse hover, and never goes silently
-missing when there's simply nothing to recommend. The logic that decides all of this is
-covered by real tests, so a future change to the thresholds or the tie-break rule fails a
-test instead of shipping unnoticed.
+## למשתמש ולהחלטה
 
-## Goal
+**מי:** די-ג'יי (שלום) שכבר בחר שיר תואם לדק הריק ופתח את פאנל נקודות המעבר, תוך כדי שהדק
+השני מנגן בפועל.
 
-1. **Verify, don't just trust, the existing acceptance criteria.** Confirm the deck-swap
-   update happens within 100ms in the running app (not the type checker), with a
-   browser-verified script following this repo's `scripts/verify-*.mjs` pattern.
-2. **Add real unit tests for `core/recommend.ts`** — `keysCompatible` (same code, ±1,
-   wrap-around, relative major/minor, non-adjacent, malformed input, case sensitivity)
-   and `mixRecommendations` (half/double-time selection, the 8%/3% two-tier boundary,
-   exclusion of null-BPM and already-loaded tracks, both-decks-playing tie-break,
-   empty-input edge cases) — roughly 20+ cases, in `tests/core/recommend.test.ts`.
-3. **Fix the tie-break**: when two playing decks tie on tempo error for the same track,
-   prefer the deck with a compatible key over one that clashes or is unknown, before
-   falling back to array order. Small, contained change to `mixRecommendations`.
-4. **Reconcile the doc/code mismatch**: keep the shipped 8%/3% thresholds (already live,
-   no reason to change working, unverified-as-wrong behavior) and correct `ROADMAP.md`'s
-   "±6%" prose to describe the real two-tier rule.
-5. **Fix the two real UI gaps**:
-   - Replace the opacity-only strong/loose distinction on a ~4.6px-physical dot with a
-     size/fill distinction that survives the owner's actual screen (filled dot for
-     strong, outline/ring for loose), visually separated from the unrelated
-     analysis-state dot it currently sits flush against.
-   - Show an explicit "no mixable tracks" state instead of the button vanishing when a
-     deck plays and `recs.size === 0`.
-6. **Close the accessibility gap**: give the match reason a non-hover path — a focusable
-   row (or equivalent) with an `aria-label`/accessible name carrying the same
-   information the tooltip does, when a match is present.
+**ההחלטה שהפיצ'ר עוזר לקבל:** "אם אני לוחץ על הנקודה הזו עכשיו, זה יישמע כמו המשך טבעי או
+כמו קפיצה?" — לא "אילו שירים תואמים בספרייה" (זה כבר קיים) ולא "מה מבנה השיר" (זה לא
+בתכולה ולא יהיה — ר' `structure.ts`).
 
-## Non-goals
+## תוצאה למשתמש ולעסק
 
-- **Energy proximity** — explicitly out of scope for this version (see "Open decisions").
-  No energy metric, no analyzer change, no cache-version bump here.
-- Real audio-based key detection (blocked on `v0.9.0`, itself not yet built) — Camelot
-  compatibility stays tag-derived, exactly as it is today.
-- Any redesign of the highlight system beyond the two concrete legibility/zero-state
-  fixes above — no three-tier visual system, no new chrome, no Settings exposure of the
-  match thresholds (calibration constants stay out of Settings per the v0.2.5 rule).
-- Linking the match's `keyMatch` signal into the existing Camelot-wheel key-color system
-  (`keyColor()`) — a real design opportunity the design review noted, but a visual-system
-  change, not a hardening fix; left for a future pass if the owner wants it.
+פחות מעברים שנשמעים "שבורים" רק בגלל שהעיתוי נבחר בעיוורון לגבי מה שכבר מתנגן — המשך ישיר
+של v0.4.6 (Mix Assist), לא פיצ'ר חדש בפני עצמו.
 
-## Assumptions
+## מטרה
 
-- The already-shipped 8%/3% thresholds are the intended behavior (owner confirmed:
-  don't change what's tuned and working without a measured reason to).
-- "Loose match" still means dot-only, no bold — only *how* the dot communicates that
-  changes, not the underlying strong/loose semantics.
+בפאנל נקודות המעבר הקיים, לתייג כל נקודה מועמדת לפי קרבת העוצמה שלה **לרגע הנוכחי** בדק
+המנגן — בנוסף לתיוג הקיים (energy-builds/drops/quiet). התיוג מתעדכן כל עוד הפאנל פתוח,
+כי הדק המנגן ממשיך לזוז.
 
-## Proposed experience
+## לא בתכולה
 
-No new screens or panels. Within the existing library row and header:
+- שום שינוי בטבלת הספרייה, ב-`mixRecommendations`, ב-"N מתאימים", או בעיגול מלא/ריק של
+  BPM+מפתח. אלה נשארים בדיוק כמו ב-v0.4.6.
+- אין ציון מספרי (RMS, אחוזים) בממשק — רק ניסוח יחסי בשפה פשוטה.
+- אין נורמליזציה של עוצמת השמעה בין שירים ממאסטרים שונים (ReplayGain/LUFS) — מחוץ לתכולה.
+- אין ניתוח מבנה אמיתי (טימבר/דרופ) — נשאר "לפי אנרגיה", אף פעם לא "מבנה זוהה".
+- אין ניתוח חדש ואין גרסת מטמון חדשה — ר' "השלכות מערכת/נתונים" למטה.
+- מצב פדים (Hot Cue / Loop / וכו') הוא v0.5.0 בפני עצמה — הפיצ'ר כאן משתמש בתשתית הוט-קיו
+  הקיימת של v0.4.0 בלבד (`setHotCue`), לא בונה מערכת פדים חדשה.
 
-- A strong match: bold track title (unchanged) + a small filled dot in the matching
-  deck's color.
-- A loose match: dot only, rendered as an outline/ring instead of a dimmed filled circle,
-  so it reads distinctly from the analysis-state dot beside it and survives the laptop's
-  real ~0.76x physical scale.
-- The match reason (which deck, tight vs. loose, key compatible/clashing/unknown) is
-  reachable without a mouse — at minimum an accessible name on the row equivalent to
-  today's tooltip text.
-- When a deck is playing and nothing in the library currently mixes, the header shows
-  that state explicitly instead of the button disappearing.
+## ההנחות
 
-## System/data implications
+- הדק המנגן (deck A) כבר עבר ניתוח רקע ויש לו `bands` בזיכרון — אם לא, זה מצב ידוע שצריך
+  להיאמר במפורש (ר' "מצבים" למטה), לא לנחש.
+- דיוק ההיוריסטיקה מוגבל לרזולוציה של שנייה אחת (`WINDOW_SEC` הקיים ב-`structure.ts`) —
+  לא רגיש יותר מזה, ולא אמור להיראות כך בממשק.
 
-None beyond `core/recommend.ts` and `Library.tsx` — no new `core/ports/`, no platform
-capability, no persistence change, no dependency-cruiser boundary crossed. Pure logic
-change plus presentational change.
+## החוויה המוצעת
 
-## Acceptance criteria (observable behavior)
+1. הדק הריק טעון עם שיר תואם, ומופיע פאנל נקודות המעבר (כמו היום).
+2. ליד כל נקודה מועמדת (ה-Pill הקיים עם "past the intro — energy builds" וכו') מופיעה שורה
+   שנייה, קטנה, שאומרת במילים פשוטות איך העוצמה בנקודה הזו נראית **ביחס למה שמתנגן עכשיו**
+   בדק A — למשל "קרוב למה שמתנגן עכשיו" / "שקט יותר ממה שמתנגן עכשיו" / "חזק יותר ממה
+   שמתנגן עכשיו". לא "חלק"/"קפיצה" — ניסוח שמתאר השוואה, לא מבטיח תוצאה.
+3. השורה הזו מתעדכנת בערך פעם בשנייה כל עוד הפאנל פתוח והדק ממשיך לנגן — לא בכל פריים,
+   כדי לא ליצור הבהוב סביב סף ההחלטה.
+4. אם הניתוח של דק A עצמו עדיין לא מוכן או נכשל, השורה אומרת זאת במפורש ("אי אפשר להשוות
+   עדיין — דק A עדיין מנותח") על כל הנקודות — לעולם לא מוצג ניחוש כאילו "דומה".
+5. לחיצה על נקודה: **בדיוק כמו היום** — המעבר האוטומטי מתחיל מיד (`startAutoTransition`),
+   **ובנוסף** הנקודה נשמרת כהוט-קיו על דק הכניסה, בפאד ריק, עם שם תיאורי (לא רק מספר) —
+   כדי שבפעם הבאה שהשיר הזה נטען אפשר לקפוץ ישר לנקודה מהפאד בקונטרולר בלי לעבור שוב את
+   כל התהליך.
 
-- `npm test` includes `tests/core/recommend.test.ts` and it is green, covering the case
-  list above.
-- A browser-verified measurement shows the highlight set updates within 100ms of
-  swapping the loaded track on a deck.
-- A track within the shipped strong threshold (≤3% tempo error, tempo-adjusted) and a
-  compatible key renders bold with a filled dot; a track between 3% and 8% renders an
-  outline dot, not bold; a track beyond 8%, or already loaded on a deck, or with no BPM,
-  shows no match at all.
-- When two playing decks tie exactly on tempo error for the same track and one has a
-  compatible key while the other doesn't, the compatible one is chosen.
-- With a deck playing and zero library matches, the header shows an explicit "no
-  mixable tracks" state, not an absent button.
-- The match reason is available via keyboard/assistive tech, not only mouse hover.
-- `ROADMAP.md`'s v0.4.5 section states the real 8%/3% behavior, not "±6%".
+## השלכות מערכת/נתונים
 
-## Loading, empty, error, partial, recovery states
+- **אין ניתוח חדש, אין גרסת מטמון חדשה.** כל מה שצריך (עקומת עוצמה לפי שנייה של שני הדקים)
+  כבר מחושב מ-`bands` הקיים. הוספת חישוב טהור ב-`core/structure.ts` (ליד
+  `findTransitionCandidates`), שמשווה בין העקומה של דק B בנקודה המועמדת לבין העקומה של דק A
+  ברגע הנוכחי שלו — שתיהן מנורמלות כל אחת לשיא-כמעט-מקסימלי של עצמה (אותה שיטה שכבר קיימת).
+- מיקום הניגון החי של דק A כבר יושב ב-store (מתעדכן על ידי לולאת הרינדור הקיימת) — צריך רק
+  להעביר אותו כפרופ נוסף ל-`TransitionPointsPanel`, בקיבוץ לשנייה שלמה (לא כל פריים).
+- שמירת הוט-קיו על נקודה נבחרת דורשת הרחבה קטנה ל-`setHotCue` הקיים כך שיקבל מיקום ותווית
+  מפורשים במקום תמיד לקחת את המיקום הנוכחי ותווית מספרית — הפרטים ל-PLAN הטכני.
+- שום גבול שכבות לא מופר: core/ נשאר טהור (רק מספרים נכנסים), אין port חדש, אין capability
+  חדש.
 
-- **Empty** (no deck playing): unchanged — no highlighting, no header control shown
-  (this state was already correct and isn't part of the reported gaps).
-- **Empty matches while playing** (new): explicit "no mixable tracks" state (goal #5).
-- No new error or loading states — this feature has no async operation of its own; it
-  derives synchronously from state already in the store.
+## קריטריוני קבלה (התנהגות נצפית)
 
-## Accessibility / security / privacy / operational constraints
+1. כשדק A מנגן ודק B טעון עם שיר תואם ופאנל נקודות המעבר פתוח: כל נקודה מועמדת מציגה שורה
+   שנייה עם ניסוח יחסי ("קרוב"/"שקט יותר"/"חזק יותר" ממה שמתנגן עכשיו).
+2. השורה הזו משתנה תוך כדי שדק A ממשיך לנגן (בערך פעם בשנייה), בלי הבהוב מהיר.
+3. אם דק A טרם נותח או שהניתוח נכשל — כל הנקודות מציגות הודעת "אי אפשר להשוות עדיין" במקום
+   ניחוש.
+4. לחיצה על נקודה מפעילה את המעבר האוטומטי בדיוק כמו ב-v0.4.6 (ללא שינוי בהתנהגות הקיימת).
+5. אותה לחיצה גם יוצרת הוט-קיו חדש בפאד ריק על דק הכניסה, עם תווית שאינה סתם מספר — ניתן
+   לראות אותו ב-Pad Grid מיד אחרי הבחירה.
 
-- Accessibility is the core of goal #6 above — this is the fix, not a constraint that's
-  merely respected.
-- `SECURITY NOT TRIGGERED` — no new external input, file access, or dependency.
-- No calibration constant (the 8%/3% thresholds, or any new tie-break constant) is
-  exposed on the Settings screen, per the existing v0.2.5 rule
-  (`tests/repo/settings-layer3.test.ts`).
+## מצבים — טעינה/ריק/שגיאה/חלקי/התאוששות
 
-## Verification plan and evidence
+- **דק A עדיין בניתוח רקע:** "אי אפשר להשוות עדיין — דק A עדיין מנותח" על כל נקודה. לא
+  מוסתר, לא מוצג ניחוש.
+- **ניתוח דק A נכשל:** אותו טקסט במהות, מנוסח כשגיאה ולא כ"עדיין" (בהתאם לאבחנה הקיימת של
+  analysisFailed בפאנל).
+- **אין נקודות מועמדות בכלל (המצב הקיים):** לא משתנה — "No clear transition points found".
+- **כל 8 פדי ההוט-קיו על דק הכניסה תפוסים:** הפאד **הישן ביותר שנוצר** (לפי סדר יצירה, לא
+  לפי אינדקס) נדרס אוטומטית בנקודה החדשה — סוכם עם שלום (05/09). זו דריסה **גלויה**, לא
+  שקטה: הפאד שנדרס חייב להיראות משתנה בפועל ב-Pad Grid מיד אחרי הבחירה, לא רק בזיכרון.
+- **הפאנל נסגר/הדק משתנה תוך כדי:** אין דבר שנשאר "תקוע" מהעדכון החי — אותו כלל קיים כבר
+  ב-v0.4.6 לביטול הפאנל כשמצב הדק משתנה.
 
-- `npm run check` green (tsc + oxlint + depcruise + vitest), including the new
-  `recommend.test.ts` suite.
-- A new browser-verification script (`scripts/verify-recommendations.mjs`, Playwright,
-  following the `verify-analysis-queue.mjs` pattern) exercising: load a track on deck A,
-  confirm it's excluded from its own recommendations; load a compatible track on deck B,
-  confirm a strong match renders; load a clashing-key track, confirm a loose match
-  renders; swap the deck A track and measure the highlight update latency.
-- Manual owner verification in the real running app per this repo's "hand the user a way
-  to check it" rule (written in Hebrew when this closes).
-- Independent review via `.claude/agents/change-reviewer.md` before closing, as this
-  repo's Definition of Done requires.
+## נגישות/אבטחה/פרטיות/תפעול
 
-## Open decisions and tradeoffs (resolved this session, recorded here)
+- נגישות: השורה החדשה חייבת להיות חלק מאותו `aria-describedby`/טקסט הנגיש שכבר קיים לכפתור
+  הנקודה, לא רק ויזואלית.
+- אבטחה/פרטיות: `SECURITY NOT TRIGGERED` — אין קלט/פלט חיצוני חדש.
+- תפעול: אין תלות רשת חדשה, אין הרעה בביצועים (עדכון פעם בשנייה, לא בכל פריים — נבדק כדרישה
+  מפורשת, לא כאופטימיזציה מאוחרת).
 
-1. **Scope: harden vs. also build energy proximity now.** All four expert reviews
-   independently recommended deferring energy — it requires defining what "energy" even
-   means (RMS? spectral? perceptual loudness?), a new analysis pass (likely a real audio
-   decode, not a cheap tag read), a cache-version bump, and new scoring/UI — sized as its
-   own version, not a tail addition. The owner initially chose to build it now, then,
-   after the tradeoff was made explicit, chose to defer. **Decision: defer.**
-2. **The ±6% (doc) vs. 8%/3% (code) mismatch.** Owner decision: keep the shipped,
-   already-working thresholds; fix the ROADMAP prose to match reality rather than risk
-   changing live matching behavior without a measured reason.
-3. **Where energy proximity goes now that it's deferred.** Owner decision: its own
-   future version (tracked as `v0.4.7` in `ROADMAP.md`, placeholder only — no detailed
-   spec written yet; needs its own product/architecture pass when picked up), not folded
-   into `v0.4.6` (Mix Assist) and not silently dropped.
+## תוכנית אימות וראיות
+
+- `npm run check` ירוק.
+- בדיקות יחידה חדשות ב-`tests/core/structure.test.ts` (או קובץ חדש מקביל) לפונקציית ההשוואה
+  הטהורה: מקרי קצה — שני דקים בעוצמה זהה, דק A בשיא מול דק B בשקט, `null`/חסר bands בדק A.
+- אימות בדפדפן אמיתי (Chromium headless בסביבה מרוחקת / Chrome אמיתי של שלום): לטעון שני
+  טראקים אמיתיים בעלי פרופיל עוצמה שונה, לוודא שהתיוג משתנה בפועל תוך כדי ניגון ולא נתקע.
+- **לא ייחשב כ"נבדק":** "זה מתקמפל" בלבד. חייב להיות תיעוד עם תצפית קונקרטית (איזה טראק,
+  איזו נקודה, מה הראה השורה).
+
+## הוראות בדיקה לשלום (בעברית, בסוף המימוש)
+
+ייכתבו בסיום המימוש בפועל, לפי הפורמט הקבוע ב-CLAUDE.md: מה ללחוץ, מה אמור להופיע, מה הסימן
+שזה שבור.
+
+## החלטות פתוחות — לא חוסמות את התכנון הטכני
+
+1. **הטקסט המדויק לתווית ההוט-קיו החדשה** (איזו מילה בעברית/אנגלית, האם לכלול את הסיבה
+   כמו "כניסה — לפי אנרגיה" או תווית קצרה בלבד) — לתכנון ה-PLAN.
+2. **ניסוח מדויק לשלוש הרמות** (קרוב/שקט יותר/חזק יותר) — הכיוון אושר, הניסוח הסופי בעברית
+   ייבדק מול שלום כשהממשק מוכן להצגה.
+
+## תגלית בזמן התכנון: לתווית "רלוונטית" אין היום שום מקום שמציג אותה
+
+`PadGrid.tsx` מציג היום תמיד מספר קבוע (1–8) על הפאד, לא משנה מה שמור ב-`label` של ההוט-קיו;
+`Waveform.tsx` מציג רק שתי אותיות ראשונות מה-label כתווית זעירה על ציר הזמן. הקונטרולר
+הפיזי (FLX4) גם לא רלוונטי — לפדים שלו אין מסך בכלל. **הוחלט (05/09): הפאד יציג את הטקסט
+הקצר במקום המספר**, כשיש לו שם תיאורי — שינוי קטן ב-`PadGrid.tsx`, לא רק ב-`controls.ts`.
+הוט-קיו שנוצר ידנית (לחיצה רגילה על פאד ריק) ימשיך להציג מספר בדיוק כמו היום.
+
+## הכל שאושר סופית (05/09)
+
+- מיקוד הפיצ'ר: השוואת נקודה מול רגע נוכחי, לא שיר מול שיר. אין שינוי בטבלת הספרייה.
+- אין ניתוח חדש, אין גרסת מטמון חדשה — חישוב טהור על נתונים קיימים.
+- עדכון תיוג פעם בשנייה, לא בכל פריים.
+- שורה שנייה תחת ה-Pill הקיים, לא מיזוג טקסט ולא רכיב חדש.
+- ניסוח יחסי ("קרוב"/"שקט יותר"/"חזק יותר"), לעולם לא "חלק"/"קפיצה" כפסיקה.
+- לחיצה על נקודה: מעבר אוטומטי מיידי (כמו היום) **וגם** שמירת הוט-קיו עם תווית תיאורית.
+- פאדים מלאים: דורס את הישן ביותר שנוצר, בגלוי (משתנה ב-Pad Grid מיד).

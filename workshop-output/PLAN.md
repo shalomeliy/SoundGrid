@@ -1,260 +1,131 @@
-# PLAN — v0.4.0: Continuous analysis + persistent metadata
+# PLAN — v0.4.7: קרבת אנרגיה בנקודת המעבר
 
-Grounded in `workshop-output/FEATURE_SPEC.md` (approved). This is the *how*; the spec
-is the *what and why* and is not reopened here except where the spec itself named an
-open implementation fork and deferred the choice to this phase.
+מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר 05/09). כל ההחלטות המוצריות כבר סוכמו שם
+— התוכנית הזו היא רק "איך", לא "מה". אין החלטת מוצר/עיצוב חדשה כאן מעבר למה שכבר אושר,
+מלבד שתי בחירות טכניות קטנות שמסומנות במפורש למטה (§3, `hotcues.ts`) — טבעיות מתוך מה
+שכבר סוכם, לא פתיחה מחדש שלו.
 
-## 1. Current architecture and relevant data flow
+## 1. ארכיטקטורה נוכחית וזרימת הנתונים הרלוונטית
 
-`loadTrackToDeck` (`src/controls.ts:91-188`) is the entire synchronous pipeline today:
+- `Deck.tsx:38` מחשב `showTransitionPoints` (הדק הזה טעון+לא מנגן, הדק השני כן מנגן) ומרנדר
+  `TransitionPointsPanel` (`Deck.tsx:149-157`) עם `bands`/`durationSec`/`beatGrid` **של הדק
+  הזה בלבד**. `otherDeckId` (שורה 25) נקרא רק בשביל `.playing` (שורה 26) — שום נתון אחר של
+  הדק השני לא זורם לכאן היום.
+- `TransitionPointsPanel.tsx:49-52` קורא ל-`findTransitionCandidates(bands, durationSec,
+  beatGrid)` (`core/structure.ts:72-127`), פונקציה טהורה שמחשבת פנימית `energyContour` +
+  `nearPeakLevel` (`structure.ts:40-62`) ולא מייצאת אותן — רק את `StructureCandidate[]`
+  הסופי. לחיצה על מועמד קוראת ל-`onSelect(sec)`, שב-`Deck.tsx:155` מחובר ל-
+  `ctl.startAutoTransition(otherDeckId, deckId, sec)`.
+- מיקום הניגון החי של שני הדקים כבר יושב ב-store (`useRenderLoop` מעדכן `positionSec` בכל
+  טיק, מוגבל ל-`maxFps`) — נתון קיים, לא צריך מנגנון חדש כדי לקרוא אותו.
+- `HotCue` (`core/types.ts:45-50`): `{ index, positionSec, label, color }`. `setHotCue`
+  (`controls.ts:690-712`) תמיד לוקח את המיקום החי הנוכחי ותווית מספרית (`${index+1}`), ורק
+  לאינדקס שהקורא כבר בחר (הלחיצה על פאד ספציפי ב-`PadGrid.tsx:61`). **אין היום שום פונקציה
+  ששומרת הוט-קיו במיקום מפורש, עם תווית מפורשת, או שבוחרת/מפנה סלוט לבד.**
+- `PadGrid.tsx:83` מציג תמיד `{i + 1}` על הפאד — **מתעלם לגמרי מ-`cue.label`**. `aria-label`
+  (שורה 63) גם מתעלם ממנו. `Waveform.tsx:232` כן קורא ל-`cue.label.slice(0, 2)` בתור תווית
+  זעירה על ציר הזמן.
+- `moveHotCue` (`core/hotcues.ts`) מאפס את ה-label לאורדינל (`${toIndex+1}`) בכל גרירה/החלפה
+  — אינווריאנטה קיימת מ-v0.4.0 שמניחה שהתווית תמיד שווה למספר הסלוט.
+- שמירה ל-IndexedDB (`persistCues`, `controls.ts:390-402`) שולחת `{hotCues, cuePointSec}`
+  כאובייקט חופשי (`putCues`) — אין סכימה קשיחה, אז הוספת שדה חדש ל-`HotCue` לא דורשת
+  מיגרציה: רשומות ישנות פשוט לא יכילו אותו, וקוד הקריאה חייב לטפל בזה (`?? 0` וכו').
 
-```
-readTrackData(track)        -> file.arrayBuffer()          [library.ts:240-243]
-  -> engine.decode(data)    -> AudioBuffer                  [platform/audio-webaudio]
-  -> analyzeWaveform(buffer)-> peaks/bands                  [analyzer-js/analyze.ts]
-  -> detectBeatGrid(buffer) -> bpm/offsetSec/confident       [core/beatgrid.ts]
-  -> patchDeck(...)         -> everything written to zustand, nothing to disk
-```
+## 2. הפרוסה הדקה מקצה לקצה
 
-Nothing survives a reload: `hotCues: []` and `cuePointSec: startSec` (`startSec` is
-hard-coded `0`, `controls.ts:166,179-180`) are reset on every load. `scanLibrary`
-(`library.ts:194-238`) is cheap (no file content read, directory walk only) and builds
-`Track.id` as `` `${prefix}${name}` `` — the scan-relative path. `readLibraryTags`
-(`library.ts:266-319`) is the existing "second pass after the list renders" pattern:
-byte-range tag reads, batched, non-blocking. `genre-overrides-idb/store.ts` is the
-existing precedent for a small dedicated IndexedDB store keyed by `track.id`, explicitly
-declining the generic `Persistence` port. `core/ports/analyzer.ts` and
-`core/ports/persistence.ts` are unimplemented seams already annotated for this version.
-`capabilities.ts` / `core/ports/capabilities.ts` is the existing feature-probe pattern
-(boolean flags, resolved once at boot, no field yet for Worker support).
+1. פונקציה טהורה חדשה ב-`core/structure.ts` שמשווה עוצמה בנקודה מועמדת בשיר הנכנס מול
+   העוצמה הנוכחית בשיר שמנגן, ומחזירה `'close' | 'quieter' | 'louder' | null`.
+2. הזרמת נתוני הדק השני (bands/duration/position/מצב ניתוח) דרך `Deck.tsx` אל
+   `TransitionPointsPanel`, בקיבוץ לשנייה שלמה כדי לא לחשב בכל פריים.
+3. שורה שנייה תחת כל Pill קיים בפאנל, עם הניסוח היחסי, ומצב "אי אפשר להשוות עדיין" כשחסר
+   נתון.
+4. פונקציה חדשה ב-`controls.ts` שנקראת מ-`onSelect` **בנוסף** ל-`startAutoTransition`
+   הקיים: מוצאת פאד ריק או דורסת את הישן ביותר, שומרת מיקום+תווית תיאורית.
+5. `PadGrid.tsx` מציג את `cue.label` בפועל (טקסט קצר) במקום המספר הקבוע.
 
-**Resolved by step 1's spike (empirically, not assumed):** neither `OfflineAudioContext`
-nor `AudioBuffer` exists at all inside a dedicated Worker in this app's target Chromium
-(tested: Chromium 141, `chromium-1194`). `typeof AudioBuffer === 'undefined'` inside the
-worker global scope threw a bare `ReferenceError` on construction. So `engine.decode`
-stays exactly where it is — main-thread only, unchanged. This does **not** block moving
-the expensive work off the main thread: `analyzeWaveform`/`detectBeatGrid`
-(`platform/analyzer-js/analyze.ts:34,178`) only ever call `buffer.numberOfChannels`,
-`buffer.getChannelData(c)`, `buffer.length`, `buffer.sampleRate` — four reads, no
-Web Audio behavior. They are refactored to take a plain `{ channels: Float32Array[],
-sampleRate: number }` instead of an `AudioBuffer`, which is both Worker-transferable
-(each `Float32Array`'s backing `ArrayBuffer` moves with zero copy) and, as a side effect,
-a small decoupling cleanup — this numeric code never needed a live Web Audio object, it
-was just never asked to run anywhere else. Content hashing does **not** need the Worker
-either: `crypto.subtle.digest` is itself asynchronous in Chromium (does not block the
-main thread while awaited), so it runs wherever the file bytes already are — main thread
-in `loadTrackToDeck`, main thread in the background queue's per-file step. The Worker's
-only job is the CPU-bound numeric loop (`analyzeWaveform` + `detectBeatGrid`'s onset
-envelope + autocorrelation), which is exactly the part actually worth moving off-thread.
+## 3. קבצים מדויקים לשינוי/הוספה
 
-## 2. Proposed thin end-to-end slice (first vertical proof)
-
-Before building the full queue/cache/UI, prove the real link end-to-end on one track:
-main thread decodes (as today) and extracts `{ channels, sampleRate }` from the
-resulting `AudioBuffer`; Worker receives those (transferred, not copied) and returns
-`{ peaks, bands, beatGrid }`; main thread separately hashes the original file bytes
-(already in memory) via `crypto.subtle.digest` and patches one deck exactly like
-`loadTrackToDeck` does today. No queue, no cache, no UI change yet. This is the walking
-skeleton every later step extends.
-
-## 3. Exact files to add or change
-
-### New files
-
-| File | Responsibility |
+| קובץ | אחריות השינוי |
 | --- | --- |
-| `src/platform/analyzer-worker/worker.ts` | The actual Worker script: receives `{ channels: Float32Array[], sampleRate: number, buckets }` (transferred, not copied), calls the refactored `analyzeWaveform`/`detectBeatGrid` (imported unchanged in logic from `analyzer-js/analyze.ts` and `core/beatgrid.ts`, only their input shape changes — see §1), posts `{ peaks, bands, beatGrid }` or `{ error }` back. Does **not** decode audio and does **not** hash — both happen on the main thread (§1). |
-| `src/platform/analyzer-worker/index.ts` | Implements `core/ports/analyzer.ts`'s `Analyzer`. `analyze()` decodes on the main thread (unchanged `engine.decode` call, owned by the caller — this module receives an already-decoded `AudioBuffer` or the extracted channel data), extracts channel `Float32Array`s, dispatches the numeric work to the Worker, and separately computes the content hash via `crypto.subtle.digest` on the original file bytes. Includes a queue: concurrency-limited (start at 2, tunable), FIFO with a jump-the-queue method for "the track just requested for a deck." Owns the one live Worker instance (or a small pool). Falls back to calling `analyzeWaveform`/`detectBeatGrid` directly on the main thread when `capabilities.webWorker` is false — same public API either way, caller doesn't branch. |
-| `src/platform/analyze-cache-idb/store.ts` | Implements `AnalysisCache`. Key: `contentHash`. Value: `{ contentHash, analyzerVersion, fileSize, analysis: TrackAnalysis, cachedAt }`. `get` returns `null` (cache miss) if the stored `analyzerVersion` doesn't match the current constant — an intentional miss, not a bug, so a future analyzer change never silently serves stale results. Mirrors `genre-overrides-idb/store.ts`'s shape (own IndexedDB key, try/catch that never throws on read, throws on write so the caller can surface failure). |
-| `src/platform/analyze-cache-idb/version.ts` | Exports `ANALYZER_VERSION` (a plain integer/string constant). Bumped by hand whenever `core/beatgrid.ts` or the analysis logic changes meaningfully — the one manual step this design requires, documented at the constant's own definition. |
-| `src/platform/cues-idb/store.ts` | `contentHash -> { hotCues: HotCue[], cuePointSec: number }`. Same shape/failure pattern as above. |
-| `src/platform/genre-overrides-idb/migrate.ts` | One-time migration: reads the existing path-keyed override map, and for each entry whose path still matches a track in the current scan, computes that one file's content hash (single-file read+hash, not a batch operation) and re-keys the override under the hash in a **new** store namespace; entries that don't match any current track are dropped. Runs once, guarded by a "already migrated" flag written after success so it never re-runs. |
-| `src/core/hash.ts` | Pure helper: `bytesToHex(buffer: ArrayBuffer): string` — the only part of "compute a hash" that's pure enough to belong in `core/` (calling `crypto.subtle.digest` itself is a platform concern, since `core/` must stay free of any environment-provided global per CLAUDE.md; the digest call lives in `platform/analyzer-worker/worker.ts` and `platform/source-fsaccess/hash.ts` below, both of which convert their `ArrayBuffer` result through this shared hex formatter). |
-| `src/platform/source-fsaccess/hash.ts` | `hashFile(handle: FileSystemFileHandle): Promise<string>` — reads the file once, digests via `crypto.subtle.digest('SHA-256', ...)`, formats via `core/hash.ts`. Used for the two single-file, on-demand hash paths below (not the batch queue, which hashes as a side effect of analysis inside the Worker). |
-| `tests/core/hash.test.ts` | Unit tests for `bytesToHex` (known input → known hex output; empty buffer; different inputs never collide in the test's fixed sample set). |
-| `tests/core/analysis-state.test.ts` | Unit tests for the state-machine transitions (§5 below) as pure functions, independent of the Worker/IndexedDB. |
+| `src/core/structure.ts` | לחלץ helper משותף לחישוב contour+peak (כבר קיים בתוך `findTransitionCandidates`, רק לא מיוצא), ולהוסיף פונקציה טהורה חדשה + טיפוס מיוצא (`EnergyProximity` או דומה) שמשווה שתי עקומות מנורמלות בנקודות זמן נתונות. |
+| `tests/core/structure.test.ts` (או קובץ חדש לצידו) | בדיקות יחידה לפונקציה החדשה: עוצמות זהות, נכנס חזק יותר, נכנס שקט יותר, contour ריק/קצר מדי, `null` כשאין נתון לדק המנגן. |
+| `src/core/types.ts` | הוספת `createdAt: number` ל-`HotCue` — נדרש כדי לדעת איזה פאד הכי "ישן" לצורך דריסה אוטומטית (אינדקס בלבד לא אומר סדר יצירה). |
+| `src/core/hotcues.ts` (`moveHotCue`) | **בחירה טכנית קטנה, טבעית מתוך מה שכבר אושר:** לשמר תווית תיאורית (לא-מספרית) בגרירה/החלפה, ולהמשיך לעדכן תווית מספרית רגילה למספר הסלוט החדש כמו היום. בלי זה, גרירת פאד עם שם לסלוט אחר הייתה מוחקת את השם בשקט — מפר את הכלל המרכזי של הפרויקט. |
+| `src/controls.ts` | פונקציה חדשה (למשל `saveMixEntryHotCue(deckId, positionSec, label)`): מוצאת פאד ריק; אם כולם תפוסים, דורסת את זה עם ה-`createdAt` הקטן ביותר, באותו אינדקס. קוראת ל-`persistCues` כמו `setHotCue`. |
+| `src/app/components/Deck.tsx` | לקרוא מה-store גם את `bands`/`durationSec`/`positionSec`/`analysisState` של הדק השני (`otherDeckId`) ולהעביר כפרופים ל-`TransitionPointsPanel`; ב-`onSelect`, לקרוא גם ל-`saveMixEntryHotCue` וגם ל-`startAutoTransition` הקיים. |
+| `src/app/components/TransitionPointsPanel.tsx` | פרופים חדשים (`otherBands`, `otherDurationSec`, `otherPositionSec`, `otherAnalysisUnavailable`); `useMemo` נוסף מקובץ לשנייה שלמה (`Math.floor(otherPositionSec)`, לא הערך הרציף) שמחשב את התווית היחסית לכל מועמד; שורה שנייה קטנה מתחת ל-Pill הקיים. |
+| `src/app/components/PadGrid.tsx` | הצגת `cue.label` בפועל (עם `truncate`/הגבלת רוחב) במקום `{i+1}` הקבוע; `aria-label` כולל את התווית כשיש כזו. |
 
-### Changed files
+## 4. שינויי API/טיפוסים, כולל התנהגות בכשל
 
-| File | Change |
-| --- | --- |
-| `src/core/ports/capabilities.ts` | Add `webWorker: boolean`. |
-| `src/platform/capabilities.ts` | Add the probe: `typeof Worker !== 'undefined'`. |
-| `src/core/types.ts` | `Track` gains `contentHash?: string`, `analysisState?: 'queued' \| 'analyzing' \| 'analyzed' \| 'failed'`, `analysisError?: string`. **`Track.id` is unchanged** — see §4 for why identity unification does not mean replacing `id`. |
-| `src/controls.ts` | `loadTrackToDeck`: (a) reads `contentHash` from cache if `track.contentHash` is already set and a matching, version-current cache entry exists — skips decode/analyze entirely on a hit; (b) on a miss, after decoding, computes and stores `track.contentHash` from the bytes already in memory (no second read) via `core/hash.ts` + a local digest call, and writes the analysis into `analyze-cache-idb`; (c) `startSec` reads the restored `cuePointSec` (or `0` per `onLoadPlayhead`) instead of the hard-coded `0`; (d) `hotCues: []` becomes the restored bank from `cues-idb`, looked up by `contentHash` once known. `setHotCue`/`deleteHotCue` gain a `moveHotCue(deckId, fromIndex, toIndex)` sibling (§5) and all three persist to `cues-idb` after patching the store, same choke-point pattern as every other control. `setGenreOverride`-equivalent call site (wherever `Library.tsx`'s genre `<select>` calls into `controls.ts`) gains the inline single-file hash-if-needed step before writing the override. |
-| `src/platform/source-fsaccess/library.ts` | `scanLibrary` **unchanged** — no batch hashing at scan time (see §4's rejection of that path). `readLibraryTags`-style third pass added: `queueLibraryAnalysis(tracks)` kicks off the background Worker queue for every scanned track, non-blocking, same "returns immediately, results arrive in batches via callback" shape as `readLibraryTags`. |
-| `src/app/components/Library.tsx` | Title-cell leading-icon slot (`Library.tsx:569-583`) gains the analysis-state icon, driven by `track.analysisState`, not inferred from `bpm`. Header gains "N queued"/"K failed" badges reusing the existing token (`Library.tsx:378,396,410`). Genre `<select>` commit path routes through the updated `controls.ts` call (inline hash-if-needed). |
-| `src/app/components/PadGrid.tsx` | Hover-reveal `×` per pad (shown only on `:hover`/focus, CSS-driven, no new state) calling `ctl.deleteHotCue`; `Shift`+click kept, calling the same function. `draggable` added to occupied pads; `onDragStart` sets a custom MIME type (`application/x-soundgrid-hotcue`) carrying the source index, mirroring `Library.tsx:551-555`'s pattern; `onDragOver`/`onDrop` on every pad call `ctl.moveHotCue(deckId, fromIndex, toIndex)`. |
-| `src/core/settings.ts` | Remove the `pending` field and its warning text from the `onLoadPlayhead` field definition (`core/settings.ts:293-300`) now that it has real data to act on. |
-| `src/app/components/Settings.tsx` | No structural change — the `pending` paragraph (`Settings.tsx:151`) simply stops rendering once the field no longer carries it. |
-| `.dependency-cruiser.cjs` | No change expected — `platform/analyzer-worker`, `analyze-cache-idb`, `cues-idb` all sit under `platform/`, importing from `core/ports` and `core/` the same way existing platform modules do. Verified, not assumed, at step 8 below. |
+- `HotCue.createdAt: number` — שדה חדש. רשומות ישנות מה-IndexedDB לא יכילו אותו; כל קריאה
+  משתמשת ב-`cue.createdAt ?? 0` כך שהוט-קיו ישן (בלי השדה) תמיד ייחשב "הישן ביותר" לצורך
+  דריסה — ברירת מחדל סבירה, לא צריך סקריפט מיגרציה.
+- פונקציה חדשה ב-`core/structure.ts`, בערך:
+  `energyProximity(outgoing: { contour: number[]; peak: number; positionSec: number } | null, incomingContour: number[], incomingPeak: number, candidateSec: number, candidateDurationSec: number): 'close' | 'quieter' | 'louder' | null`
+  מחזירה `null` כש-`outgoing` הוא `null` (הדק המנגן עדיין לא נותח/נכשל) או כש-ה-contour ריק —
+  הפאנל **חייב** להציג את מצב "אי אפשר להשוות עדיין" על `null`, לעולם לא לנחש "דומה".
+- `saveMixEntryHotCue(deckId, positionSec, label)` ב-`controls.ts` — ללא ערך מוחזר; במקרה
+  שאין לדק טראק בכלל (לא אמור לקרות כי נקרא רק מתוך `onSelect` על דק טעון), מתנהג כמו
+  `setHotCue`: יוצא בלי לעשות כלום.
 
-## 4. API / type changes, including failure behavior, and the identity-unification design
+## 5. מודל מצבי ה-UI ותלויות נתונים
 
-**The spec's open fork, resolved here:** scan-time content-hashing of all ~360 files
-(reading full file bytes for every track before the library even renders) is rejected as
-the default mechanism — it would block the first paint of a freshly-picked folder for
-however long hashing hundreds of files takes, which is a worse regression than the
-problem this version fixes. Instead:
+- `TransitionPointsPanel` תלוי עכשיו גם בנתוני הדק השני, מועברים כפרופים מפורשים (לא קריאה
+  ישירה מה-store בתוך הפאנל עצמו) — עקבי עם העיצוב הקיים שלו.
+- מצבים אפשריים לשורה השנייה:
+  1. **רגיל** — `otherBands` קיים, `energyProximity` מחזיר ערך → הניסוח היחסי מוצג.
+  2. **דק המנגן עדיין בניתוח** — `otherBands === null` וללא `analysisFailed` → "אי אפשר
+     להשוות עדיין — דק [X] עדיין מנותח".
+  3. **ניתוח דק המנגן נכשל** — `otherBands === null` עם `analysisFailed` → ניסוח מקביל,
+     כשגיאה ולא כ"עדיין".
+  4. **contour ריק** (שיר קצר מדי/שקט קבוע) — אותה הודעת "אי אפשר להשוות", לא NaN/קריסה.
+- העדכון מוגבל לשנייה אחת (`Math.floor(otherPositionSec)` כתלות ב-`useMemo`) — לא בכל
+  פריים, למרות ש-`Deck.tsx` כבר מתרנדר בכל פריים בשביל שעון הטרנספורט.
 
-- `Track.id` **stays exactly what `scanLibrary` produces today** (scan-relative path).
-  Nothing that keys off `id` for React list rendering, row selection, or drag-and-drop
-  changes.
-- `Track.contentHash` is a **new, separately-populated** field. It fills in three ways,
-  cheapest first: (1) for free, as a side effect of `loadTrackToDeck`'s existing full
-  `file.arrayBuffer()` read — hashing already-in-memory bytes costs nothing extra; (2)
-  for free, as a side effect of the background analysis Worker, which also needs the
-  full bytes; (3) on demand, a single-file read+hash (`source-fsaccess/hash.ts`) the one
-  time a genre override is set on a track from the library table before its background
-  analysis has reached it — a few hundred milliseconds for one file, paid only on that
-  explicit click, not at scan time.
-- `genre-overrides-idb`, `analyze-cache-idb`, and `cues-idb` are all keyed by
-  `contentHash`, not `id`. This is what actually fixes the v0.3.2 file-move bug: once a
-  track has a `contentHash` (which every track gets, automatically, within the normal
-  background-analysis window), its override/cues/cache travel with it regardless of
-  which folder it's later found in.
-- **Failure behavior:** a `contentHash` that can't be computed (unreadable file) means
-  that track's analysis is `failed` and it simply has no override/cues/cache lookup —
-  same as any file the library already can't read. Nothing crashes on a missing hash;
-  callers treat it as "not yet identified," the same shape as "not yet analyzed."
+## 6. בדיקות בשכבה הזולה ביותר שמשמעותית
 
-**`AnalysisCache.get`** returns `null` on a version-mismatched entry (a stale cache is
-represented as a miss, not surfaced as a special state — analysis simply re-runs, which
-is already a safe, idempotent operation).
+- `tests/core/structure.test.ts` (או קובץ חדש): הפונקציה הטהורה החדשה — כל התרחישים
+  שברשימה ב-§3.
+- `tests/core/hotcues.test.ts` (מורחב): מקרה שתווית תיאורית שורדת גרירה/החלפה, ומקרה
+  שתווית מספרית רגילה ממשיכה להתעדכן לפי הסלוט החדש כמו היום.
+- בדיקת יחידה קטנה ל-`saveMixEntryHotCue`'s slot-picking logic — אם אפשר לחלץ אותה כפונקציה
+  טהורה (איזה סלוט לבחור, מי נדרס) בדיוק כמו ש-`moveHotCue` חולצה מ-`controls.ts` ב-v0.4.0,
+  לפי התקדים הקיים בקובץ `hotcues.ts`.
+- אין בדיקות React חדשות (לא המוסכמה בפרויקט) — אימות בדפדפן אמיתי במקום, ר' §7 ב-SPEC
+  ("תוכנית אימות וראיות").
 
-**Worker failure paths** (decode error, unsupported codec, `getFile()` rejecting on a
-revoked File System Access permission): every one is caught inside `worker.ts` and
-posted back as `{error: string}`, never an uncaught rejection or a silently dropped
-queue entry. The queue marks that track `failed` with `analysisError` set to a short,
-named reason and moves on — one bad file never stalls the rest of the batch.
+## 7. סיכונים, נסיגה, ולא-בתכולה מכוון
 
-## 5. UI state model and data dependencies
+- **סיכון:** קיצור תווית ארוכה לרוחב הפאד (40px) יכול להפוך תוויות דומות ללא ניתנות להבחנה
+  — מנוטרל חלקית כי הטקסט המלא ימשיך להופיע ב-tooltip/aria-label.
+- **סיכון:** שינוי `moveHotCue` צריך להבחין בין תווית "נוצרה אוטומטית כמספר" לתווית תיאורית
+  — הבחנה לפי `label === String(index + 1)`; מקרה קצה תיאורטי (משתמש משנה תווית ידנית בעתיד
+  למחרוזת שהיא בדיוק מספר) לא רלוונטי היום כי אין דרך לשנות תווית ידנית בממשק כרגע.
+- **לא בתכולה, מוצהר:** לתקן את איפוס-התווית-בגרירה כמנגנון כללי (זה כבר טופל נקודתית כאן,
+  לא כמערכת שמות מלאה להוט-קיו — זה עניין ל-v0.5.0 Pad Modes אם בכלל). שום שינוי בטבלת
+  הספרייה, שום ניתוח חדש, שום גרסת מטמון חדשה (הכל כבר ב-SPEC).
+- **נסיגה:** כל השינויים תוספתיים (פרופ חדש, שדה חדש, פונקציה חדשה) חוץ משני מקומות ממוקדים
+  — רינדור `PadGrid.tsx` והתאמת `moveHotCue` — שני diff-ים קטנים וקלים להחזרה בנפרד. אין
+  מיגרציית נתונים הרסנית.
 
-```
-Track.analysisState: 'queued' | 'analyzing' | 'analyzed' | 'failed' | undefined
-```
+## 8. סדר יישום מתוכנן עם אימות אחרי כל שלב
 
-`undefined` (not yet scanned into the queue at all) and `'queued'` render the same
-neutral icon — the distinction only matters internally. Transitions:
-
-- On scan / add-files: every new track → `'queued'`, pushed to the analysis queue.
-- Worker picks it up → `'analyzing'`.
-- Success → `'analyzed'`, `contentHash`/`bpm`/etc. patched in.
-- Failure → `'failed'`, `analysisError` set.
-- A track loaded to a deck with no cache hit and no `analysisState` yet (e.g. `+ Files`
-  import, which today skips the scan pass) is analyzed inline exactly as it is today —
-  synchronously, inside `loadTrackToDeck` — and does **not** need the Worker path at all
-  for a single ad-hoc load.
-
-`moveHotCue(deckId, fromIndex, toIndex)`:
-
-```
-if fromIndex has no cue: no-op
-else if toIndex is empty: relocate — cue.index = toIndex, label = `${toIndex+1}`
-else: swap — both cues exchange index and label
-always: sort by index (existing pattern, controls.ts:515), persist to cues-idb
-```
-
-Data dependency for the header badges: derived counts (`tracks.filter(t =>
-t.analysisState === 'queued' || 'analyzing').length`, same for `'failed'`), computed in
-`Library.tsx` the same way `skipped`/`unrecognizedGenre` counts already are — no new
-store slice needed beyond the `Track` fields themselves.
-
-## 6. Tests at the cheapest meaningful layer
-
-- `tests/core/hash.test.ts` — pure, `core/hash.ts`'s `bytesToHex`.
-- `tests/core/analysis-state.test.ts` — pure state-machine transition function(s), if
-  extracted as pure functions rather than inlined in `controls.ts` (worth doing purely
-  so this is testable without a Worker or IndexedDB).
-- A pure `moveHotCue` reducer (relocate vs. swap vs. no-op) extracted and tested the same
-  way, independent of `controls.ts`'s store-patching side effect.
-- `analyze-cache-idb`'s version-mismatch-is-a-miss logic — testable with a fake `idb-keyval`
-  the way existing IndexedDB-backed stores' logic is tested (check `tests/core/settings.test.ts` /
-  `library-boot.test.ts` for this repo's existing mocking pattern before writing new tests here).
-- **Not unit-testable, browser-verified with recorded numbers instead** (per CLAUDE.md's
-  own standard — the audio engine has no automated tests and a runner does not conjure
-  them): Worker decode feasibility (step 1), real second-load timing, real scan-time cost
-  with the *actual* (rejected-as-default, but still exercised at small scale for the
-  single-file hash path) hashing cost, hot-cue persistence across a real reload.
-
-## 7. Risks, rollback, and deliberate non-goals
-
-**Risk 1 — resolved by measurement, not assumption.** Step 1's spike confirmed neither
-`OfflineAudioContext` nor `AudioBuffer` exists inside a Worker in this Chromium build.
-The architecture in §1/§2 above (decode stays main-thread, only the numeric
-analysis moves to the Worker, hashing stays main-thread via async `crypto.subtle`) is
-what the rest of this plan builds — not a contingency, the actual design. No further
-risk here; recorded as closed.
-
-**Risk 2 — `analyzerVersion` bump is a manual, easy-to-forget step.** Named explicitly at
-the constant's own definition (`analyze-cache-idb/version.ts`) with a comment pointing
-back to this document, mirroring how `beatgrid.ts:53`'s `CONFIDENCE_RATIO` is already
-flagged provisional in place. No automated enforcement is proposed — flagging honestly
-beats inventing a mechanism (e.g. hashing the analyzer's own source) that adds real
-complexity for a problem that's really "remember to bump a number," same as any other
-manual-but-documented step already accepted elsewhere in this repo (e.g. the
-`HANDOFF.md`/`ROADMAP.md`/`package.json` version triad).
-
-**Risk 3 — genre-override migration touches every existing override once.** Small blast
-radius (however many overrides the owner has actually made, likely single digits to low
-tens, not 360) but still a data-migration step. Rollback: the migration reads the old
-store and writes a new one under a different key; it does not delete the old data, so a
-bad migration can be re-run after a fix without data loss, and the old store can be
-manually restored if needed. This is stated as the concrete rollback plan, not left
-implicit.
-
-**Deliberate non-goals (restated from the spec, not reopened here):** no real
-audio-derived key detection; no Mix Assist/next-song UI; no generic `Persistence` port
-implementation; no manual per-track retry UI beyond whatever `moveHotCue`/re-queue
-already provides "for free."
-
-## 8. Ordered implementation steps, each with its own verification
-
-1. ~~**Spike: can this app decode audio in a Worker?**~~ **Done.** A headless-Chromium
-   probe (Playwright, this build's own `chromium-1194`) confirmed `typeof
-   OfflineAudioContext === 'undefined'` and `typeof AudioBuffer === 'undefined'` inside a
-   dedicated Worker — both threw `ReferenceError` on construction. Decode stays
-   main-thread; only the numeric analysis moves to the Worker (§1/§2). This is the
-   architecture every later step below builds.
-2. **`core/hash.ts` + `platform/source-fsaccess/hash.ts` + `Capabilities.webWorker`.**
-   Small, isolated, no behavior change yet. **Verification:** `tests/core/hash.test.ts`
-   passing; `npm run check` green.
-3. **`platform/analyzer-worker/`** (shape decided by step 1's outcome), wired to a
-   feature flag but **not yet called from `loadTrackToDeck` or the scan path** — a
-   standalone module first. **Verification:** a temporary manual call from the browser
-   console via `javascript_tool` against a real file, confirming peaks/BPM/hash come
-   back correctly and match what today's synchronous path produces for the same file
-   (a direct before/after comparison, the strongest evidence available without a
-   decoded-audio test harness).
-4. **`analyze-cache-idb/`.** **Verification:** unit tests for version-mismatch-as-miss;
-   browser-verified round-trip (put, reload the page, get, confirm the entry survives).
-5. **Wire into `loadTrackToDeck`**: cache-check first, Worker/fallback-analyze on miss,
-   write-through cache, `contentHash` populated on the track. **Verification:** the
-   <200ms second-load number, measured in the running app and recorded — the spec's
-   own acceptance criterion 1.
-6. **`cues-idb/` + hot-cue persistence + `onLoadPlayhead` wiring** (remove `pending`).
-   **Verification:** set a hot cue and the CUE point, reload the whole app, confirm both
-   restore — acceptance criteria 4 and 6, browser-verified.
-7. **`PadGrid.tsx`: hover-`×`, kept `Shift`+click, drag-and-drop `moveHotCue`.**
-   **Verification:** manual interaction check in the running app (delete via both
-   gestures, drag onto empty, drag onto occupied confirms a swap not an overwrite),
-   plus the pure `moveHotCue` reducer's unit tests.
-8. **Background queue on scan + `Library.tsx` status icons/badges.**
-   **Verification:** pick a real or mocked multi-track folder, confirm the queued count
-   drains, icons transition, a deliberately-broken file shows `failed` with a reason —
-   plus `npm run arch` (dependency-cruiser) staying green now that several new
-   `platform/` modules exist.
-9. **Genre-override migration + re-key to `contentHash`.** **Verification:** with at
-   least one existing path-keyed override present, run the migration, confirm it reads
-   under the new key and the old data is still present (not deleted) per the Risk-3
-   rollback plan; then the real move-a-file-and-rescan scenario from the spec's
-   acceptance criterion 5.
-10. **Full-suite pass:** `npm run check` green; the owner-run Node-script measurements
-    from the spec's Verification plan (scan time, second-load time, real-library
-    move-and-rescan) actually executed and their numbers written into `HANDOFF.md`;
-    `HANDOFF.md` updated; `ROADMAP.md` v0.4.0 marked ✅; `context_check.py` run per
-    CLAUDE.md's standing rule.
-
-Each numbered step above is a candidate task-list entry once this plan is approved, per
-this skill's own instruction to turn approved ordered steps into a visible task list
-with exactly one task in progress and verification as its own explicit task.
+1. `core/structure.ts`: חילוץ helper משותף + פונקציית ההשוואה החדשה + טיפוס מיוצא.
+   **אימות:** בדיקות היחידה החדשות עוברות; בדיקות `findTransitionCandidates` הקיימות
+   ממשיכות לעבור ללא שינוי.
+2. `core/types.ts`: הוספת `createdAt` ל-`HotCue`. **אימות:** `tsc -b` מצביע על כל מקום
+   שכותב `HotCue` וצריך עדכון (`setHotCue`, `moveHotCue`, הפונקציה החדשה) — לתקן אחד אחד.
+3. `controls.ts`: מימוש `saveMixEntryHotCue` (מציאת סלוט ריק / דריסת הישן ביותר).
+   **אימות:** בדיקת יחידה על לוגיקת בחירת הסלוט (אם חולצה כפונקציה טהורה).
+4. `core/hotcues.ts`: התאמת `moveHotCue` לשימור תווית תיאורית. **אימות:** בדיקות היחידה
+   הקיימות + החדשות עוברות.
+5. `PadGrid.tsx`: הצגת `cue.label` בפועל, טרנקציה, `aria-label` מעודכן. **אימות ידני
+   בדפדפן:** הוט-קיו שנוצר ידנית נראה בדיוק כמו היום (מספר).
+6. `Deck.tsx` + `TransitionPointsPanel.tsx`: הזרמת נתוני הדק השני, שורת ההשוואה, קריאה
+   כפולה מ-`onSelect`. **אימות בדפדפן אמיתי עם שני טראקים אמיתיים בעלי פרופיל עוצמה שונה:**
+   השורה מופיעה, מתעדכנת בערך פעם בשנייה בלי הבהוב, תואמת את הציפייה (קטע חזק בדק המנגן +
+   נקודה שקטה בנכנס → "שקט יותר"), לחיצה מפעילה את המעבר בדיוק כמו קודם **וגם** יוצרת פאד
+   חדש עם טקסט קצר גלוי.
+7. `npm run check` ירוק במלואו. עדכון `HANDOFF.md`/`ROADMAP.md` ומתן הוראות בדיקה בעברית
+   לשלום — שלב נפרד אחרי שהוא מאשר שהאימות שלו עצמו תקין.
