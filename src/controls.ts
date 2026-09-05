@@ -25,7 +25,7 @@ import { readTrackData } from '@/platform/source-fsaccess/library'
 import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
-import { moveHotCue as moveHotCuePure, pickHotCueSlot } from '@/core/hotcues'
+import { moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
 import type { BeatGrid, DeckId, Track } from '@/core/types'
 
@@ -710,6 +710,42 @@ export function setHotCue(deckId: DeckId, index: number) {
     patchDeck(deckId, { hotCues: next })
     persistCues(deckId)
   }
+}
+
+/**
+ * The choke-point entry point for pressing a hot cue pad — UI (`PadGrid.tsx`)
+ * and the FLX4's physical pads (`transport-webmidi/manager.ts:dispatch`,
+ * `'hotcue'` case) both call this instead of `setHotCue` directly (v0.4.7,
+ * fallback fixed v0.4.9).
+ *
+ * A pad saved by `saveMixEntryHotCue` carries a descriptive (non-ordinal)
+ * label — pressing it re-runs the *same* automatic transition a first click
+ * in `TransitionPointsPanel` would have started, phase-aligned entry and all,
+ * instead of just parking the playhead there for the DJ to hit Play by hand
+ * (the exact gap the owner asked to close: "I'll give the command, you land
+ * it on the right beat"). But only when a transition actually makes sense
+ * right now (`shouldTriggerMixEntry`, `core/hotcues.ts`) — this deck isn't
+ * already playing, and the other deck is. Outside that window a mix-in pad
+ * must never become a dead button that's *worse* than a plain one, so it
+ * falls through to the ordinary `setHotCue` seek instead, exactly like every
+ * other pad. Once the window check passes, `startAutoTransition`'s own
+ * further refusals (no beat grid, a transition already running) still apply
+ * and still show their own notice — this only guards the cases where
+ * attempting a transition was never the right call in the first place.
+ *
+ * A plain numbered pad (`isOrdinalLabel`) keeps doing exactly what `setHotCue`
+ * always did: jump-or-create. Changing *that* would break the ordinary hot-cue
+ * workflow this project has shipped since v0.4.0.
+ */
+export function pressHotCue(deckId: DeckId, index: number) {
+  const { decks } = useStore.getState()
+  const cue = decks[deckId].hotCues.find((c) => c.index === index)
+  const otherDeckId: DeckId = deckId === 'A' ? 'B' : 'A'
+  if (shouldTriggerMixEntry(cue, decks[deckId].playing, decks[otherDeckId].playing)) {
+    startAutoTransition(otherDeckId, deckId, cue!.positionSec)
+    return
+  }
+  setHotCue(deckId, index)
 }
 
 export function deleteHotCue(deckId: DeckId, index: number) {

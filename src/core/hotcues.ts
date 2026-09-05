@@ -12,8 +12,13 @@ import type { HotCue } from '@/core/types'
  * Always returns the result sorted by index, matching `setHotCue`'s existing
  * ordering (`controls.ts`).
  */
-/** A label nobody has renamed yet — always exactly the pad's own ordinal, set by `setHotCue`. */
-function isOrdinalLabel(cue: HotCue): boolean {
+/**
+ * A label nobody has renamed yet — always exactly the pad's own ordinal, set
+ * by `setHotCue`. Exported so `controls.ts`'s `pressHotCue` (v0.4.7) can use
+ * the same test as `moveHotCue` for "is this a plain jump cue or a saved
+ * mix-in point" — one definition, not two that can drift apart.
+ */
+export function isOrdinalLabel(cue: HotCue): boolean {
   return cue.label === `${cue.index + 1}`
 }
 
@@ -37,6 +42,28 @@ export function moveHotCue(cues: HotCue[], fromIndex: number, toIndex: number): 
     return c
   })
   return next.sort((a, b) => a.index - b.index)
+}
+
+/**
+ * Whether pressing a pad should re-run the automatic transition
+ * (`startAutoTransition`) instead of the plain jump-or-create `setHotCue`
+ * always does. `controls.ts`'s `pressHotCue` (v0.4.9) calls this *before*
+ * deciding — not just "is this a mix-in pad" — because a mix-in pad must
+ * never become strictly worse than a plain one: if a transition genuinely
+ * can't make sense right now (this deck is already playing, or there's
+ * nothing on the other deck to mix from), pressing it should still fall
+ * through to the ordinary seek, exactly like every other pad, rather than a
+ * dead warning notice and no seek at all. `startAutoTransition`'s own other
+ * refusals (no beat grid, a transition already running) still apply and
+ * still show their own notice once this returns `true` — this only guards
+ * the cases where attempting a transition was never the right call.
+ */
+export function shouldTriggerMixEntry(
+  cue: HotCue | undefined,
+  deckPlaying: boolean,
+  otherDeckPlaying: boolean,
+): boolean {
+  return !!cue && !isOrdinalLabel(cue) && !deckPlaying && otherDeckPlaying
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { moveHotCue, pickHotCueSlot } from '@/core/hotcues'
+import { isOrdinalLabel, moveHotCue, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import type { HotCue } from '@/core/types'
 
 function cue(index: number, overrides: Partial<HotCue> = {}): HotCue {
@@ -80,5 +80,52 @@ describe('pickHotCueSlot', () => {
     const cues = [cue(0, { createdAt: 500 }), cue(1), cue(2, { createdAt: 900 })]
     const full = [...cues, ...Array.from({ length: 5 }, (_, i) => cue(i + 3, { createdAt: 700 + i }))]
     expect(pickHotCueSlot(full)).toBe(1)
+  })
+})
+
+describe('isOrdinalLabel', () => {
+  // `moveHotCue` uses this to decide whether a drag should preserve a
+  // pad's label or resync it to the new slot number; `shouldTriggerMixEntry`
+  // below builds on the same distinction.
+  it('is true for a plain cue whose label is exactly its slot number', () => {
+    expect(isOrdinalLabel(cue(2))).toBe(true) // label defaults to "3"
+  })
+
+  it('is false for a cue carrying a descriptive (mix-entry) label', () => {
+    expect(isOrdinalLabel(cue(2, { label: 'Mix in' }))).toBe(false)
+  })
+
+  it('is false when the label is a number but not this pad\'s own', () => {
+    // e.g. left over from before a drag moved the cue to a different index.
+    expect(isOrdinalLabel(cue(2, { label: '5' }))).toBe(false)
+  })
+})
+
+describe('shouldTriggerMixEntry', () => {
+  // `controls.ts`'s `pressHotCue` (v0.4.9) calls this before deciding
+  // whether to run the automatic transition or fall through to a plain
+  // seek. The rule this pins: a mix-in pad must never become a dead button
+  // — worse than a plain one — when a transition genuinely can't run.
+  const mixInCue = cue(2, { label: 'Mix in' })
+  const plainCue = cue(2)
+
+  it('is true for a mix-in cue when this deck is paused and the other is playing', () => {
+    expect(shouldTriggerMixEntry(mixInCue, false, true)).toBe(true)
+  })
+
+  it('is false for a plain (ordinal) cue, regardless of playback state', () => {
+    expect(shouldTriggerMixEntry(plainCue, false, true)).toBe(false)
+  })
+
+  it('is false when this deck is already playing — falls back to a seek, not a dead notice', () => {
+    expect(shouldTriggerMixEntry(mixInCue, true, true)).toBe(false)
+  })
+
+  it('is false when the other deck is not playing — nothing to mix from', () => {
+    expect(shouldTriggerMixEntry(mixInCue, false, false)).toBe(false)
+  })
+
+  it('is false when the pad has no cue at all', () => {
+    expect(shouldTriggerMixEntry(undefined, false, true)).toBe(false)
   })
 })

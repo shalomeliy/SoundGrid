@@ -145,7 +145,7 @@ class MidiManager {
         if (deck) ctl.jogTouch(deck, value > 0)
         break
       case 'hotcue':
-        if (value > 0 && deck && b.param != null) ctl.setHotCue(deck, b.param)
+        if (value > 0 && deck && b.param != null) ctl.pressHotCue(deck, b.param)
         break
       case 'loopToggle':
         if (value > 0 && deck) ctl.toggleLoop(deck)

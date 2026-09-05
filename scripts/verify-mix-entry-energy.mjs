@@ -168,6 +168,48 @@ if (padCount > 0) {
   ok('the pad shows the descriptive text, not a bare number', /mix/i.test(padText), padText)
 }
 
+// Pause deck B (cancels the transition the candidate click just started, per
+// the existing cancel-on-touch rule) so the saved pad can be tested from a
+// clean paused state — deck A is untouched and still playing throughout.
+await deckB.getByRole('button', { name: /pause/i }).click()
+await page.waitForTimeout(300)
+const beforePress = (await deckB.getByRole('button', { name: /^(play|pause)$/i }).innerText()).toUpperCase()
+ok('setup: deck B is paused before pressing the saved pad', beforePress === 'PLAY', beforePress)
+
+// Pressing the saved "Mix in" pad (v0.4.7 `pressHotCue`) should re-run the
+// full automatic transition — seek + phase-align + play — not just park the
+// playhead the way a plain hot cue does.
+await mixInPad.first().click()
+await page.waitForTimeout(500)
+const afterPress = (await deckB.getByRole('button', { name: /^(play|pause)$/i }).innerText()).toUpperCase()
+ok(
+  'pressing the saved "Mix in" pad starts deck B playing (full transition, not just a seek)',
+  afterPress === 'PAUSE',
+  afterPress,
+)
+
+// Deck B is now playing (from the press above). Pressing the SAME "Mix in"
+// pad again in that state must NOT attempt another transition — it should
+// fall back to a plain seek (v0.4.9 `shouldTriggerMixEntry`), exactly like
+// any other pad, instead of becoming a dead button with just a warning.
+await page.waitForTimeout(1200) // let the playhead move away from the cue's saved position
+const posEl = deckB
+  .locator('[class="tnum mt-0.5 flex items-center gap-2 text-xs text-grid-muted"]')
+  .locator('span')
+  .nth(2)
+const beforeSecondPress = await posEl.innerText()
+await mixInPad.first().click()
+await page.waitForTimeout(300)
+const afterSecondPress = await posEl.innerText()
+const stillPlaying = (await deckB.getByRole('button', { name: /^(play|pause)$/i }).innerText()).toUpperCase()
+ok(
+  'pressing the same pad while deck B already plays just seeks (no dead notice)',
+  afterSecondPress !== beforeSecondPress && stillPlaying === 'PAUSE',
+  `${beforeSecondPress} -> ${afterSecondPress}, transport: ${stillPlaying}`,
+)
+const warnNotice = await page.getByText(/isn.t start that transition/i).count()
+ok('no "can\'t start transition" notice appears for the fallback seek', warnNotice === 0, `count: ${warnNotice}`)
+
 ok('no console errors across the whole run', errors.length === 0, errors[0] ?? '')
 
 await browser.close()

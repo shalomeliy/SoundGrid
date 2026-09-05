@@ -1,7 +1,11 @@
 import * as ctl from '@/controls'
 import { HOT_CUE_COLORS } from '@/core/constants'
+import { isOrdinalLabel } from '@/core/hotcues'
 import { HintIcon } from '@/app/components/controls'
 import type { DeckId, HotCue } from '@/core/types'
+
+/** A saved mix-in point (`saveMixEntryHotCue`, v0.4.7) — pressing it re-runs the automatic transition, not just a jump. */
+const isMixEntry = (cue: HotCue): boolean => !isOrdinalLabel(cue)
 
 interface Props {
   deckId: DeckId
@@ -14,7 +18,10 @@ const HOT_CUE_MIME = 'application/x-soundgrid-hotcue'
 /**
  * 4x2 performance pad grid in Hot Cue mode (v0.4.0).
  *
- * Click sets/jumps. Delete is two ways to the same action, on purpose — a
+ * Click sets/jumps a plain pad, or re-runs the automatic transition for a
+ * pad saved from the Mix Assist panel (`ctl.pressHotCue`, v0.4.7) — the
+ * distinction is `isMixEntry`, not a separate button. Delete is two ways to
+ * the same action, on purpose — a
  * hover-revealed `×` (discoverable) and `Shift`+click (existing muscle
  * memory, kept). Dragging an occupied pad onto an empty one relocates the
  * cue; onto another occupied pad, it swaps them — never a silent overwrite.
@@ -58,9 +65,15 @@ export function PadGrid({ deckId, hotCues }: Props) {
               }}
               onClick={(e) => {
                 if (e.shiftKey && cue) ctl.deleteHotCue(deckId, i)
-                else ctl.setHotCue(deckId, i)
+                else ctl.pressHotCue(deckId, i)
               }}
-              aria-label={cue ? `Jump to hot cue ${cue.label}` : `Set hot cue ${i + 1}`}
+              aria-label={
+                cue
+                  ? isMixEntry(cue)
+                    ? `Start mix from ${cue.label}`
+                    : `Jump to hot cue ${cue.label}`
+                  : `Set hot cue ${i + 1}`
+              }
               className="group relative h-10 rounded-[var(--radius-sm)] px-1 text-2xs font-bold tabular-nums transition-[transform,box-shadow,background] duration-100 ease-[var(--ease-out)] active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
               style={
                 cue
