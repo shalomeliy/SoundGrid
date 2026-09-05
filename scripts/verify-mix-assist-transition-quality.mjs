@@ -133,7 +133,14 @@ function pickPairs(files, count, bpmById) {
     for (let i = 0; i < shuffled.length && pairs.length < count; i++) {
       const a = shuffled[i]
       if (usedBase.has(a.base)) continue
-      const b = shuffled.find((f) => f !== a && !usedBase.has(f.base) && compatible(a, f))
+      // f.base !== a.base, not just f !== a: the cross-folder fallback pool
+      // spans every folder, and two different files in different folders can
+      // share a filename (a track filed under two genres). harness() keys its
+      // fake directory by basename alone, so a same-basename "pair" collapses
+      // into one file served to both decks — a silent A-vs-itself transition
+      // with a trivially perfect phase match, folded into the reported
+      // numbers with no skip and no error to notice it by.
+      const b = shuffled.find((f) => f.base !== a.base && !usedBase.has(f.base) && compatible(a, f))
       if (!b) continue
       usedBase.add(a.base)
       usedBase.add(b.base)

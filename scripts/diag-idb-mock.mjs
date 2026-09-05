@@ -3,6 +3,17 @@
  * `indexedDB` the other verify-*.mjs scripts rely on actually resolves
  * idb-keyval's get() on this machine, with zero SoundGrid app code involved.
  * Run: node scripts/diag-idb-mock.mjs
+ *
+ * SUPERSEDED — kept only as a reusable indexedDB-mock isolation tool, not as
+ * live evidence of anything. This was written on the hypothesis that the fake
+ * `indexedDB` was why `library.boot` hung on `'checking'` forever on the real
+ * machine; it ran clean here and there both, which at the time looked like it
+ * ruled the mock out. The real cause (found afterward, v0.4.6 step 8's later
+ * commits) was unrelated: a long-running `npm run dev` had accumulated enough
+ * Vite module-cache/HMR history that `import('/src/app/state/store.ts')`
+ * resolved a store instance disconnected from the one the rendered page was
+ * actually using. If you're debugging a hung `boot` state again, check that
+ * first (restart the dev server) before assuming it's this mock.
  */
 import { chromium } from 'playwright'
 
