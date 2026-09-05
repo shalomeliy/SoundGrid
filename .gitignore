@@ -29,3 +29,4 @@ dist-ssr
 .claude/settings.local.json
 # Claude Code — ephemeral per-agent worktrees (isolation:"worktree" subagents)
 .claude/worktrees/
+graphify-out/
