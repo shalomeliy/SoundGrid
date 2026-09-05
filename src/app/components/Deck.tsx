@@ -24,6 +24,13 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
   const otherDeckId: DeckId = deckId === 'A' ? 'B' : 'A'
   const otherPlaying = useStore((s) => s.decks[otherDeckId].playing)
+  // v0.4.7: only read while `showTransitionPoints` is true, i.e. exactly when
+  // the other deck is playing — its `positionSec` only changes per-frame in
+  // that same window, so this adds no re-render cost outside it.
+  const otherBands = useStore((s) => s.decks[otherDeckId].bands)
+  const otherDurationSec = useStore((s) => s.decks[otherDeckId].durationSec)
+  const otherPositionSec = useStore((s) => s.decks[otherDeckId].positionSec)
+  const otherAnalysisFailed = useStore((s) => s.decks[otherDeckId].track?.analysisState === 'failed')
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
   // Mix Assist (v0.4.6): relevant exactly when this deck is the one about to
@@ -152,7 +159,19 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               durationSec={deck.durationSec}
               beatGrid={deck.beatGrid}
               analysisFailed={deck.track?.analysisState === 'failed'}
-              onSelect={(sec) => ctl.startAutoTransition(otherDeckId, deckId, sec)}
+              otherDeckId={otherDeckId}
+              otherBands={otherBands}
+              otherDurationSec={otherDurationSec}
+              otherPositionSec={otherPositionSec}
+              otherAnalysisFailed={otherAnalysisFailed}
+              onSelect={(sec) => {
+                // Both calls act on the same chosen point: the transition
+                // starts immediately (unchanged since v0.4.6), and the point
+                // is also saved as a hot cue so it's there next time this
+                // track loads (v0.4.7) — approved together, not sequenced.
+                ctl.startAutoTransition(otherDeckId, deckId, sec)
+                ctl.saveMixEntryHotCue(deckId, sec, 'Mix in')
+              }}
             />
           )}
         </div>

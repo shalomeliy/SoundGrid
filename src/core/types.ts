@@ -47,6 +47,15 @@ export interface HotCue {
   positionSec: number
   label: string
   color: string
+  /**
+   * `Date.now()` at creation — lets v0.4.7's auto-save (`saveMixEntryHotCue`,
+   * `controls.ts`) pick which pad to evict when all 8 are full ("oldest
+   * created", not lowest index). Cues restored from before this field
+   * existed read as `undefined`; every read site treats that as "oldest of
+   * all" (`?? 0`), never as "can't compare" — a missing timestamp here isn't
+   * a degraded feature the way a missing analysis is, just an ordering hint.
+   */
+  createdAt?: number
 }
 
 export interface BeatGrid {

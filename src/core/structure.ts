@@ -62,6 +62,28 @@ function nearPeakLevel(values: number[]): number {
 }
 
 /**
+ * A track's energy contour plus the two numbers needed to read a level back
+ * out of it at an arbitrary point in time. Shared by `findTransitionCandidates`
+ * (a track's own candidate points) and `energyProximity` (comparing *two*
+ * tracks' levels at specific moments) so both read the same per-track-normalized
+ * data instead of two heuristics that could drift apart.
+ */
+export interface EnergyProfile {
+  contour: number[]
+  peak: number
+  /** Seconds per `contour` bucket — close to `WINDOW_SEC` but not exact once `durationSec` doesn't divide evenly. */
+  windowSec: number
+}
+
+/** Builds the per-track energy profile `findTransitionCandidates`/`energyProximity` both read from. */
+export function analyzeEnergyProfile(bands: Float32Array, durationSec: number): EnergyProfile {
+  const contour = energyContour(bands, durationSec)
+  const peak = nearPeakLevel(contour)
+  const windowSec = contour.length > 0 ? durationSec / contour.length : 0
+  return { contour, peak, windowSec }
+}
+
+/**
  * Find candidate mix-transition points on `bands` (from `analyzeWaveform`,
  * `platform/analyzer-js/analyze.ts`), quantized to `grid` when one is known.
  * Returns an empty array — never a fabricated guess — when the track's
@@ -74,11 +96,9 @@ export function findTransitionCandidates(
   durationSec: number,
   grid: BeatGrid | null,
 ): StructureCandidate[] {
-  const contour = energyContour(bands, durationSec)
+  const { contour, peak, windowSec } = analyzeEnergyProfile(bands, durationSec)
   if (contour.length === 0) return []
-  const windowSec = durationSec / contour.length
   const minWindows = Math.max(1, Math.round(MIN_SUSTAIN_SEC / windowSec))
-  const peak = nearPeakLevel(contour)
   if (peak <= 1e-6) return []
   const threshold = peak * ENERGY_THRESHOLD_RATIO
 
@@ -124,4 +144,51 @@ export function findTransitionCandidates(
 
   if (!grid) return candidates
   return candidates.map((c) => ({ ...c, sec: quantizeToGrid(c.sec, grid) }))
+}
+
+/**
+ * How a candidate mix-in point (in the *incoming* track) compares to the
+ * *outgoing* deck's energy right now — v0.4.7. Both levels are read from
+ * each track's own contour and normalized to that track's own near-peak
+ * (same normalization `findTransitionCandidates` already uses), so this is a
+ * claim about contour-shape alignment, not about absolute perceived loudness
+ * or mastering level — two tracks mastered very differently can both read
+ * "close" here while sitting at different absolute volumes.
+ *
+ * Returns `null` — never a guess — when the outgoing deck's own analysis
+ * isn't available yet (still running, failed, or too short/flat to have a
+ * contour): the UI must show that explicitly, not silently default to "close".
+ */
+export type EnergyProximity = 'close' | 'quieter' | 'louder'
+
+/**
+ * Below this gap (as a fraction of each track's own near-peak level), two
+ * points read as "about the same energy" rather than one being called out as
+ * louder or quieter. Chosen, not measured — same status as
+ * `ENERGY_THRESHOLD_RATIO` until checked against real tracks.
+ */
+const PROXIMITY_CLOSE_RATIO = 0.15
+
+function levelAt(profile: EnergyProfile, sec: number): number {
+  // `round`, not `floor`: a candidate's own `sec` is generated as
+  // `i * windowSec` (`findTransitionCandidates` above), and dividing back by
+  // the same non-exact float `windowSec` can land a hair under the intended
+  // integer (e.g. 4.999999... instead of 5) — `floor` would then read the
+  // *previous* window's level instead, silently landing on the wrong side of
+  // exactly the boundary this function exists to compare across.
+  const idx = Math.max(0, Math.min(profile.contour.length - 1, Math.round(sec / profile.windowSec)))
+  return profile.contour[idx] / profile.peak
+}
+
+export function energyProximity(
+  outgoing: EnergyProfile | null,
+  outgoingPositionSec: number,
+  incoming: EnergyProfile,
+  candidateSec: number,
+): EnergyProximity | null {
+  if (!outgoing || outgoing.contour.length === 0 || outgoing.peak <= 1e-6) return null
+  if (incoming.contour.length === 0 || incoming.peak <= 1e-6) return null
+  const diff = levelAt(incoming, candidateSec) - levelAt(outgoing, outgoingPositionSec)
+  if (Math.abs(diff) <= PROXIMITY_CLOSE_RATIO) return 'close'
+  return diff > 0 ? 'louder' : 'quieter'
 }

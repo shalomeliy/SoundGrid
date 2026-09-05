@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findTransitionCandidates } from '@/core/structure'
+import { analyzeEnergyProfile, energyProximity, findTransitionCandidates } from '@/core/structure'
 import type { BeatGrid } from '@/core/types'
 
 /**
@@ -88,5 +88,56 @@ describe('findTransitionCandidates', () => {
 
   it('an empty bands array returns no candidates rather than throwing', () => {
     expect(findTransitionCandidates(new Float32Array(0), 0, null)).toEqual([])
+  })
+})
+
+/** `analyzeEnergyProfile` over the same fixture builder the candidate tests above use. */
+function profileOfLevel(...levels: { sec: number; level: number }[]) {
+  const { bands, durationSec } = secondsOfLevel(...levels)
+  return analyzeEnergyProfile(bands, durationSec)
+}
+
+describe('energyProximity', () => {
+  it('reads "close" when both tracks sit at the same near-peak-relative level', () => {
+    const outgoing = profileOfLevel({ sec: 20, level: 1.0 })
+    const incoming = profileOfLevel({ sec: 20, level: 1.0 })
+    expect(energyProximity(outgoing, 10, incoming, 10)).toBe('close')
+  })
+
+  it('reads "louder" when the incoming candidate point is well above the outgoing deck\'s current level', () => {
+    // outgoing deck is currently in its own quiet half; incoming candidate
+    // sits in its own loud half — both relative to each track's own peak.
+    const outgoing = profileOfLevel({ sec: 10, level: 1.0 }, { sec: 10, level: 0.1 })
+    const incoming = profileOfLevel({ sec: 10, level: 0.1 }, { sec: 10, level: 1.0 })
+    expect(energyProximity(outgoing, 15, incoming, 15)).toBe('louder')
+  })
+
+  it('reads "quieter" when the incoming candidate point is well below the outgoing deck\'s current level', () => {
+    const outgoing = profileOfLevel({ sec: 10, level: 1.0 }, { sec: 10, level: 1.0 })
+    const incoming = profileOfLevel({ sec: 10, level: 1.0 }, { sec: 10, level: 0.1 })
+    expect(energyProximity(outgoing, 2, incoming, 15)).toBe('quieter')
+  })
+
+  it('returns null — never a guessed "close" — when the outgoing deck has no profile yet', () => {
+    const incoming = profileOfLevel({ sec: 20, level: 1.0 })
+    expect(energyProximity(null, 5, incoming, 5)).toBeNull()
+  })
+
+  it('returns null when the outgoing deck\'s own analysis is empty (too short/no data)', () => {
+    const outgoing = analyzeEnergyProfile(new Float32Array(0), 0)
+    const incoming = profileOfLevel({ sec: 20, level: 1.0 })
+    expect(energyProximity(outgoing, 0, incoming, 5)).toBeNull()
+  })
+
+  it('returns null when the outgoing deck is silent (near-peak level is ~0)', () => {
+    const outgoing = profileOfLevel({ sec: 20, level: 0 })
+    const incoming = profileOfLevel({ sec: 20, level: 1.0 })
+    expect(energyProximity(outgoing, 5, incoming, 5)).toBeNull()
+  })
+
+  it('returns null when the incoming candidate track has no usable contour', () => {
+    const outgoing = profileOfLevel({ sec: 20, level: 1.0 })
+    const incoming = analyzeEnergyProfile(new Float32Array(0), 0)
+    expect(energyProximity(outgoing, 5, incoming, 5)).toBeNull()
   })
 })

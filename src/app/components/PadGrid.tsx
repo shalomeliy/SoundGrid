@@ -60,8 +60,8 @@ export function PadGrid({ deckId, hotCues }: Props) {
                 if (e.shiftKey && cue) ctl.deleteHotCue(deckId, i)
                 else ctl.setHotCue(deckId, i)
               }}
-              aria-label={cue ? `Jump to hot cue ${i + 1}` : `Set hot cue ${i + 1}`}
-              className="group relative h-10 rounded-[var(--radius-sm)] text-2xs font-bold tabular-nums transition-[transform,box-shadow,background] duration-100 ease-[var(--ease-out)] active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
+              aria-label={cue ? `Jump to hot cue ${cue.label}` : `Set hot cue ${i + 1}`}
+              className="group relative h-10 rounded-[var(--radius-sm)] px-1 text-2xs font-bold tabular-nums transition-[transform,box-shadow,background] duration-100 ease-[var(--ease-out)] active:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
               style={
                 cue
                   ? {
@@ -80,7 +80,13 @@ export function PadGrid({ deckId, hotCues }: Props) {
                 className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full"
                 style={{ background: cue ? '#0007' : color, opacity: cue ? 1 : 0.5 }}
               />
-              {i + 1}
+              {/* Plain manually-set cues carry a label that's already just the
+                  slot number (`setHotCue`, `controls.ts`) — this renders the
+                  same as `{i + 1}` always did. A v0.4.7 auto-saved mix-in cue
+                  carries a short descriptive label instead; `truncate` keeps
+                  it from overflowing the pad rather than wrapping/clipping
+                  mid-character. */}
+              <span className="block truncate px-0.5">{cue ? cue.label : i + 1}</span>
               {cue && (
                 // A hover-revealed `span[role=button]`, not a nested
                 // `<button>` (the pad is already one, and HTML forbids

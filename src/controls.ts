@@ -25,7 +25,7 @@ import { readTrackData } from '@/platform/source-fsaccess/library'
 import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
-import { moveHotCue as moveHotCuePure } from '@/core/hotcues'
+import { moveHotCue as moveHotCuePure, pickHotCueSlot } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
 import type { BeatGrid, DeckId, Track } from '@/core/types'
 
@@ -704,6 +704,7 @@ export function setHotCue(deckId: DeckId, index: number) {
         positionSec: quantizeIfOn(deckId, deck.position),
         label: `${index + 1}`,
         color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length],
+        createdAt: Date.now(),
       },
     ].sort((a, b) => a.index - b.index)
     patchDeck(deckId, { hotCues: next })
@@ -730,6 +731,27 @@ export function moveHotCue(deckId: DeckId, fromIndex: number, toIndex: number) {
   const cues = decks[deckId].hotCues
   const next = moveHotCuePure(cues, fromIndex, toIndex)
   if (next === cues) return
+  patchDeck(deckId, { hotCues: next })
+  persistCues(deckId)
+}
+
+/**
+ * Auto-save a chosen mix-in point as a hot cue (v0.4.7) — called alongside
+ * `startAutoTransition` when the DJ picks a point in `TransitionPointsPanel`,
+ * never on its own. Uses the first empty pad, or evicts the pad with the
+ * oldest `createdAt` when all 8 are full (`pickHotCueSlot`, `core/hotcues.ts`)
+ * — always a visible overwrite in the Pad Grid, never a silent one.
+ */
+export function saveMixEntryHotCue(deckId: DeckId, positionSec: number, label: string) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const { patchDeck, decks } = useStore.getState()
+  const cues = decks[deckId].hotCues
+  const index = pickHotCueSlot(cues)
+  const next = [
+    ...cues.filter((c) => c.index !== index),
+    { index, positionSec, label, color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length], createdAt: Date.now() },
+  ].sort((a, b) => a.index - b.index)
   patchDeck(deckId, { hotCues: next })
   persistCues(deckId)
 }

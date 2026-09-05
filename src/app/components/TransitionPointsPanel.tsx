@@ -1,6 +1,12 @@
 import { useMemo } from 'react'
-import { findTransitionCandidates, type StructureReason } from '@/core/structure'
-import type { BeatGrid } from '@/core/types'
+import {
+  analyzeEnergyProfile,
+  energyProximity,
+  findTransitionCandidates,
+  type EnergyProximity,
+  type StructureReason,
+} from '@/core/structure'
+import type { BeatGrid, DeckId } from '@/core/types'
 import { Pill } from '@/app/components/controls'
 
 /**
@@ -9,20 +15,41 @@ import { Pill } from '@/app/components/controls'
  * Picking a point is the flow's second and last click (ROADMAP.md v0.4.6,
  * "בחירת נקודה היא הקליק השני והאחרון") — so this panel is shown
  * automatically whenever it applies, never behind an extra open click of its
- * own. `onSelect` drives `startAutoTransition` (build step 7) — the deck's
- * own `showTransitionPoints` eligibility already retires this panel the
- * instant that starts (it flips `playing`), so there is no double-fire path.
+ * own. `onSelect` drives `startAutoTransition` and `saveMixEntryHotCue`
+ * (v0.4.7) together — the deck's own `showTransitionPoints` eligibility
+ * already retires this panel the instant the transition starts (it flips
+ * `playing`), so there is no double-fire path.
  *
  * The "based on energy" wording is load-bearing, not decoration: this is an
  * RMS-envelope heuristic, never real structure detection (see the doc
  * comment on `core/structure.ts` itself), and every label here — the panel
- * title, each point's reason — has to say so in the same words.
+ * title, each point's reason, the v0.4.7 proximity line — has to say so in
+ * the same words.
  */
 
 const REASON_LABEL: Record<StructureReason, string> = {
   'energy-builds': 'past the intro — energy builds',
   'energy-drops': 'into the outro — energy drops',
   'quiet-passage': 'quiet passage — energy dips',
+}
+
+/**
+ * v0.4.7: how a candidate point compares to what's playing *right now* on
+ * the other deck — a relative reading, never a promise ("smooth"/"jolt")
+ * about how the transition will actually sound. See `energyProximity`'s own
+ * doc comment in `core/structure.ts` for why this can't claim more than a
+ * contour-shape comparison.
+ */
+const PROXIMITY_LABEL: Record<EnergyProximity, string> = {
+  close: "close to what's playing now",
+  quieter: "quieter than what's playing now",
+  louder: "louder than what's playing now",
+}
+
+const PROXIMITY_DOT: Record<EnergyProximity, string> = {
+  close: 'var(--color-live)',
+  quieter: 'var(--color-warn)',
+  louder: 'var(--color-warn)',
 }
 
 function fmtSec(sec: number): string {
@@ -38,10 +65,28 @@ interface Props {
   beatGrid: BeatGrid | null
   /** This deck's own load-time analysis failed — distinct from "still running". */
   analysisFailed: boolean
+  /** The deck this panel would join against — named in the "can't compare yet" text. */
+  otherDeckId: DeckId
+  otherBands: Float32Array | null
+  otherDurationSec: number
+  /** Live playhead of the other deck — read once per second (below), never per animation frame. */
+  otherPositionSec: number
+  otherAnalysisFailed: boolean
   onSelect: (sec: number) => void
 }
 
-export function TransitionPointsPanel({ bands, durationSec, beatGrid, analysisFailed, onSelect }: Props) {
+export function TransitionPointsPanel({
+  bands,
+  durationSec,
+  beatGrid,
+  analysisFailed,
+  otherDeckId,
+  otherBands,
+  otherDurationSec,
+  otherPositionSec,
+  otherAnalysisFailed,
+  onSelect,
+}: Props) {
   // bands stays null until *this deck's* load-time analysis resolves
   // (`controls.ts`'s `loadTrackToDeck`) — independent of the track's
   // library-wide `analysisState`, which can already read "analyzed" from an
@@ -50,6 +95,32 @@ export function TransitionPointsPanel({ bands, durationSec, beatGrid, analysisFa
     () => (bands ? findTransitionCandidates(bands, durationSec, beatGrid) : []),
     [bands, durationSec, beatGrid],
   )
+
+  const incomingProfile = useMemo(
+    () => (bands ? analyzeEnergyProfile(bands, durationSec) : null),
+    [bands, durationSec],
+  )
+  const otherProfile = useMemo(
+    () => (otherBands ? analyzeEnergyProfile(otherBands, otherDurationSec) : null),
+    [otherBands, otherDurationSec],
+  )
+  // Floored to whole seconds so the comparison only *changes* about once a
+  // second, matching the ~1s resolution `core/structure.ts`'s own contour
+  // already has — recomputing faster than that would be fake precision on
+  // top of an already-hedged heuristic, and the visible symptom would be a
+  // label flickering near its own threshold every animation frame.
+  const otherPositionBucket = Math.floor(otherPositionSec)
+
+  const proximityMessage = (candidateSec: number): { text: string; dot: string } => {
+    if (incomingProfile && otherProfile) {
+      const p = energyProximity(otherProfile, otherPositionBucket, incomingProfile, candidateSec)
+      if (p) return { text: PROXIMITY_LABEL[p], dot: PROXIMITY_DOT[p] }
+    }
+    const text = otherAnalysisFailed
+      ? `can't compare — deck ${otherDeckId}'s analysis failed`
+      : `can't compare yet — deck ${otherDeckId} still analyzing`
+    return { text, dot: 'var(--color-grid-dim)' }
+  }
 
   return (
     <div
@@ -69,16 +140,23 @@ export function TransitionPointsPanel({ bands, durationSec, beatGrid, analysisFa
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          {candidates.map((c) => (
-            <button
-              key={`${c.reason}-${c.sec}`}
-              type="button"
-              onClick={() => onSelect(c.sec)}
-              className="rounded-full text-left transition-opacity hover:opacity-80"
-            >
-              <Pill tone="idle" label={`${fmtSec(c.sec)} · ${REASON_LABEL[c.reason]}`} />
-            </button>
-          ))}
+          {candidates.map((c) => {
+            const { text, dot } = proximityMessage(c.sec)
+            return (
+              <button
+                key={`${c.reason}-${c.sec}`}
+                type="button"
+                onClick={() => onSelect(c.sec)}
+                className="rounded-[var(--radius-sm)] text-left transition-opacity hover:opacity-80"
+              >
+                <Pill tone="idle" label={`${fmtSec(c.sec)} · ${REASON_LABEL[c.reason]}`} />
+                <span className="mt-0.5 flex items-center gap-1 px-2 text-2xs text-grid-muted">
+                  <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: dot }} />
+                  {text}
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
     </div>
