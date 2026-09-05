@@ -223,6 +223,25 @@ async function measurePair(fileA, fileB) {
     const result = await page.evaluate(
       async ({ timeoutMs, afterDelayMs }) => {
         const { useStore } = await import('/src/app/state/store.ts')
+
+        // A decode failure (controls.ts's loadTrackToDeck) is caught, logged,
+        // and surfaced as a visible notice within a couple of seconds — it
+        // never gets to set `track` at all. No point burning the full
+        // analysis timeout to discover that; check for it first and, if
+        // that's what happened, report the actual notice text instead of a
+        // generic "no beat grid".
+        const loadDeadline = Date.now() + 10_000
+        while (Date.now() < loadDeadline) {
+          const { decks } = useStore.getState()
+          if (decks.A.track && decks.B.track) break
+          await new Promise((r) => setTimeout(r, 300))
+        }
+        const afterLoad = useStore.getState()
+        if (!afterLoad.decks.A.track || !afterLoad.decks.B.track) {
+          const which = !afterLoad.decks.A.track && !afterLoad.decks.B.track ? 'A and B' : !afterLoad.decks.A.track ? 'A' : 'B'
+          return { skipped: true, reason: `deck ${which} never got a track loaded — notice: ${afterLoad.notice?.text ?? '(none)'}` }
+        }
+
         const deadline = Date.now() + timeoutMs
         while (Date.now() < deadline) {
           const { decks } = useStore.getState()
