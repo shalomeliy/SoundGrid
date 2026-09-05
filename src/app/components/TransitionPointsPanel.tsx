@@ -69,8 +69,17 @@ interface Props {
   otherDeckId: DeckId
   otherBands: Float32Array | null
   otherDurationSec: number
-  /** Live playhead of the other deck — read once per second (below), never per animation frame. */
-  otherPositionSec: number
+  /**
+   * The other deck's playhead, floored to whole seconds *by the caller's own
+   * store selector* (`Deck.tsx`) — not just for display here, but so a
+   * continuously-updating raw position never reaches this component's props
+   * in the first place. `Deck.tsx`'s `positionSec` selector otherwise writes
+   * every animation frame regardless of whether this panel is even shown;
+   * selecting the floored integer there means React only re-renders this
+   * whole subtree about once a second, matching the ~1s resolution
+   * `core/structure.ts`'s own contour already has.
+   */
+  otherPositionBucketSec: number
   otherAnalysisFailed: boolean
   onSelect: (sec: number) => void
 }
@@ -83,7 +92,7 @@ export function TransitionPointsPanel({
   otherDeckId,
   otherBands,
   otherDurationSec,
-  otherPositionSec,
+  otherPositionBucketSec,
   otherAnalysisFailed,
   onSelect,
 }: Props) {
@@ -104,16 +113,9 @@ export function TransitionPointsPanel({
     () => (otherBands ? analyzeEnergyProfile(otherBands, otherDurationSec) : null),
     [otherBands, otherDurationSec],
   )
-  // Floored to whole seconds so the comparison only *changes* about once a
-  // second, matching the ~1s resolution `core/structure.ts`'s own contour
-  // already has — recomputing faster than that would be fake precision on
-  // top of an already-hedged heuristic, and the visible symptom would be a
-  // label flickering near its own threshold every animation frame.
-  const otherPositionBucket = Math.floor(otherPositionSec)
-
   const proximityMessage = (candidateSec: number): { text: string; dot: string } => {
     if (incomingProfile && otherProfile) {
-      const p = energyProximity(otherProfile, otherPositionBucket, incomingProfile, candidateSec)
+      const p = energyProximity(otherProfile, otherPositionBucketSec, incomingProfile, candidateSec)
       if (p) return { text: PROXIMITY_LABEL[p], dot: PROXIMITY_DOT[p] }
     }
     const text = otherAnalysisFailed

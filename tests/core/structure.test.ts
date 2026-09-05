@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeEnergyProfile, energyProximity, findTransitionCandidates } from '@/core/structure'
+import { analyzeEnergyProfile, energyProximity, findTransitionCandidates, type EnergyProfile } from '@/core/structure'
 import type { BeatGrid } from '@/core/types'
 
 /**
@@ -139,5 +139,27 @@ describe('energyProximity', () => {
     const outgoing = profileOfLevel({ sec: 20, level: 1.0 })
     const incoming = analyzeEnergyProfile(new Float32Array(0), 0)
     expect(energyProximity(outgoing, 5, incoming, 5)).toBeNull()
+  })
+
+  it('regression: recovers the correct window even when windowSec is not an exact float', () => {
+    // `findTransitionCandidates` generates a candidate's `sec` as
+    // `i * windowSec`. When `windowSec` isn't a "nice" float (real analysis
+    // on real audio almost never produces one — this exact combination was
+    // found by brute-forcing realistic duration/bucket-count pairs), dividing
+    // that `sec` back by the same `windowSec` can land a hair under the
+    // intended integer index: `Math.floor(2.5995 / 0.8665)` is 2, not 3,
+    // even though `3 * 0.8665 === 2.5995`. `levelAt` (core/structure.ts) must
+    // use `Math.round`, not `Math.floor`, or it silently reads the *previous*
+    // window — exactly the bug a real browser run caught (a loud candidate
+    // reading "quieter" instead of "close" against a flat reference track).
+    const windowSec = 0.8665
+    const incoming: EnergyProfile = { contour: [0.1, 0.1, 0.1, 1.0], peak: 1.0, windowSec }
+    const candidateSec = 3 * windowSec // the exact `i * windowSec` shape a real candidate carries
+    const outgoing: EnergyProfile = { contour: [1.0], peak: 1.0, windowSec: 1 }
+    // The candidate sits in incoming's *last* window (level 1.0, same as
+    // outgoing) — a correct index recovery reads "close"; the old
+    // `Math.floor` bug would instead read the second-to-last window (level
+    // 0.1) and wrongly call it "quieter".
+    expect(energyProximity(outgoing, 0, incoming, candidateSec)).toBe('close')
   })
 })

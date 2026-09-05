@@ -24,12 +24,16 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
   const otherDeckId: DeckId = deckId === 'A' ? 'B' : 'A'
   const otherPlaying = useStore((s) => s.decks[otherDeckId].playing)
-  // v0.4.7: only read while `showTransitionPoints` is true, i.e. exactly when
-  // the other deck is playing — its `positionSec` only changes per-frame in
-  // that same window, so this adds no re-render cost outside it.
   const otherBands = useStore((s) => s.decks[otherDeckId].bands)
   const otherDurationSec = useStore((s) => s.decks[otherDeckId].durationSec)
-  const otherPositionSec = useStore((s) => s.decks[otherDeckId].positionSec)
+  // Floored *in the selector*, not after — `useRenderLoop` writes the other
+  // deck's raw `positionSec` every frame regardless of whether this panel is
+  // showing anything, so selecting the raw value here would re-render this
+  // whole Deck at frame rate any time the other deck plays. Selecting the
+  // already-floored number means Zustand's own equality check only sees a
+  // change once a second, matching the ~1s resolution the comparison itself
+  // has (`TransitionPointsPanel`'s own energy contour).
+  const otherPositionBucketSec = useStore((s) => Math.floor(s.decks[otherDeckId].positionSec))
   const otherAnalysisFailed = useStore((s) => s.decks[otherDeckId].track?.analysisState === 'failed')
   const color = DECK_COLOR[deckId]
   const loaded = !!deck.track
@@ -162,7 +166,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               otherDeckId={otherDeckId}
               otherBands={otherBands}
               otherDurationSec={otherDurationSec}
-              otherPositionSec={otherPositionSec}
+              otherPositionBucketSec={otherPositionBucketSec}
               otherAnalysisFailed={otherAnalysisFailed}
               onSelect={(sec) => {
                 // Both calls act on the same chosen point: the transition
