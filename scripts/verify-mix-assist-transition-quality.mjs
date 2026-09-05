@@ -225,7 +225,17 @@ async function measurePair(fileA, fileB) {
           await new Promise((r) => setTimeout(r, 200))
         }
         if (!trackA || !trackB) {
-          return { skipped: true, reason: `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() }
+          // Don't just say "not found" — say what *was* found, so a real id
+          // mismatch (vs. an empty/still-scanning library) is visible from
+          // the first run instead of needing a follow-up round to ask for it.
+          const { tracks } = useStore.getState().library
+          const sample = tracks.slice(0, 5).map((t) => t.id)
+          return {
+            skipped: true,
+            reason:
+              `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() +
+              ` (library has ${tracks.length} track(s); first few ids: ${JSON.stringify(sample)})`,
+          }
         }
 
         await ctl.loadTrackToDeck('A', trackA)
@@ -299,7 +309,7 @@ async function measurePair(fileA, fileB) {
           gridBConfirmed,
         }
       },
-      { idA: fileA.base, idB: fileB.base, scanTimeoutMs: 15_000, timeoutMs: ANALYSIS_TIMEOUT_MS, afterDelayMs: AFTER_DELAY_MS },
+      { idA: fileA.base, idB: fileB.base, scanTimeoutMs: 30_000, timeoutMs: ANALYSIS_TIMEOUT_MS, afterDelayMs: AFTER_DELAY_MS },
     )
 
     return { fileA: fileA.base, fileB: fileB.base, consoleErrors: errors, ...result }
