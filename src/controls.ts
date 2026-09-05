@@ -1217,10 +1217,24 @@ export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entryS
     })
     return
   }
+  // v0.4.10: an unconfirmed grid is a guess, not a refusal reason — Shalom's
+  // call (05/09): "like a blinking yellow light: it's a risk, but I'm doing
+  // it" rather than blocking mid-set. Named explicitly so the DJ knows which
+  // side to listen to, same as every other notice this function already
+  // raises.
+  const unconfirmed: DeckId[] = []
+  if (!from.beatGridConfirmed) unconfirmed.push(fromDeckId)
+  if (!to.beatGridConfirmed) unconfirmed.push(toDeckId)
+  if (unconfirmed.length > 0) {
+    setNotice({
+      text: `Phase-aligning against an unconfirmed beat grid on deck ${unconfirmed.join(' and ')} — the join may drift more than usual until SYNC catches it up.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+  }
 
   const fromEngine = engine.decks[fromDeckId]
   const toEngine = engine.decks[toDeckId]
-  const enterSec = phaseAlignedEntrySec(entrySec, to.beatGrid, fromEngine.position, from.beatGrid)
 
   // Establish the join point explicitly rather than trust whatever the live
   // crossfader already happens to read — ROADMAP.md requires the incoming
@@ -1229,10 +1243,22 @@ export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entryS
   // otherwise leave it short of that extreme.
   const startExtreme = crossfaderExtremeFor(fromDeckId)
   engine.setCrossfader(startExtreme)
-  useStore.getState().patchMixer({ crossfader: startExtreme })
 
+  // v0.4.10: `fromEngine.position` is read as late as possible — right next
+  // to the seek it feeds — with no store write between the two. A `patchMixer`/
+  // `patchDeck` call here is a synchronous Zustand notify to every listening
+  // React component, at a cost that varies with whatever's on screen; with
+  // `enterSec` computed *before* that write (the old order), `fromDeckId` kept
+  // playing through the unpredictable delay and the join landed on a phase
+  // that had already moved on. Measured on the real library (v0.4.6): 65.85ms
+  // average, 280ms worst-case. The store writes below move after the seek/play
+  // that actually needs the fresh position — `engine.setCrossfader` stays
+  // before them, audio-graph-only, so the incoming deck is still silent when
+  // it lands.
+  const enterSec = phaseAlignedEntrySec(entrySec, to.beatGrid, fromEngine.position, from.beatGrid)
   toEngine.seek(enterSec)
   toEngine.play()
+  useStore.getState().patchMixer({ crossfader: startExtreme })
   useStore.getState().patchDeck(toDeckId, { playing: true, positionSec: enterSec })
   // The reference this transition is built on is `fromDeckId`, regardless of
   // whatever `masterDeckId` happened to hold before — asserted explicitly so

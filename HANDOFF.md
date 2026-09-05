@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **`v0.4.10` — דיוק ההצטרפות במעבר האוטונומי.** **האיפיון כתוב ומאושר** ב‑[`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md) (05/09, סבב מוצר/ארכיטקטורה/QA + החלטת שלום: רשת ביטים לא מאושרת → אזהרה+המשך, לא סירוב). **הבא בתור: `PLAN.md` טכני** (סקיל `architecture-plan`), **לפני נגיעה בקוד**. `v0.4.9` (לחיצה על פאד "Mix in" מפעילה מעבר אוטומטי מלא) נסגרה 05/09 — [`docs/handoff/v0.4.9.md`](docs/handoff/v0.4.9.md). |
-| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. `claude/handoff-documentation-a8inr7` מוזג ונמחק (05/09) — לוודא עם `git fetch --prune && git branch -r --no-merged origin/main` (לא אמור להופיע). |
-| **גרסה נוכחית** | `v0.4.9` (`package.json`) — `v0.4.10` עדיין באיפיון, לא קיבלה מספר גרסה עדיין (מקבלת עם הקוד, לא עם המסמך). |
-| **`npm run check`** | ירוק (05/09, על `v0.4.9`). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
-| **הבא בתור** | לפתוח `PLAN.md` ל‑`v0.4.10` (סקיל `architecture-plan`, לא `write-feature-spec` — האיפיון כבר קיים) לפני קוד. `v0.5.0` (Pad Modes) אחריו. |
+| **בעבודה** | **`v0.4.10` — דיוק ההצטרפות במעבר האוטונומי. הקוד נחת (05/09).** `startAutoTransition` (`controls.ts`): קריאת המיקום/`enterSec` הוזזה צמוד ל-seek, `patchMixer`/`patchDeck` עברו לאחרי `play()`; אזהרה (לא סירוב) על beat grid `unconfirmed`. אימות סינתטי חדש עבר: `scripts/verify-mix-assist-atjoin-order.mjs` (10/10, בדפדפן אמיתי מול dev server). **פתוח: מדידת לפני/אחרי אמיתית על ספריית שלום** (`scripts/verify-mix-assist-transition-quality.mjs`) — לא ניתנת להרצה בסביבה מרוחקת (ר' "הנחות" ב-FEATURE_SPEC), **בלעדיה הגרסה לא סגורה**. `workshop-output/PLAN.md` היה שריד מ‑v0.4.7 שלא הוחלף כשה‑spec הזה נכתב — הוחלף עכשיו בתוכנית האמיתית של v0.4.10. `v0.4.9` נסגרה 05/09 — [`docs/handoff/v0.4.9.md`](docs/handoff/v0.4.9.md). |
+| **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. `claude/read-handoff-6ylz3g` מוזג ונמחק (05/09) — לוודא עם `git fetch --prune && git branch -r --no-merged origin/main` (לא אמור להופיע). |
+| **גרסה נוכחית** | `v0.4.10` (`package.json`, עודכן 05/09 עם נחיתת הקוד). |
+| **`npm run check`** | ירוק (05/09, על `v0.4.10`, כולל השינוי הזה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **הבא בתור** | להעביר לשלום: להריץ `scripts/verify-mix-assist-transition-quality.mjs` על `C:\Users\Shalom\Music\Tracks` **לפני ואחרי** (checkout מול הקומיט הקודם), לדווח את המספרים מול v0.4.6 (66ms/280ms/21ms). אחרי שהם מדווחים ומראים שיפור — לסגור את הגרסה (ROADMAP ✅, ארכוב ל-`docs/handoff/`). `v0.5.0` (Pad Modes) אחריו. |
 
 ---
 

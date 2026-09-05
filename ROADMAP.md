@@ -424,6 +424,24 @@ beatgrid.test.ts`, אימות דפדפן חי בכל תת‑צעד), ושני ה
   או להזהיר, כמו שהוא כבר מסרב כשאין grid בכלל?
 המספרים המלאים: `scripts/verify-mix-assist-transition-quality.mjs`.
 
+## v0.4.10 — דיוק ההצטרפות במעבר האוטונומי
+**מטרה:** לסגור את שני הכיוונים שנפתחו תחת v0.4.6 למעלה. איפיון מלא:
+[`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md), תוכנית:
+[`workshop-output/PLAN.md`](workshop-output/PLAN.md).
+- `startAutoTransition` (`controls.ts`): קריאת `fromEngine.position`/חישוב `enterSec`
+  הוזזה לצמוד ל-`toEngine.seek`, ו-`patchMixer`/`patchDeck` הוזזו לאחרי
+  `toEngine.play()` — כדי שכתיבת store סינכרונית בעלות משתנה לא תשב בין קריאת
+  המיקום לביצוע ההצטרפות בפועל (ההסבר לפיזור 66ms/280ms שנמדד ב-v0.4.6).
+- beat grid `unconfirmed` על דק כלשהו בטרנזישן → אזהרה צהובה עם שם הדק, **לא סירוב**
+  (החלטת שלום 05/09: "כמו נורה צהובה שמהבהבת").
+- קוד נחת, `npm run check` ירוק, סקריפט Playwright סינתטי חדש
+  (`scripts/verify-mix-assist-atjoin-order.mjs`) מוודא את שתי ההתנהגויות בדפדפן אמיתי.
+  **עדיין פתוח:** מדידת לפני/אחרי אמיתית על ספריית שלום
+  (`scripts/verify-mix-assist-transition-quality.mjs`) — לא ניתנת להרצה בסביבה
+  מרוחקת, ראה `HANDOFF.md`.
+- **הושלם כאשר:** המספרים האמיתיים (ממוצע/גרוע-ביותר `atJoin`) נמדדו לפני ואחרי
+  ודווחו, ומראים שיפור לעומת v0.4.6 (66ms/280ms).
+
 ## v0.5.0 — Pad Modes
 **מטרה:** גריד הפדים עושה יותר מ‑hot cues.
 - מצבים: Hot Cue, Auto Loop, Loop Roll, Beat Jump, Sampler (מעבר במצב + shift)
