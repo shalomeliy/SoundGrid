@@ -102,34 +102,54 @@ function walk(dir) {
   return out
 }
 
-function pickPairs(files, count) {
+/**
+ * Same 8%-with-half/double-time tolerance `mixRecommendations` itself uses
+ * (`core/recommend.ts`: `bestErr > 0.08` is excluded) — a random pair the
+ * real Mix Assist panel would never have offered is not a measurement of
+ * the feature, it's a measurement of a scenario the feature actively
+ * prevents. Reimplemented rather than imported: that function wants
+ * `DeckMixState`/`Track` shapes for a live deck, key-match scoring, and a
+ * "best of several playing decks" search this only ever needs pairwise.
+ */
+function bpmCompatible(bpmA, bpmB) {
+  for (const mult of [0.5, 1, 2]) {
+    if (Math.abs(bpmB * mult - bpmA) / bpmA <= 0.08) return true
+  }
+  return false
+}
+
+function pickPairs(files, count, bpmById) {
+  const withBpm = files.filter((f) => bpmById.get(f.base) != null)
   const byFolder = new Map()
-  for (const f of files) {
+  for (const f of withBpm) {
     if (!byFolder.has(f.folder)) byFolder.set(f.folder, [])
     byFolder.get(f.folder).push(f)
   }
   const pairs = []
   const usedBase = new Set()
-  const folders = [...byFolder.values()].filter((list) => list.length >= 2)
+  const compatible = (a, b) => bpmCompatible(bpmById.get(a.base), bpmById.get(b.base))
+  const tryPairsIn = (list) => {
+    const shuffled = shuffle(list)
+    for (let i = 0; i < shuffled.length && pairs.length < count; i++) {
+      const a = shuffled[i]
+      if (usedBase.has(a.base)) continue
+      const b = shuffled.find((f) => f !== a && !usedBase.has(f.base) && compatible(a, f))
+      if (!b) continue
+      usedBase.add(a.base)
+      usedBase.add(b.base)
+      pairs.push([a, b])
+    }
+  }
   // Prefer same-folder pairs (genre-consistent, closer to how Mix Assist is
-  // actually used) before falling back to cross-folder ones.
+  // actually used) before falling back to cross-folder ones — but a pair is
+  // only ever formed when the tagged BPMs are actually compatible.
+  const folders = [...byFolder.values()].filter((list) => list.length >= 2)
   for (const list of shuffle(folders)) {
     if (pairs.length >= count) break
-    const shuffled = shuffle(list)
-    const a = shuffled.find((f) => !usedBase.has(f.base))
-    if (!a) continue
-    const b = shuffled.find((f) => f !== a && !usedBase.has(f.base))
-    if (!b) continue
-    usedBase.add(a.base)
-    usedBase.add(b.base)
-    pairs.push([a, b])
+    tryPairsIn(list)
   }
-  const remaining = shuffle(files.filter((f) => !usedBase.has(f.base)))
-  while (pairs.length < count && remaining.length >= 2) {
-    const a = remaining.pop()
-    const b = remaining.pop()
-    if (a.base === b.base) continue
-    pairs.push([a, b])
+  if (pairs.length < count) {
+    tryPairsIn(shuffle(withBpm.filter((f) => !usedBase.has(f.base))))
   }
   return pairs
 }
@@ -372,6 +392,44 @@ async function measurePair(fileA, fileB) {
   }
 }
 
+/**
+ * Real BPM tags for candidate selection — `readTags` (source-fsaccess/tags.ts)
+ * is the exact reader the app's own library scan uses, reached via a dynamic
+ * import against the dev server (same technique as `measurePair`'s
+ * `controls.ts`/`store.ts`). Bytes are served lazily through `exposeFunction`
+ * rather than inlined into one giant init script — `harness()`'s two-files-
+ * at-a-time inlining is fine for a single pair, not for however many
+ * candidates end up needing a BPM check here.
+ */
+async function readBpmTags(files) {
+  const page = await browser.newPage({ viewport: VIEWPORT })
+  try {
+    const byName = new Map(files.map((f) => [f.base, f.full]))
+    await page.exposeFunction('__readFileBase64', (name) => fs.readFileSync(byName.get(name)).toString('base64'))
+    await page.goto(URL, { waitUntil: 'domcontentloaded' })
+    await page.waitForTimeout(300)
+    return await page.evaluate(async (names) => {
+      const { readTags } = await import('/src/platform/source-fsaccess/tags.ts')
+      const out = {}
+      for (const name of names) {
+        try {
+          const b64 = await window.__readFileBase64(name)
+          const binary = atob(b64)
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          const tags = await readTags(new File([bytes], name))
+          out[name] = { bpm: tags.bpm ?? null, camelot: tags.camelot ?? null }
+        } catch (err) {
+          out[name] = { bpm: null, camelot: null, error: String(err?.message ?? err) }
+        }
+      }
+      return out
+    }, files.map((f) => f.base))
+  } finally {
+    await page.close()
+  }
+}
+
 console.log(`Library: ${LIBRARY_DIR}`)
 const files = walk(LIBRARY_DIR)
 console.log(`${files.length} playable files found (<= ${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)}MB each)`)
@@ -381,7 +439,26 @@ if (files.length < 2) {
   process.exit(2)
 }
 
-const pairs = pickPairs(files, PAIR_COUNT)
+// Reading tags for the whole library up front (fast — no decode, byte-range
+// reads only, same as the app's own scan) is what lets pairing check real
+// BPM compatibility instead of guessing from folder alone.
+const TAG_READ_CAP = 300
+const tagCandidates = files.length > TAG_READ_CAP ? shuffle(files).slice(0, TAG_READ_CAP) : files
+console.log(`Reading BPM tags for ${tagCandidates.length} candidate(s)...`)
+const tagResults = await readBpmTags(tagCandidates)
+const bpmById = new Map()
+let noBpm = 0
+for (const f of tagCandidates) {
+  const t = tagResults[f.base]
+  if (t?.bpm != null) bpmById.set(f.base, t.bpm)
+  else noBpm++
+}
+console.log(`${bpmById.size} tagged with a BPM, ${noBpm} without (excluded from pairing, not silently — this is that count)`)
+
+const pairs = pickPairs(files, PAIR_COUNT, bpmById)
+if (pairs.length < PAIR_COUNT) {
+  console.log(`Only found ${pairs.length}/${PAIR_COUNT} BPM-compatible pairs (real Mix Assist tolerance: ±8%, half/double-time included) — not padding with incompatible ones.`)
+}
 console.log(`Measuring ${pairs.length} pair(s)...\n`)
 
 const results = []
