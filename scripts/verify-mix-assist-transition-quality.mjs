@@ -225,16 +225,18 @@ async function measurePair(fileA, fileB) {
           await new Promise((r) => setTimeout(r, 200))
         }
         if (!trackA || !trackB) {
-          // Don't just say "not found" — say what *was* found, so a real id
-          // mismatch (vs. an empty/still-scanning library) is visible from
-          // the first run instead of needing a follow-up round to ask for it.
-          const { tracks } = useStore.getState().library
-          const sample = tracks.slice(0, 5).map((t) => t.id)
+          // Don't just say "not found" — say what *was* found. `library.boot`/
+          // `bootDetail` (Library.tsx's reportFailure) carry the real error
+          // when restoreLibraryFolder()/scanLibrary() throws — an empty
+          // library with `boot` still 'checking' or 'restoring' means it
+          // never got that far at all (hung, not failed).
+          const lib = useStore.getState().library
+          const sample = lib.tracks.slice(0, 5).map((t) => t.id)
           return {
             skipped: true,
             reason:
               `library scan never listed ${!trackA ? idA : ''} ${!trackB ? idB : ''}`.trim() +
-              ` (library has ${tracks.length} track(s); first few ids: ${JSON.stringify(sample)})`,
+              ` (${lib.tracks.length} track(s) found; boot=${lib.boot}${lib.bootDetail ? ` (${lib.bootDetail})` : ''}; first ids: ${JSON.stringify(sample)}; unhandled: ${JSON.stringify(window.__unhandled ?? [])})`,
           }
         }
 
