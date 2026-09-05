@@ -1,0 +1,5 @@
+# .claude/settings.json is parsed by graphify as structured JSON, turning its
+# permission strings (Bash(...) entries) into fake "allow"/"deny" God Nodes
+# in the dependency graph. Excluded so GRAPH_REPORT.md reflects real code
+# architecture, not tooling config.
+.claude/
