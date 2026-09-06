@@ -57,7 +57,15 @@ describe('FLX4 label drift', () => {
   })
 
   it('gives the hotcue label a pad number that reflects its param', () => {
-    expect(flx4Label('hotcue', 0)).toBe('Pad 1 (Hot Cue mode)')
-    expect(flx4Label('hotcue', 7)).toBe('Pad 8 (Hot Cue mode)')
+    // v0.5.0: the physical pad's label can no longer promise "Hot Cue mode" —
+    // the same 8 notes now mean different things depending on the deck's
+    // pad-grid mode (`core/types.ts`'s `PadMode`).
+    expect(flx4Label('hotcue', 0)).toBe('Pad 1 (mode-dependent — Hot Cue, Loop, Beat Jump or Sampler)')
+    expect(flx4Label('hotcue', 7)).toBe('Pad 8 (mode-dependent — Hot Cue, Loop, Beat Jump or Sampler)')
+  })
+
+  it('gives the padMode label a button number that reflects its param', () => {
+    expect(flx4Label('padMode', 0)).toBe('Pad-mode button 1 (Hot Cue / Loop / Beat Jump / Sampler)')
+    expect(flx4Label('padMode', 3)).toBe('Pad-mode button 4 (Hot Cue / Loop / Beat Jump / Sampler)')
   })
 })

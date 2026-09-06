@@ -1,7 +1,7 @@
 import * as ctl from '@/controls'
 import { useStore } from '@/app/state/store'
 import { LONG_PRESS_MS } from '@/core/constants'
-import type { DeckId } from '@/core/types'
+import type { DeckId, PadMode } from '@/core/types'
 import { FLX4_MAPPING } from '@/platform/transport-webmidi/mappings/flx4'
 import {
   bindingKey,
@@ -13,6 +13,15 @@ import {
 import { get, set } from 'idb-keyval'
 
 const CUSTOM_KEY = 'soundgrid:midiMapping'
+
+/**
+ * `padMode`'s `param` (0..3) to a `PadMode`, in the order the FLX4's 4
+ * physical mode-select buttons are bound in `mappings/flx4.ts` (Hot Cue /
+ * Pad FX1 / Beat Jump / Sampler). A translation table, not a decision — the
+ * decision (which 4 modes, in which order) lives in the mapping preset and
+ * `core/types.ts`, not here.
+ */
+const PAD_MODES: PadMode[] = ['hotcue', 'loop', 'beatJump', 'sampler']
 
 /** knob 0..127 -> -1..1 */
 function bipolar(v: number, invert?: boolean) {
@@ -29,6 +38,8 @@ class MidiManager {
   private access: MIDIAccess | null = null
   private mapping: MidiMapping = FLX4_MAPPING
   private cueHeld = new Map<DeckId, () => void>()
+  /** Pad presses in progress, keyed `${deck}:${param}` — same shape as `cueHeld`, needed here (not just per-deck) because up to 8 pads per deck can be held independently (v0.5.0's Loop Roll). */
+  private padHeld = new Map<string, () => void>()
   /** SYNC press timestamps (v0.3.0) — held past LONG_PRESS_MS promotes master. */
   private syncDownAt = new Map<DeckId, number>()
   private learnResolver: ((b: Omit<Binding, 'action'> & { key: string }) => void) | null =
@@ -144,8 +155,30 @@ class MidiManager {
       case 'jogTouch':
         if (deck) ctl.jogTouch(deck, value > 0)
         break
-      case 'hotcue':
-        if (value > 0 && deck && b.param != null) ctl.pressHotCue(deck, b.param)
+      case 'hotcue': {
+        // Wire name kept as `'hotcue'` even though this is now "pad press,
+        // mode-interpreted" (v0.5.0) — renaming it would silently break any
+        // Learn-saved custom mapping a user already has for a hot-cue pad
+        // (`CUSTOM_KEY` in idb-keyval stores this exact string). `ctl.pressPad`
+        // does the mode interpretation; this stays a dumb press/release
+        // translator, same shape as `cueHeld` above — no branching on
+        // `padMode` here, that would deepen the boundary violation this file
+        // already carries (CLAUDE.md).
+        if (!deck || b.param == null) break
+        const key = `${deck}:${b.param}`
+        if (value > 0) {
+          this.padHeld.set(key, ctl.pressPad(deck, b.param))
+        } else {
+          this.padHeld.get(key)?.()
+          this.padHeld.delete(key)
+        }
+        break
+      }
+      case 'padMode':
+        if (value > 0 && deck && b.param != null) ctl.setPadMode(deck, PAD_MODES[b.param])
+        break
+      case 'shift':
+        ctl.setShiftHeld(value > 0)
         break
       case 'loopToggle':
         if (value > 0 && deck) ctl.toggleLoop(deck)

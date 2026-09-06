@@ -6,8 +6,10 @@ import {
   BEATGRID_NUDGE_SEC,
   HOT_CUE_COLORS,
   RECENTLY_REMOVED_WINDOW_SEC,
+  tempoToRate,
   TRANSITION_CROSSFADE_SEC,
 } from '@/core/constants'
+import { beatJumpTargetSec, loopRollReturnSec, LOOP_BEATS_STEPS } from '@/core/padmodes'
 import {
   bpmFromTaps,
   doubleGrid,
@@ -27,7 +29,7 @@ import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
-import type { BeatGrid, DeckId, Track } from '@/core/types'
+import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.
@@ -819,6 +821,150 @@ export function setLoopBeats(deckId: DeckId, beats: number) {
     const beatSec = 60 / st.bpm
     const start = deck.loopStart ?? deck.position
     deck.setLoop(start, start + beatSec * b)
+  }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Pad modes (v0.5.0) — the pad grid does more than hot cues. `padMode` is
+// per-deck (`DeckState`); `shiftHeld` is global — the FLX4 has one physical
+// SHIFT button for the whole controller, not one per side. `pressPad` is
+// the one choke-point entry both the UI (`PadGrid.tsx`) and MIDI
+// (`transport-webmidi/manager.ts`'s `dispatch`) call — it interprets the
+// same 8 physical pads differently depending on `decks[deckId].padMode`,
+// the same way `pressHotCue` already interprets a plain vs. mix-entry cue.
+// It always returns a release closure (a no-op outside Loop Roll) so
+// callers never need to know which pad presses are hold gestures.
+// ————————————————————————————————————————————————————————————————
+
+/** Loop Roll in progress per deck — transient, not store state (same reasoning as `activeTransition`): nothing here is serializable or needs to trigger a render on its own. */
+const loopRollByDeck: Partial<Record<DeckId, { entrySec: number; startedAtSec: number }>> = {}
+
+/** Release an in-progress Loop Roll on this deck, if any — the track "catches up" to where it would be had it never looped. A safe no-op when there is none, so `setPadMode` and a plain pad release can both call it unconditionally. */
+function releaseLoopRoll(deckId: DeckId) {
+  const roll = loopRollByDeck[deckId]
+  if (!roll) return
+  delete loopRollByDeck[deckId]
+  const deck = engine.decks[deckId]
+  const tempo = useStore.getState().decks[deckId].tempo
+  const rate = tempoToRate(tempo, settings.values.tempoRange)
+  const elapsedSec = (engine.currentTime - roll.startedAtSec) * rate
+  const target = loopRollReturnSec(roll.entrySec, elapsedSec, deck.duration)
+  deck.clearLoop()
+  deck.seek(target)
+  useStore.getState().patchDeck(deckId, { positionSec: target })
+}
+
+/**
+ * Switch a deck's pad-grid mode. A loop left running under Loop mode is
+ * stopped, with a visible notice, before leaving it — a loop that keeps
+ * playing behind a grid that no longer shows it is exactly the "changed
+ * without being surfaced" failure CLAUDE.md's central rule forbids. An
+ * in-progress Loop Roll is released the same way a normal release would.
+ */
+export function setPadMode(deckId: DeckId, mode: PadMode) {
+  const { decks, patchDeck, setNotice } = useStore.getState()
+  const st = decks[deckId]
+  // Re-selecting the mode that's already active is a no-op — in particular,
+  // it must never cut a Loop Roll short. A duplicate press can genuinely
+  // arrive this way (a bouncing MIDI note, a stray click on the already-
+  // active tab), and `releaseLoopRoll` below would otherwise fire on every
+  // one of them even though the deck never actually left Loop mode.
+  if (st.padMode === mode) return
+  releaseLoopRoll(deckId)
+  if (st.padMode === 'loop' && mode !== 'loop' && st.loopActive) {
+    engine.decks[deckId].clearLoop()
+    patchDeck(deckId, { loopActive: false })
+    setNotice({
+      text: `Loop stopped on deck ${deckId} — switched away from Loop mode.`,
+      tone: 'warn',
+      source: 'padMode',
+    })
+  }
+  patchDeck(deckId, { padMode: mode })
+}
+
+/** The global SHIFT layer for pad presses — held down changes what a pad does (see `pressPad`). */
+export function setShiftHeld(down: boolean) {
+  useStore.setState({ shiftHeld: down })
+}
+
+/** Loop mode, no SHIFT: start/stop a plain loop at this pad's beat length — same mechanics as `toggleLoop`, a fixed length per pad instead of the current stepper value. */
+function pressLoopPad(deckId: DeckId, beats: number) {
+  const deck = engine.decks[deckId]
+  const { patchDeck, decks } = useStore.getState()
+  const st = decks[deckId]
+  if (st.loopActive && st.loopBeats === beats) {
+    deck.clearLoop()
+    patchDeck(deckId, { loopActive: false })
+    return
+  }
+  const bpm = st.bpm ?? 120
+  const start = quantizeIfOn(deckId, deck.position)
+  deck.setLoop(start, start + (60 / bpm) * beats)
+  patchDeck(deckId, { loopActive: true, loopBeats: beats })
+}
+
+/** Loop mode, SHIFT+press: Loop Roll — loops while held, catches up to the natural position on release. Returns the release closure. */
+function pressLoopRollPad(deckId: DeckId, beats: number): () => void {
+  const deck = engine.decks[deckId]
+  const bpm = useStore.getState().decks[deckId].bpm ?? 120
+  const entrySec = quantizeIfOn(deckId, deck.position)
+  loopRollByDeck[deckId] = { entrySec, startedAtSec: engine.currentTime }
+  deck.setLoop(entrySec, entrySec + (60 / bpm) * beats)
+  return () => releaseLoopRoll(deckId)
+}
+
+/** Beat Jump mode: jump forward, or backward with SHIFT, by this pad's beat distance. Refuses (with a notice, not a silent no-op) when there's no tempo to jump by — same shape as `syncDeck`'s "no tempo yet" guard. */
+function pressBeatJumpPad(deckId: DeckId, beats: number, backward: boolean) {
+  const deck = engine.decks[deckId]
+  const { decks, setNotice, patchDeck } = useStore.getState()
+  const st = decks[deckId]
+  if (!st.bpm) {
+    setNotice({
+      text: `Deck ${deckId} has no tempo yet — Beat Jump needs one.`,
+      tone: 'warn',
+      source: 'padMode',
+    })
+    return
+  }
+  const target = beatJumpTargetSec(deck.position, st.bpm, beats, backward ? -1 : 1, deck.duration)
+  deck.seek(target)
+  patchDeck(deckId, { positionSec: target })
+}
+
+/**
+ * The choke-point entry for every pad press, regardless of source — the
+ * UI's `onMouseDown`/`onClick` and the FLX4's physical pads via
+ * `manager.ts`'s `dispatch` both call this instead of a mode-specific
+ * function directly. Always returns a release closure (a no-op for every
+ * mode except Loop mode's SHIFT+press) so callers never need to know in
+ * advance which pad presses are hold gestures and which are plain clicks.
+ */
+export function pressPad(deckId: DeckId, index: number): () => void {
+  if (!engine.decks[deckId].hasTrack) return () => {}
+  const { decks, shiftHeld, setNotice } = useStore.getState()
+  const mode = decks[deckId].padMode
+  const beats = LOOP_BEATS_STEPS[index] ?? 1
+  switch (mode) {
+    case 'hotcue':
+      pressHotCue(deckId, index)
+      return () => {}
+    case 'loop':
+      if (shiftHeld) return pressLoopRollPad(deckId, beats)
+      pressLoopPad(deckId, beats)
+      return () => {}
+    case 'beatJump':
+      pressBeatJumpPad(deckId, beats, shiftHeld)
+      return () => {}
+    case 'sampler':
+      setNotice({
+        text: `Sampler isn't built yet — coming in v0.6.0. Pad ${index + 1} did nothing.`,
+        tone: 'warn',
+        source: 'padMode',
+      })
+      return () => {}
+    default:
+      return () => {}
   }
 }
 
