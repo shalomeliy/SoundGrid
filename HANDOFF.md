@@ -15,12 +15,12 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **`v0.4.10` — דיוק ההצטרפות במעבר האוטונומי. הקוד נחת (05/09).** `startAutoTransition` (`controls.ts`): קריאת המיקום/`enterSec` הוזזה צמוד ל-seek, `patchMixer`/`patchDeck` עברו לאחרי `play()`; אזהרה (לא סירוב) על beat grid `unconfirmed`. אימות סינתטי חדש עבר: `scripts/verify-mix-assist-atjoin-order.mjs` (10/10, בדפדפן אמיתי מול dev server). **פתוח: מדידת לפני/אחרי אמיתית על ספריית שלום** (`scripts/verify-mix-assist-transition-quality.mjs`) — לא ניתנת להרצה בסביבה מרוחקת (ר' "הנחות" ב-FEATURE_SPEC), **בלעדיה הגרסה לא סגורה**. `workshop-output/PLAN.md` היה שריד מ‑v0.4.7 שלא הוחלף כשה‑spec הזה נכתב — הוחלף עכשיו בתוכנית האמיתית של v0.4.10. `v0.4.9` נסגרה 05/09 — [`docs/handoff/v0.4.9.md`](docs/handoff/v0.4.9.md). |
+| **בעבודה** | **אין גרסה פתוחה כרגע.** `v0.4.10` נסגרה (06/09) — מדידת לפני/אחרי אמיתית על ספריית שלום (N=20) הראתה שיפור אמיתי (atJoin ‑47%, אחרי 3ש׳ ‑56%); ריצה ראשונה ב-N=8 הטעתה לכיוון ההפוך (רעש מדגם קטן) — פורט לברירת המחדל של הסקריפט עצמו, שונתה ל-20. פרטים: [`docs/handoff/v0.4.10.md`](docs/handoff/v0.4.10.md). `v0.5.0` (Pad Modes) עדיין לא התחיל — ר' `ROADMAP.md`. |
 | **branch** | **עובדים ישירות על `main`** (החלטת המשתמש, 03/09), דרך branch+PR שממוזג fast-forward. `claude/read-handoff-6ylz3g` מוזג ל-main (05/09) אבל **לא נמחק** מהמרוחק — מחיקת branch חסומה במדיניות הפרוקסי של הסביבה המרוחקת (403 על `git push origin --delete`). לוודא מיזוג עם `git merge-base --is-ancestor origin/claude/read-handoff-6ylz3g origin/main` (לא עם `--no-merged`, כי ה-branch עדיין קיים). |
 | **תקרית 05/09** | ה-main המקומי של שלום (מחשב Windows) התבדר מ-`main` — שתי סשנים עשו את **אותו** דיבוג של v0.4.6 שלב 8 במקביל, בלי לדעת אחת על השנייה (בדיוק התרחיש שהכלל "claim your version" למעלה נועד למנוע); היקף הפער: `git log --oneline origin/main..origin/shalom-local-v0.4.7-backup`. נבדק בפועל: לקומיטים המקומיים **אין ערך ייחודי** — שני הקבצים שבאמת התנגשו (`diag-idb-mock.mjs`, `verify-mix-assist-transition-quality.mjs`) היו גרסאות מוקדמות/עם באג ממשי (`f !== a` במקום `f.base !== a.base` — זיווג קובץ עם עצמו) לעומת מה שכבר ב-`main`. נפתר אצלו עם `git reset --hard origin/main` אחרי גיבוי מלא ל-branch `shalom-local-v0.4.7-backup` — הענף עדיין קיים בגיטהאב (`git status`/`git log` עליו, לא נמחק, אותה מדיניות פרוקסי). |
-| **גרסה נוכחית** | `v0.4.10` (`package.json`, עודכן 05/09 עם נחיתת הקוד). |
-| **`npm run check`** | ירוק (05/09, על `v0.4.10`, כולל השינוי הזה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
-| **הבא בתור** | להעביר לשלום: להריץ `scripts/verify-mix-assist-transition-quality.mjs` על `C:\Users\Shalom\Music\Tracks` **לפני ואחרי** (checkout מול הקומיט הקודם), לדווח את המספרים מול v0.4.6 (66ms/280ms/21ms). אחרי שהם מדווחים ומראים שיפור — לסגור את הגרסה (ROADMAP ✅, ארכוב ל-`docs/handoff/`). `v0.5.0` (Pad Modes) אחריו. |
+| **גרסה נוכחית** | `v0.4.10` (`package.json`) — נסגרה, אבל המספר לא מתקדם עד שמישהו מתחיל בפועל לעבוד על v0.5.0 (הדפוס בהיסטוריה: הבמפ קורה בתחילת הגרסה הבאה, לא בסגירת הקודמת). |
+| **`npm run check`** | ירוק (06/09, על `v0.4.10`, כולל סגירתה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **הבא בתור** | `v0.5.0` — Pad Modes. ר' `ROADMAP.md`. עדיין לא נכתב spec. |
 
 ---
 

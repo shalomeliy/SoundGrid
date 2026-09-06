@@ -4,10 +4,17 @@
  * Run against `npm run dev` on :5173, on a machine that actually has the
  * library (this cannot run in a sandboxed/remote session — see HANDOFF.md):
  *
- *   node scripts/verify-mix-assist-transition-quality.mjs "C:\Users\Shalom\Music\Tracks" 8
+ *   node scripts/verify-mix-assist-transition-quality.mjs "C:\Users\Shalom\Music\Tracks" 20
  *
  * (both args optional — default library dir is the Windows path above,
- * default pair count is 8)
+ * default pair count is 20)
+ *
+ * v0.4.10 closure (06/09): an N=8 run on this library swung from "worse than
+ * before" to "much better than before" on a second N=8 run of different
+ * random pairs — random pairing (see `pickPairs`) plus a handful of hard
+ * (slow-onset) tracks is enough noise at N=8 to flip the verdict outright.
+ * N=20 gave a stable, reproducible result across repeats. Don't trust an
+ * N=8 run's summary numbers for a before/after call — rerun at 20+ first.
  *
  * **Restart the dev server right before running this** (stop it, `npm run
  * dev` again). Confirmed the hard way: against a dev server that had been
@@ -62,7 +69,7 @@ const URL = 'http://localhost:5173/'
 const VIEWPORT = { width: 1536, height: 710 }
 const DEFAULT_DIR = String.raw`C:\Users\Shalom\Music\Tracks`
 const LIBRARY_DIR = process.argv[2] || DEFAULT_DIR
-const PAIR_COUNT = Number(process.argv[3] || 8)
+const PAIR_COUNT = Number(process.argv[3] || 20)
 /** Keeps the inlined-base64 init script fast; real WAVs are the outlier, mp3/m4a dominate the library (v0.1.7). */
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 // Real tracks are full-length (3-6 minutes of PCM to run the onset envelope
