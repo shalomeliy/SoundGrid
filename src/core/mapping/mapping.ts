@@ -11,6 +11,8 @@ export type ControlAction =
   | 'jog'
   | 'jogTouch'
   | 'hotcue'
+  | 'padMode'
+  | 'shift'
   | 'loopToggle'
   | 'loopHalve'
   | 'loopDouble'

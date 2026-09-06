@@ -38,13 +38,26 @@ function deck(ch: number) {
     [bindingKey('note', ch, 0x14)]: { action: 'loopToggle' as const, deck: idx(ch), mode: 'button' as const },
     [bindingKey('note', ch, 0x12)]: { action: 'loopHalve' as const, deck: idx(ch), mode: 'button' as const },
     [bindingKey('note', ch, 0x13)]: { action: 'loopDouble' as const, deck: idx(ch), mode: 'button' as const },
-    // performance pads (hot cue mode) — pads 1..8
+    // performance pads — always the same 8 notes; what they do depends on
+    // the deck's pad-grid mode (v0.5.0, `controls.ts`'s `pressPad`), not on
+    // anything bound here. The wire action stays `'hotcue'` even for a pad
+    // in a different mode (see `manager.ts`'s dispatch comment) — renaming
+    // it would silently break an existing Learn-saved mapping.
     ...Object.fromEntries(
       Array.from({ length: 8 }, (_, i) => [
         bindingKey('note', ch + 7, 0x00 + i),
         { action: 'hotcue' as const, deck: idx(ch), param: i, mode: 'button' as const },
       ]),
     ),
+    // pad-grid mode select (v0.5.0) — 4 physical buttons (Hot Cue / Pad FX1 /
+    // Beat Jump / Sampler on the real unit), `param` indexing `PAD_MODES` in
+    // `manager.ts` in that same order. **Not hardware-confirmed** — an
+    // unmeasured guess like most of this file before 30/08; fix via the
+    // Learn button in Settings if a press does nothing or hits the wrong pad.
+    [bindingKey('note', ch, 0x1b)]: { action: 'padMode' as const, deck: idx(ch), param: 0, mode: 'button' as const },
+    [bindingKey('note', ch, 0x1c)]: { action: 'padMode' as const, deck: idx(ch), param: 1, mode: 'button' as const },
+    [bindingKey('note', ch, 0x1d)]: { action: 'padMode' as const, deck: idx(ch), param: 2, mode: 'button' as const },
+    [bindingKey('note', ch, 0x1e)]: { action: 'padMode' as const, deck: idx(ch), param: 3, mode: 'button' as const },
   }
 }
 
@@ -83,5 +96,9 @@ export const FLX4_MAPPING: MidiMapping = {
     // browse
     [bindingKey('cc', 6, 0x40)]: { action: 'browse', mode: 'relative' },
     [bindingKey('note', 6, 0x41)]: { action: 'browseEnter', mode: 'button' },
+    // SHIFT (v0.5.0) — one physical button for the whole controller, not
+    // per deck, so it lives here with the other shared/mixer controls
+    // rather than inside `deck(ch)`. **Not hardware-confirmed.**
+    [bindingKey('note', 6, 0x3f)]: { action: 'shift', mode: 'button' },
   },
 }

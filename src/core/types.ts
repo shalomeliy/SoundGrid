@@ -64,6 +64,16 @@ export interface BeatGrid {
   bpm: number
 }
 
+/**
+ * What the pad grid does right now (v0.5.0). Per-deck — each deck's pad
+ * grid is a physically independent surface on the FLX4, so the two decks
+ * can legitimately sit in different modes at once. `sampler` is a stub in
+ * this version (`ROADMAP.md` v0.6.0 owns the real sampler engine); every
+ * pad in it shows a visible "not built yet" notice rather than doing
+ * nothing silently.
+ */
+export type PadMode = 'hotcue' | 'loop' | 'beatJump' | 'sampler'
+
 export interface DeckState {
   id: DeckId
   track: Track | null
@@ -105,6 +115,8 @@ export interface DeckState {
   loopActive: boolean
   loopBeats: number
   cueMonitor: boolean
+  /** which pad-grid mode this deck's pads are in (v0.5.0). Not persisted — resets to 'hotcue' on app reload, but survives a track load on the same deck. */
+  padMode: PadMode
 }
 
 export interface ChannelState {

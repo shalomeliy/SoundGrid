@@ -14,6 +14,8 @@ const TONES = {
   warn: 'var(--color-warn)',
   danger: 'var(--color-danger)',
   idle: 'var(--color-grid-dim)',
+  /** A held global modifier (SHIFT, v0.5.0) — deliberately not `warn`: that tone already means "degraded/unconfirmed", and SHIFT-held is neither. */
+  accent: 'var(--color-accent)',
 } as const
 
 export type PillTone = keyof typeof TONES

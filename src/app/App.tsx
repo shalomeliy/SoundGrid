@@ -57,11 +57,28 @@ export default function App() {
      */
     const bending = new Set<string>()
 
+    /**
+     * SHIFT (v0.5.0) — the keyboard's version of the FLX4's physical SHIFT
+     * button: global, not per-deck (`ctl.setShiftHeld`). A `Set` of the
+     * physical codes currently down, same reason as `bending` above — either
+     * key can be held, and the other one's release must not drop the flag
+     * while the first is still down.
+     */
+    const shiftCodes = new Set<string>()
+
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return
       // The Settings screen has its own keyboard; a stray D there must not
       // bend a deck that is playing to the room.
       if (settingsOpenRef.current) return
+
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if (!shiftCodes.has(e.code)) {
+          shiftCodes.add(e.code)
+          ctl.setShiftHeld(true)
+        }
+        return
+      }
 
       const bend = bendKeys[e.code]
       if (bend) {
@@ -108,6 +125,11 @@ export default function App() {
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        shiftCodes.delete(e.code)
+        if (shiftCodes.size === 0) ctl.setShiftHeld(false)
+        return
+      }
       const bend = bendKeys[e.code]
       if (!bend || !bending.delete(e.code)) return
       // Only the last bend key for this deck releases it: letting go of one
@@ -129,6 +151,10 @@ export default function App() {
         if (bend) ctl.releaseBend(bend[0])
       }
       bending.clear()
+      if (shiftCodes.size > 0) {
+        shiftCodes.clear()
+        ctl.setShiftHeld(false)
+      }
     }
 
     window.addEventListener('keydown', onKey)

@@ -13,7 +13,7 @@ import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues'
+export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues' | 'padMode'
 
 function emptyDeck(id: DeckId): DeckState {
   return {
@@ -37,6 +37,7 @@ function emptyDeck(id: DeckId): DeckState {
     loopActive: false,
     loopBeats: 4,
     cueMonitor: false,
+    padMode: 'hotcue',
   }
 }
 
@@ -60,6 +61,13 @@ export interface AppState {
    * an *existing* point, only where a new one is being set.
    */
   quantize: boolean
+
+  /**
+   * Global SHIFT layer for the pad grids (v0.5.0) — a held modifier that
+   * changes what a pad press does. Global, not per-deck: the FLX4 has one
+   * physical SHIFT button for the whole controller, not one per side.
+   */
+  shiftHeld: boolean
 
   /**
    * Mix Assist's autonomous transition in progress (v0.4.6, step 7), or
@@ -168,6 +176,7 @@ export const useStore = create<AppState>((set) => ({
   decks: { A: emptyDeck('A'), B: emptyDeck('B') },
   masterDeckId: null,
   quantize: false,
+  shiftHeld: false,
   activeTransition: null,
   mixer: {
     crossfader: 0,

@@ -343,7 +343,7 @@ export function Deck({ deckId }: { deckId: DeckId }) {
             </span>
           </div>
 
-          <PadGrid deckId={deckId} hotCues={deck.hotCues} />
+          <PadGrid deckId={deckId} hotCues={deck.hotCues} padMode={deck.padMode} color={color} />
         </div>
 
         {/* right: platter + vinyl, tempo beside them ------------------- */}
