@@ -166,12 +166,14 @@ const buildsButton = candidateButtons.filter({ hasText: 'energy builds' })
 await buildsButton.first().click()
 await page.waitForTimeout(400)
 
-const mixInPad = deckB.getByRole('button', { name: /Mix in$/ })
+const mixInPad = deckB.getByRole('button', { name: /^Start mix from Mix \d/ })
 const padCount = await mixInPad.count()
-ok('clicking a candidate saves a hot cue labeled "Mix in" on deck B', padCount > 0, `matches: ${padCount}`)
+ok('clicking a candidate saves a hot cue labeled "Mix <time>" on deck B', padCount > 0, `matches: ${padCount}`)
 if (padCount > 0) {
   const padText = await mixInPad.first().innerText()
-  ok('the pad shows the descriptive text, not a bare number', /mix/i.test(padText), padText)
+  // `innerText` also picks up the hover-reveal delete "×" span (opacity-only
+  // hidden, not `display:none`), so anchor the start only.
+  ok('the pad shows the track time, not a bare number', /^Mix \d+:\d{2}/.test(padText), padText)
 }
 
 // Pause deck B (cancels the transition the candidate click just started, per
@@ -182,19 +184,19 @@ await page.waitForTimeout(300)
 const beforePress = (await deckB.getByRole('button', { name: /^(play|pause)$/i }).innerText()).toUpperCase()
 ok('setup: deck B is paused before pressing the saved pad', beforePress === 'PLAY', beforePress)
 
-// Pressing the saved "Mix in" pad (v0.4.7 `pressHotCue`) should re-run the
+// Pressing the saved "Mix <time>" pad (v0.4.7 `pressHotCue`) should re-run the
 // full automatic transition — seek + phase-align + play — not just park the
 // playhead the way a plain hot cue does.
 await mixInPad.first().click()
 await page.waitForTimeout(500)
 const afterPress = (await deckB.getByRole('button', { name: /^(play|pause)$/i }).innerText()).toUpperCase()
 ok(
-  'pressing the saved "Mix in" pad starts deck B playing (full transition, not just a seek)',
+  'pressing the saved "Mix <time>" pad starts deck B playing (full transition, not just a seek)',
   afterPress === 'PAUSE',
   afterPress,
 )
 
-// Deck B is now playing (from the press above). Pressing the SAME "Mix in"
+// Deck B is now playing (from the press above). Pressing the SAME "Mix <time>"
 // pad again in that state must NOT attempt another transition — it should
 // fall back to a plain seek (v0.4.9 `shouldTriggerMixEntry`), exactly like
 // any other pad, instead of becoming a dead button with just a warning.

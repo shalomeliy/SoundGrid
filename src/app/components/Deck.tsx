@@ -174,7 +174,11 @@ export function Deck({ deckId }: { deckId: DeckId }) {
                 // is also saved as a hot cue so it's there next time this
                 // track loads (v0.4.7) — approved together, not sequenced.
                 ctl.startAutoTransition(otherDeckId, deckId, sec)
-                ctl.saveMixEntryHotCue(deckId, sec, 'Mix in')
+                // The label carries the point's own track time (`fmt`) so
+                // several saved mix-in pads on the same deck read as
+                // distinct points instead of all showing the same "Mix in"
+                // text — the owner's own report after saving more than one.
+                ctl.saveMixEntryHotCue(deckId, sec, `Mix ${fmt(sec)}`)
               }}
             />
           )}
