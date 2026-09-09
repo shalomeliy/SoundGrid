@@ -8,9 +8,34 @@ const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', impo
   version: string
 }
 
+// The two headers below make the page "cross-origin isolated", which is what
+// lets @huggingface/transformers' WASM backend actually use more than one
+// CPU thread (it silently runs single-threaded without this — the .wasm file
+// it loads is literally named ...-threaded.asyncify, but the thread pool
+// needs `SharedArrayBuffer`, which browsers only expose in this mode). This
+// is the real lever for v0.5.5 phase 2's CPU-only speed (09/09, after
+// device:'wasm' replaced device:'auto' — see HANDOFF.md) — not a stronger
+// GPU, which this project deliberately stopped using after it hung a real
+// GPU driver. `credentialless`, not the stricter `require-corp`: the model
+// download is a real cross-origin fetch (huggingface.co), and `require-corp`
+// would block any such response that doesn't send back its own
+// Cross-Origin-Resource-Policy header — not something this project
+// controls. `credentialless` gets the same isolation without requiring that,
+// at the cost of such a fetch going out without cookies (fine — a public
+// model file needs none). Not verified end to end: this container's network
+// policy blocks the model host either way (see HANDOFF.md), so whether Hugging
+// Face's CDN plays nicely under this mode is Shalom's machine to confirm, not
+// this session's.
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
+  preview: { headers: CROSS_ORIGIN_ISOLATION_HEADERS },
   resolve: {
     // Layer-addressed imports. A file's import path now says which layer it is
     // reaching into, instead of a count of ../ that changes when anything moves.
