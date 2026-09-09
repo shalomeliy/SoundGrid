@@ -24,6 +24,20 @@ nowhere else today. Plan layout for ~710 CSS px of height (the user's 1536×710 
 and remember everything renders ~24% smaller physically than its CSS number on that
 screen — multiply any CSS size by 0.76 to know what they actually see.
 
+## Talking to Shalom
+
+Shalom is not a programmer (`HANDOFF.md`'s "סביבת המשתמש" says so directly). Every
+explanation — and especially every multiple-choice question, `AskUserQuestion` or
+otherwise — is written so a 10-year-old could follow it: plain words, no jargon, a
+real-world comparison instead of a technical term. This is a standing communication
+rule, not a one-off tied to code changes: it covers every message in this project,
+not only the "explain the change in Hebrew" step above.
+
+(2026-09-09, Shalom's request — he wants the same rule in every project under his
+`C:\Users\Shalom\Projects`. A session working inside SoundGrid can only write the rule
+down here; carrying it to another project means adding the same note to that
+project's own `CLAUDE.md`.)
+
 ## Stack
 
 - React 19 + TypeScript (strict — on in all three tsconfigs since v0.2.7, and
