@@ -15,10 +15,10 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **אין גרסה פתוחה כרגע.** `v0.5.0` (Pad Modes) נסגרה (06/09) — **שיחה אוטומטית, בלי שלום נוכח בצ'אט**: כל החלטת מוצר (4 מצבים לא 5, Loop Roll כ‑SHIFT-וריאנט של Loop, SHIFT גלובלי, Sampler כ‑stub) התקבלה מראש דרך סבב סקירות product/architecture/design/qa-expert ותועדה, **לא אושרה בזמן אמת** — לאישור/תיקון שלום בהזדמנות הבאה. פרטים מלאים: [`docs/handoff/v0.5.0.md`](docs/handoff/v0.5.0.md). |
-| **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/v0-5-0-pad-modes-0i8fxa`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git merge-base --is-ancestor origin/claude/v0-5-0-pad-modes-0i8fxa origin/main`. |
-| **גרסה נוכחית** | `v0.5.0` (`package.json`) — נסגרה בשיחה הזו. |
-| **`npm run check`** | ירוק (06/09, על `v0.5.0`, כולל סגירתה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **בעבודה** | **אין גרסה פתוחה כרגע.** `v0.5.1` (תוויות "Mix in" ייחודיות) נסגרה (09/09) — ביקוש ישיר של שלום. פרטים מלאים: [`docs/handoff/v0.5.1.md`](docs/handoff/v0.5.1.md). |
+| **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/cue-pad-unique-naming-80h0hv`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git merge-base --is-ancestor origin/claude/cue-pad-unique-naming-80h0hv origin/main`. |
+| **גרסה נוכחית** | `v0.5.1` (`package.json`) — נסגרה בשיחה הזו. |
+| **`npm run check`** | ירוק (09/09, על `v0.5.1`, כולל סגירתה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | `v0.5.5` — שליטה בשפה טבעית/קול. ר' `ROADMAP.md`. עדיין לא נכתב spec. |
 
 ---
