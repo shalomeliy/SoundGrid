@@ -1,283 +1,278 @@
-# PLAN — v0.5.0: Pad Modes
+# PLAN — v0.5.5: שליטה בשפה טבעית (הקלדה)
 
-מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר 06/09, ר' ההערה שם על העדר שלום
-בצ'אט החי). כל ההחלטות המוצריות כבר נסגרו שם — התוכנית הזו היא רק "איך".
+מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר 09/09). כל ההחלטות המוצריות כבר נסגרו
+שם — התוכנית הזו היא רק "איך". **מחליף** את התוכן הישן שהיה כאן (זה היה `PLAN.md` של
+`v0.5.0`, גרסה אחרת שכבר שודרגה).
+
+## החלטה טכנית אחת שדורשת עצירה — לא מוכרעת כאן
+
+**איזו ספריית WebGPU/WASM תריץ את המודל המקומי בפועל** (מועמדות: WebLLM, wllama,
+transformers.js, או משהו אחר) **לא נבחרה**, כי אף אחת מהסקירות הקודמות לא בדקה זאת, ואין
+תקדים בקוד היום. זו לא רק "עוד תלות" — היא ה-block הכי גדול בגודל באנדל, בזמן טעינה,
+וברישוי, שהצוות (סעיף 7 ב-`directions.md`, "AI תלוי מחקר") כבר סימן כבלתי-ודאי מראש.
+
+**איך זה לא חוסם את שאר התוכנית:** הפרוסה מתוכננת בשני שלבים (ר' סעיף 2) — שלב 1 בונה
+ובודק את כל הצנרת (UI, ולידציה, קטלוג כלים, state machine) מול `AIProvider` **מדומה
+ודטרמיניסטי** (בלי WebGPU, בלי הורדת מודל, נבדק במלואו בסביבה המרוחקת הזו). שלב 2, האחרון,
+הוא spike קצר וממוקד לבחירת הספרייה + מדידת זמן טעינה אמיתי — **מוצג לשלום כהחלטה, לא
+מוכרע כאן מראש**.
 
 ## 1. ארכיטקטורה נוכחית וזרימת הנתונים הרלוונטית
 
-**נתיב עכבר** (`PadGrid.tsx:31-128`): רשת 4×2 קבועה. `onClick` קורא ישירות ל-`ctl.pressHotCue`/
-`ctl.deleteHotCue`; גרירה קוראת ל-`ctl.moveHotCue`. Shift נקרא מקומית מה-DOM event
-(`e.shiftKey`, שורה 67) — אין `shiftHeld` ב-store היום.
+**Port קיים, לא שלם** (`src/core/ports/ai.ts`): `AIProvider { id, available, suggest(prompt,
+context): Promise<AISuggestion[]> }`. `AISuggestion { action: ControlAction, value, reason,
+confidence }`. אף מקום בקוד לא מייבא אותו מלבד הבארל (`core/ports/index.ts:13`) — stub
+טהור, שום מימוש.
 
-**נתיב MIDI** (`manager.ts:77-99` → `dispatch` שורות 101-202): `handle()` מפרסר בייטים גולמיים,
-מוצא `Binding` לפי `bindingKey`, קורא ל-`dispatch`. `case 'hotcue'` (שורה 147-149) קורא
-ל-`ctl.pressHotCue(deck, b.param)` — **רק על value>0, לא בודק release בכלל**. `case 'cue'`
-(107-116) הוא הדוגמה הקיימת לדפוס press/release: `cueHeld` (Map, שורה 31) שומר את הclosure
-שמחזיר `ctl.cuePlayPreview`, וקורא לו ב-release. זה בדיוק הדפוס ש-Loop Roll צריך.
+**מה `directions.md:150-159` מתאר** (`chat(msgs, tools?): AsyncIterable<ChatChunk>`,
+`kind`, `capabilities[]`) — זה מה ש-v0.5.5 צריך בפועל (שיחה/tool-calling עם מסלול הבהרה),
+לא ה-`suggest()` החד-פעמי. `Msg`/`ChatChunk`/`ToolDef` לא קיימים בקוד היום מעבר לשם
+בהערה.
 
-**Choke point** (`controls.ts`): `pressHotCue`/`setHotCue`/`deleteHotCue`/`moveHotCue`
-(690-772), `toggleLoop`/`setLoopBeats` (795-823), `quantizeIfOn` (899-912, private).
-כולם קוראים ישירות ל-`engine.decks[id]` ול-`useStore`.
+**`ControlAction`/`Binding`** (`core/mapping/mapping.ts:5-41`) — שפה MIDI-ית גולמית: ערך
+0-127, `param: number`. `manager.ts`'s `dispatch` (**פרטי**, `manager.ts:112-234`) ממיר
+בייטים→קריאה ל-`controls.ts`. AI לא יכול לקרוא ל-`dispatch` (פרטי, ומיועד ל-MIDI), וגם לא
+כדאי לו "לדבר" באוצר המילים הגולמי הזה — מודל שפה אמור לפלוט `{deck:'B', beats:8}`, לא
+`{param:100, mode:'button'}`.
 
-**נתיב עכבר, hold-then-release** (`Deck.tsx:259-267`, כפתור Cue): `onPointerDown` קורא
-ל-`ctl.cuePlayPreview` ומקבל closure, רושם `window.addEventListener('pointerup', up)` —
-לא `onPointerUp` על הכפתור עצמו, כי גרירה מחוץ לכפתור לא תפספס את השחרור. זה הדפוס
-ל-Loop Roll ב-UI.
+**`controls.ts`** — צוואר הבקבוק היחיד, **מחוץ** לשלוש השכבות (`CLAUDE.md`). ~50 פונקציות
+מיוצאות (`play`, `pause`, `togglePlay`, `setTempo`, `toggleLoop`, `setLoopBeats`,
+`pressHotCue`, `syncDeck`, `setFilter`, `setEq`, `setCrossfader`, `tapTempo` ועוד — נבדק
+ב-`controls.ts` השלם). כל פונקציה עושה `guard` על `hasTrack`/`deck` בעצמה — שום דבר חדש לא
+צריך להמציא guard משלו, רק לקרוא לפונקציה הקיימת.
 
-**טיפוסים** (`core/types.ts:67-108`): `DeckState` — אין `padMode`. `store.ts` — `emptyDeck`
-(שורות 18-41) בונה ברירת מחדל; אין `shiftHeld` ברמת ה-store הראשי.
+**דפוס Worker לחישוב כבד אופציונלי** (`platform/analyzer-worker/index.ts`): `Worker` נפרד,
+`postMessage`/transferable, `Map<id, resolve>` לבקשות תלויות, `worker.onerror` דוחה **את
+כולן** במקום לתקוע (שורות 33-37), נפילה חזרה ל-main thread כש-`capabilities.webWorker`
+כבוי. זה הדפוס להעתיק ל-AI המקומי — WebGPU זמין בתוך Worker.
 
-**מיפוי** (`core/mapping/mapping.ts:5-28`): `ControlAction` union — אין `'padMode'`/`'shift'`.
-`flx4.ts:42-48` — 8 note-ים קבועים ל-hot cue, ללא בינדינג ל-mode-select/SHIFT.
+**`Capabilities`** (`platform/capabilities.ts`) — כבר בודק `webgpu: 'gpu' in nav`,
+`webWorker`. **אין** היום מצב "המודל בהורדה/בטעינה" — זה משהו אחר, אסינכרוני, לא בדיקת
+boot סינכרונית.
 
-**Hint mode** (`core/hints.ts`, `core/mapping/flx4-labels.ts`): `tests/core/hints.test.ts`
-אוכף שכל `ControlAction` שנקשר ב-`FLX4_MAPPING` חייב שורה ב-`FLX4_LABELS`, ולהפך — **כל
-`ControlAction` חדש שנקשר ב-flx4.ts חייב שורה מתאימה ב-flx4-labels.ts, אחרת `npm test` נכשל.**
+**Store** (`app/state/store.ts`) — `NoticeSource` (שורה 16) היא union סגור בלי ערך ל-AI.
+`notice`/`setNotice`/`clearNotice` (183-201) הם המנגנון הקיים ל"משהו נדחה/השתנה — תגיד
+למה". `activeTransition`/`pendingMixRating`/`loopRollState`-style module-level state הם
+התקדים ל"state זמני, לא ל-store" (טיימרים, closures).
 
-## 2. הפרוסה הדקה מקצה-לקצה
+**UI idiom לרצועה מותנית** (`App.tsx:177-191`, `TransitionRatingPrompt.tsx`): רכיב
+שמופיע/נעלם לפי state, `shrink-0`, יושב מתחת ל-`TopBar` ומעל הדקים — **אין עלות גובה
+במנוחה**. `Pill`/`Button`/`tone={color}` (`app/components/controls.tsx`) הם שפת העיצוב
+הקיימת.
 
-Hot Cue נשאר קוד קיים, ללא נגיעה. Loop/Beat Jump/Sampler-stub הם 3 גופי-רשת חדשים תחת
-מתג מצב אחד. SHIFT הוא flag גלובלי אחד שנקרא בשתי נקודות בלבד: בתוך `controls.ts`'s
-`pressPad`, ובשכבת ה-UI (טבעת + תוויות). `manager.ts` לא לומד שום דבר חדש על "מה המצב עושה" —
-הוא ממשיך להיות מתרגם בייטים→קריאה, בדיוק כמו היום.
+## 2. הפרוסה הדקה מקצה־לקצה
+
+**שלב 1 — הצנרת המלאה מול provider מדומה** (נבדק כאן, בסביבה המרוחקת, בלי חומרה מיוחדת):
+טקסט → קטלוג כלים → `MockAiProvider` (תשובות דטרמיניסטיות, מקודדות ביד לפי הקורפוס של 10
+המשפטים + כמה מקרי קצה) → ולידציה → אישור/הבהרה/דחייה → dispatch לפונקציית `controls.ts`
+האמיתית. כל 11 קריטריוני הקבלה נבדקים בשלב הזה **מלבד** האמינות של מודל אמיתי.
+
+**שלב 2 — המודל המקומי האמיתי**: מחליף רק את המימוש מאחורי ה-port (`platform/ai-local/`)
+— שום שינוי בשאר הצנרת. זה בדיוק העניין ב-port: שלב 1 כבר מוכיח שהחלפה כזו לא נוגעת
+ב-UI/ולידציה/state machine.
 
 ## 3. קבצים לשינוי/הוספה, ותפקיד כל שינוי
 
-### `src/core/types.ts`
-- `PadMode = 'hotcue' | 'loop' | 'beatJump' | 'sampler'` (טיפוס חדש, מיוצא).
-- `DeckState.padMode: PadMode` — שדה חדש.
-- **לא** `shiftHeld` כאן — זה גלובלי, לא per-deck (ר' סעיף 4).
-
-### `src/app/state/store.ts`
-- `emptyDeck(...)`: `padMode: 'hotcue'` בברירת המחדל.
-- state ראשי: `shiftHeld: boolean` (ברירת מחדל `false`) + `setShiftHeld(v: boolean)` פעולה,
-  באותה צורה כמו `quantize`/`toggleQuantize` הקיימים (`store.ts`, בדוק שם מדויק של הפעולה
-  המקבילה ל-quantize toggle כדי לשמור על אותה מוסכמת שמות).
-
-### `src/core/padmodes.ts` (חדש)
-לוגיקה טהורה בלבד, בדיוק כמו `core/hotcues.ts`/`core/beatgrid.ts` — אין import של React/
-store/engine.
-
+### `src/core/ports/ai.ts`
+מורחב, לא מוחלף. מוסיף **לצד** `suggest`/`AISuggestion` הקיימים:
 ```ts
-export const LOOP_BEATS_STEPS = [1/2, 1, 2, 4, 8, 16, 32, 64] as const // 8 ערכים, פד לכל אחד
+export type AIRole = 'user' | 'assistant' | 'tool'
+export interface AIMessage { role: AIRole; content: string }
+export interface AIToolDef { name: string; description: string; parameters: JsonSchema }
+export interface AIToolCall { name: string; args: unknown }
+export type AIChatChunk =
+  | { kind: 'text'; delta: string }
+  | { kind: 'toolCall'; call: AIToolCall }
+  | { kind: 'done' }
 
-export function beatJumpTargetSec(
-  positionSec: number, bpm: number, beats: number, direction: 1 | -1, durationSec: number,
-): number {
-  const target = positionSec + direction * beats * (60 / bpm)
-  return Math.max(0, Math.min(durationSec, target))
-}
-
-/**
- * שחרור Loop Roll: לאן הטראק "קופץ" כדי להדביק את המקום שהיה אמור להיות בו לו לא היה
- * מלולף. `elapsedSec` הוא הזמן האמיתי (audio-context, לא wall-clock) שחלף מאז הלחיצה,
- * `entrySec` המיקום בטראק ברגע הלחיצה.
- */
-export function loopRollReturnSec(entrySec: number, elapsedSec: number, durationSec: number): number {
-  return Math.max(0, Math.min(durationSec, entrySec + elapsedSec))
+export interface AIProvider {
+  readonly id: string
+  readonly kind: 'local' | 'byo-key' | 'self-hosted'
+  readonly available: boolean
+  readonly capabilities: ('chat' | 'embed-audio')[]
+  suggest(prompt: string, context: unknown): Promise<AISuggestion[]>
+  chat(msgs: AIMessage[], tools?: AIToolDef[]): AsyncIterable<AIChatChunk>
+  /** רק ספקים שצריכים הורדה/אתחול חד-פעמי מממשים את זה (מקומי). BYO-key לא. */
+  load?(onProgress: (pct: number) => void): Promise<void>
 }
 ```
+`JsonSchema` — טיפוס מינימלי משלו (לא תלות חדשה — רק המפתחות שבאמת בשימוש: `type`,
+`properties`, `required`, `enum`).
 
-**הערה על tempo:** `elapsedSec` שמועבר פנימה כבר צריך לשקף את קצב הניגון בפועל (tempo
-fader) — זה מחושב ב-`controls.ts` (`elapsedRealSec * playbackRate`), לא בתוך `padmodes.ts`
-עצמו, כי `padmodes.ts` לא מכיר tempo/deck בכלל. `controls.ts` מעביר כבר את המספר הנכון.
+### `docs/architecture/directions.md`
+עדכון §4 (שורות 150-159) כך שהסקיצה תואמת בדיוק את מה ש-`ai.ts` מכיל בפועל, ועדכון שורת
+הסטטוס של AIProvider (שורה 64: "⬜ stub v0.5.5" → "🔶 v0.5.5, מקומי בלבד"). **באותו commit**
+כמו השינוי ל-`ai.ts` — זה בדיוק הכלל של "שני קבצים לא זזים לבד".
 
-### `tests/core/padmodes.test.ts` (חדש)
-- `beatJumpTargetSec`: קדימה/אחורה, הצמדה ל-0 ול-duration, bpm שונים.
-- `loopRollReturnSec`: elapsed=0 (חוזר למקום הלחיצה), elapsed שגורם לחרוג מ-duration (נצמד).
+### `src/core/ai/toolCatalog.ts` (חדש, טהור — אין import של controls.ts/store/React)
+- `AI_TOOL_CATALOG: AIToolDef[]` — כלי אמיתי אחד לכל פעולה "בטוחה ל-AI" (הרשימה הראשונית:
+  play, pause, toggleLoop+setLoopBeats כ-`loop(deck, beats)` משולב, `jumpToHotCue(deck,
+  index)`, `setTempo(deck, bpm)`, `syncDeck(deck)`, `setFilter(deck, amount)`,
+  `setCrossfader(position)`, `tapTempo(deck)`) **+ שני כלים מיוחדים תמיד זמינים**:
+  `clarify(question: string)` ו-`decline(reason: string)`. המודל **חייב** לבחור כלי אחד
+  מתוך הרשימה הזו בכל תשובה — זה מה שהופך "לא ברור"/"לא נתמך" למסלולים מפורשים בתוך
+  ה-tool-calling עצמו, לא ניחוש שהצנרת צריכה לזהות אחר כך.
+- `validateToolCall(call: AIToolCall): { ok: true; call: AIToolCall } | { ok: false; reason:
+  string }` — בודק שם קיים בקטלוג + פרמטרים תואמים סכימה (deck הוא 'A'|'B', beats במספרים
+  חוקיים וכו'). **זה שער הולידציה** — כל מה שלא עובר כאן נדחה עם `reason` קריא, אף פעם לא
+  מגיע ל-`controls.ts`.
+- `AI_SAFE_ACTIONS: (keyof typeof import('@/controls'))[]` — רשימה מפורשת (לא מחושבת)
+  של שמות הפונקציות ב-`controls.ts` שנחשבות "בטוחות ל-AI" בגרסה הזו — זה מה שבדיקת
+  השלמות (סעיף 6) משווה מול `AI_TOOL_CATALOG`.
 
 ### `src/controls.ts`
-פונקציות choke-point חדשות, ליד `toggleLoop`/`setLoopBeats` הקיימים:
+פונקציות choke-point חדשות, ליד הקיימות:
+- `submitAiCommand(text: string): Promise<void>` — בונה `AIMessage[]` + `AI_TOOL_CATALOG`,
+  קורא ל-provider הפעיל (ר' `platform/ai-local` למטה) דרך `chat()`, צובר chunks, בסיום
+  קורא ל-`validateToolCall`. תוצאה תקינה `clarify`/`decline` → מעדכן state בהתאם. תוצאה
+  תקינה עם פעולה אמיתית → `confirm-pending` + מתחיל טיימר תפוגה (`AI_PROPOSAL_EXPIRY_MS`,
+  module-level `setTimeout`, לא ב-store — אותו דפוס כמו `loopRollState`). תוצאה לא-תקינה
+  (ולידציה נכשלה) → `setNotice({ text: '...', tone: 'warn', source: 'ai' })`, חוזר ל-idle.
+- `confirmAiProposal(): void` — מנקה את הטיימר, קורא **ישירות** לפונקציית `controls.ts`
+  שהכלי מייצג (switch פנימי קטן, tool name → קריאה לפונקציה הקיימת — `loop` →
+  `setLoopBeats`+`toggleLoop`, `jumpToHotCue` → `pressHotCue`, וכו'), חוזר ל-idle.
+- `cancelAiProposal(reason: 'user' | 'expired'): void` — מנקה טיימר, `setNotice` רק אם
+  `reason === 'expired'` ("ההצעה בוטלה — עברו X שניות"), חוזר ל-idle. לחיצת Cancel של
+  המשתמש לא צריכה הודעה — היא כבר הפעולה הגלויה בעצמה.
+- `toggleAiControl(on: boolean): void` — הדלקה/כיבוי הפיצ'ר (ברירת מחדל כבוי).
+- קבוע `AI_PROPOSAL_EXPIRY_MS = 8000` ליד קבועי הכיול האחרים (`MAX_SYNC_BEND` וכו') —
+  **לא** נחשף ב-Settings (CLAUDE.md v0.2.5).
 
-- `setPadMode(deckId: DeckId, mode: PadMode)`:
-  - אם `decks[deckId].padMode` הנוכחי הוא `'loop'` וגם `loopActive` וגם `mode !== 'loop'`:
-    `deck.clearLoop()`, `patchDeck(deckId, { loopActive: false })`,
-    `setNotice({ text: 'Loop stopped — switched away from Loop mode', tone: 'warn', source: 'padMode' })`.
-  - אם Loop Roll באמצע החזקה על הדק הזה (ר' `loopRollState` למטה) — לשחרר אותו קודם
-    (קורא לאותה פונקציית שחרור כמו `releasePad`, לא כותב לוגיקה כפולה).
-  - `patchDeck(deckId, { padMode: mode })`.
-- `pressPad(deckId: DeckId, index: number): () => void` — **תמיד מחזיר closure**, גם אם
-  ריק (`() => {}`), כדי ש-`manager.ts` ו-UI יוכלו להתייחס לזה אחיד (כמו `cuePlayPreview`):
-  - `mode === 'hotcue'`: `pressHotCue(deckId, index)` הקיים ללא שינוי, מחזיר `() => {}`.
-  - `mode === 'loop'`, לא-shift: קריאה ל-loop toggle עם אורך `LOOP_BEATS_STEPS[index]`
-    (התנהגות: אם `loopActive` וה-loop הנוכחי כבר באותו אורך → `clearLoop`+`loopActive:false`;
-    אחרת → `setLoop(start, start+beatSec*n)` עם `start = quantizeIfOn(...)`, `loopActive:true`,
-    `loopBeats: n`). מחזיר `() => {}`.
-  - `mode === 'loop'`, shift מוחזק: Loop Roll. שומר ב-module-level map (לא ב-store —
-    transient, כמו `activeTransition`): `loopRollState.set(deckId, { entrySec, startedAtSec:
-    engine.currentTime, padIndex: index })`, קורא `deck.setLoop(entrySec, entrySec+beatSec*n)`.
-    מחזיר closure ש: מחשב `elapsedSec = (engine.currentTime - startedAtSec) * playbackRate`,
-    `deck.clearLoop()`, `deck.seek(loopRollReturnSec(entrySec, elapsedSec, duration))`,
-    מוחק מה-map, ומעדכן `positionSec` ב-store.
-  - `mode === 'beatJump'`: `beatJumpTargetSec` עם `direction = shiftHeld ? -1 : 1`,
-    `beats = LOOP_BEATS_STEPS[index]`. אין grid → מתנהג כמו `quantizeIfOn`'s no-grid
-    branch: משתמש ב-`bpm` הרגיל (לא ה-grid) אם קיים, אחרת `setNotice` "no tempo yet"
-    ולא זז (guard זהה ל-`syncDeck`'s "no tempo" branch). מחזיר `() => {}`.
-  - `mode === 'sampler'`: `setNotice({ text: 'Sampler isn't built yet — coming in v0.6.0',
-    tone: 'warn', source: 'padMode' })`. מחזיר `() => {}`.
-  - שומר guard `if (!deck.hasTrack) return () => {}` בתחילת הפונקציה, עקבי עם כל שאר
-    `controls.ts`.
-- `setShiftHeld(down: boolean)`: `useStore.setState({ shiftHeld: down })` בלבד. פשוט
-  בכוונה — כל הלוגיקה שקוראת את `shiftHeld` נמצאת ב-`pressPad` עצמו, לא כאן.
-
-`shiftHeld` נקרא בתוך `pressPad` דרך `useStore.getState().shiftHeld` (לא פרמטר) — כך גם
-ה-UI (`onMouseDown`) וגם ה-MIDI dispatch קוראים לאותה `pressPad(deckId, index)` בלי צורך
-להעביר shift בעצמם; המקור האמיתי היחיד הוא ה-store.
-
-### `src/core/mapping/mapping.ts`
-- `ControlAction` union: מוסיף `'padMode'` ו-`'shift'`.
-- `Binding.param` ל-`'padMode'`: אינדקס המצב (0=hotcue,1=loop,2=beatJump,3=sampler) —
-  אותו דפוס בדיוק כמו `param` ל-`'hotcue'`.
-
-### `src/platform/transport-webmidi/manager.ts`
-- `padHeld = new Map<string, () => void>()` (שדה חדש על המחלקה, ליד `cueHeld`).
-- `case 'hotcue'` (שורה 147-149) משתנה ל:
+### `src/app/state/store.ts`
+- `NoticeSource` (שורה 16): מוסיף `'ai'`.
+- `AppState` slice חדש:
   ```ts
-  case 'hotcue': {
-    if (!deck || b.param == null) break
-    const key = `${deck}:${b.param}`
-    if (value > 0) {
-      this.padHeld.set(key, ctl.pressPad(deck, b.param))
-    } else {
-      this.padHeld.get(key)?.()
-      this.padHeld.delete(key)
-    }
-    break
+  ai: {
+    enabled: boolean
+    phase: 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline'
+           | 'model-loading' | 'model-error'
+    input: string
+    proposal: { summary: string; deckId?: DeckId; call: AIToolCall } | null
+    clarifyQuestion: string | null
+    declineReason: string | null
+    loadProgressPct: number | null
+    loadError: string | null
   }
   ```
-  **חשוב:** שם ה-wire action נשאר `'hotcue'` — לא משנים אותו ל-`'padPress'` או דומה, כי
-  זה בדיוק ה-key שנשמר ב-Learn מיפויים קיימים של המשתמש (`idb-keyval`, `CUSTOM_KEY`).
-  שינוי השם היה שובר בשקט כל מיפוי מותאם-אישית קיים — בדיוק הסיכון שהארכיטקטורה הזהירה
-  ממנו.
-- `case 'padMode'` חדש: `if (value > 0 && deck && b.param != null) ctl.setPadMode(deck,
-  PAD_MODES[b.param])` — טבלת `PAD_MODES` קבועה (`['hotcue','loop','beatJump','sampler']`)
-  ב-`manager.ts` עצמו (סטטית, לא לוגיקה עסקית — תרגום מספר לאינדקס, אותה רמה כמו
-  `bipolar`/`unipolar` שכבר קיימים בקובץ).
-- `case 'shift'` חדש: `ctl.setShiftHeld(value > 0)`.
-- **בלי שום `if (deck.padMode === ...)` בתוך `manager.ts`** — זה בדיוק העומק הנוסף
-  שהארכיטקטורה הזהירה ממנו לגבי הפרת הגבול המתועדת של הקובץ הזה.
+  + `setAiInput`/`patchAi` פעולות פשוטות, באותה צורה כמו `patchDeck`/`setLibrary`.
 
-### `src/platform/transport-webmidi/mappings/flx4.ts`
-- 4 בינדינגים חדשים ל-4 כפתורי בחירת מצב (note, ליד ה-transport/loop הקיימים בפונקציית
-  `deck(ch)`), מסומנים best-effort **בדיוק** כמו כל שאר ניחוש בקובץ (הערת "לתקן ע"י Learn").
-  `param` = אינדקס לפי `PAD_MODES` ב-`manager.ts` (0/1/2/3).
-- בינדינג אחד ל-SHIFT — **גלובלי, לא per-channel** (כפתור פיזי יחיד): שים ב-`bindings`
-  הראשי (יחד עם ה-mixer/browse), לא בתוך `deck(ch)`.
-- מספרי note מדויקים: ניחוש סביר (לדוגמה טווח 0x1b-0x1e ל-4 כפתורי המצב על סמך פריסת
-  FLX4 המתועדת, 0x3f ל-SHIFT) — **לא מאומת על חומרה אמיתית**, בדיוק כמו רוב שאר הקובץ
-  לפני 30/08. שלום מתקן דרך Learn אם שגוי.
+### `src/platform/ai-local/index.ts` (חדש)
+מממש `AIProvider` (`kind: 'local'`, `capabilities: ['chat']`). מראה על משקל
+`platform/analyzer-worker/index.ts` **בדיוק**: `Worker` יחיד, `pending: Map<id, resolve>`,
+`worker.onerror` דוחה הכל. `chat()` שולח בקשה ל-Worker ומזרים chunks בחזרה דרך
+`postMessage` סדרתיים (טקסט חלקי/tool-call/done). `load(onProgress)` — מפעיל את הורדת
+המשקלים בתוך ה-Worker, מדווח progress חזרה.
 
-### `src/core/mapping/flx4-labels.ts`
-- הוספת שורות ל-`FLX4_LABELS` בשביל `'padMode'` ו-`'shift'` — **חובה**, אחרת
-  `tests/core/hints.test.ts`'s "has an FLX4_LABELS entry for every action the real mapping
-  binds" נכשל ברגע ש-`flx4.ts` מקשר את הפעולות האלה.
+### `src/platform/ai-local/worker.ts` (חדש)
+טוען את המודל (הספרייה נבחרת ב"שלב 2" — ר' ההחלטה הפתוחה למעלה), מריץ tool-calling
+inference, כותב חזרה chunks. **לא נכתב בשלב 1** — שלב 1 עובד מול `MockAiProvider` בלבד.
 
-### `src/core/hints.ts`
-- `deck.padGrid` הקיים: לעדכן את הטקסט כך שיתאר את הרשת הכללית + שהתנהגות תלוית-מצב,
-  לא רק Hot Cue (הימנעות מ"תיעוד שהופך לשקר" — אותו עיקרון שה-doc-map section עצמו דורש).
-- הוספת `deck.padMode` חדש (action: `'padMode'`) ל-שורת בחירת המצב.
-- הוספת `deck.shift` חדש (action: `'shift'`).
+### `src/platform/ai-mock/index.ts` (חדש, זמני-לצמיתות — נשאר גם אחרי שלב 2 לבדיקות)
+`AIProvider` מדומה, `kind: 'local'` (מתחזה לאותה צורה), תשובות דטרמיניסטיות: טבלת
+`Record<string, AIToolCall>` שממפה תת-מחרוזות ידועות (10 משפטי הבדיקה + "תכניס אקפלה" +
+משפט מעורפל אחד) לתגובה קבועה. זה מה שהופך את כל שאר הצנרת לבדיקה — נבדק בסביבה המרוחקת
+הזו בלי WebGPU בכלל.
 
-### `src/app/components/PadGrid.tsx`
-פיצול לרכיב מארח + 4 גופי-רשת:
-- שורת הכותרת (34-44) הופכת לשורת 4 `Button variant="toggle" size="sm"` (`CUE/LOOP/JUMP/
-  SMPL`), `active` = `padMode === mode`, `tone={color}` (color מועבר כ-prop חדש מ-`Deck.tsx`,
-  אותו `color` שכבר קיים שם), `onClick={() => ctl.setPadMode(deckId, mode)}`.
-  `HintIcon id="deck.padMode"` צמוד לשורה, כמו היום.
-- טבעת SHIFT: `className` על מיכל הרשת החיצוני, מותנה ב-`shiftHeld` (מ-store, `useStore`),
-  `boxShadow` בסגנון `--color-accent`, אותה טכניקה כמו ה-drop-target ring ב-`Deck.tsx:110-130`.
-  + `Pill tone="warn" label="SHIFT"` קטן ליד שורת המצבים כשמוחזק (לא צבע-בלבד).
-- גוף הרשת הנוכחי (46-125) עובר בלי שינוי ללוגי לרכיב `HotCuePads` (מוצג כש-`padMode ===
-  'hotcue'`).
-- `LoopPads` (חדש): 8 פדים, תווית = `LOOP_BEATS_STEPS[i]` (או "×N"), `onMouseDown` קורא
-  ל-`ctl.pressPad(deckId, i)` ושומר את ה-closure, `window.addEventListener('pointerup', ...)`
-  לשחרור — אותו דפוס בדיוק כמו `Deck.tsx:259-267`. תווית מתחלפת ל"←N" כש-`shiftHeld`.
-- `BeatJumpPads` (חדש): אותה תבנית ויזואלית, `onClick` פשוט (לא hold) קורא `ctl.pressPad`
-  ומתעלם מה-closure (`beatJump` תמיד מחזיר `() => {}`). תווית "→N"/"←N" לפי shift.
-- `SamplerPadsStub` (חדש): 8 פדים אפורים קבועים, `onClick` קורא `ctl.pressPad` (שמראה
-  את הודעת "עוד לא בנוי").
-- כל 4 הרכיבים חולקים קלאסים/מבנה (`grid grid-cols-4 gap-1`, `h-10`) — לא לשכפל CSS,
-  לחלץ קבועי סטייל משותפים אם משתכפל יותר משתי פעמים.
+### `src/app/components/AiControlBar.tsx` (חדש)
+רצועה מותנית, אותו idiom כמו `TransitionRatingPrompt.tsx` — `shrink-0`, מוצג ב-`App.tsx`
+מיד אחרי ה-`notice` bar הקיים, `null` כש-`ai.phase === 'idle'` וגם אין input פתוח.
+- `typing`: `<input>` פשוט + Enter → `ctl.submitAiCommand`.
+- `thinking`: תווית "חושב…" (לא רק spinner).
+- `confirm`: `Pill tone={color-of-targeted-deck}` + טקסט + `Button` Go/Cancel.
+- `clarify`: `Pill tone="warn"` + השאלה + אפשרות להקליד שוב.
+- `decline`: `Pill tone="warn"` + הסיבה, נעלם אחרי כמה שניות (כמו notice).
+- `model-loading`/`model-error`: progress % / הודעת כישלון ממוקדת.
 
-### `src/app/components/Deck.tsx`
-- שורה 346: `<PadGrid deckId={deckId} hotCues={deck.hotCues} padMode={deck.padMode}
-  color={color} />` — מעביר `padMode`+`color` (כבר קיים כמשתנה מקומי ב-Deck.tsx לצביעת
-  שאר הכפתורים, `tone={color}` בכל מקום אחר בקובץ).
+### `src/app/components/TopBar.tsx`
+כפתור טקסט/מיקרופון קטן (רק טקסט בגרסה זו — אין אייקון מיקרופון) ליד `MidiBadge`/Settings,
+`onClick` פותח את `AiControlBar` (`ctl.toggleAiControl`), מוצג רק כש-`ai.enabled` נכון
+(המשתמש הדליק את הפיצ'ר, לא ברירת מחדל).
+
+### `tests/core/ai-toolcatalog.test.ts` (חדש)
+- `validateToolCall`: כלי תקין עם ארגומנטים תקינים → `ok`; שם לא קיים → `ok:false`;
+  ארגומנטים לא תואמי סכימה (deck='C', beats=-5) → `ok:false`.
+- **בדיקת שלמות** (סגנון `tests/core/hints.test.ts`): כל שם ב-`AI_SAFE_ACTIONS` יש לו
+  ערך תואם ב-`AI_TOOL_CATALOG`, ולהפך — נכשלת אם מישהו מוסיף פעולה בטוחה בלי כלי, או כלי
+  בלי פעולה אמיתית מאחוריו.
+
+### `tests/core/ai-translate.test.ts` (חדש)
+קורפוס 10 המשפטים + "תכניס אקפלה" + משפט מעורפל אחד, רץ מול `MockAiProvider` (דטרמיניסטי
+— vitest אמיתי, לא mock-של-mock) → `submitAiCommand` מייצר את ה-`AIToolCall` הצפוי /
+`clarify`/`decline` הצפוי. **זה לא מודד את איכות המודל האמיתי** (זה שלב 2) — זה מודד
+שהצנרת (קטלוג→ולידציה→state) לא שוברת תשובה תקינה.
 
 ## 4. שינויי API/טיפוסים, כולל התנהגות כשל
 
 | שינוי | כשל אפשרי | טיפול |
 |---|---|---|
-| `PadMode` חדש | ערך לא חוקי מגיע מ-persisted state ישן | לא persisted (ר' spec), אין נתיב לערך לא חוקי |
-| `shiftHeld: boolean` גלובלי | keyup לא מגיע (blur) | `onBlur` ב-`App.tsx` (כמו bend keys) קורא `ctl.setShiftHeld(false)` |
-| `pressPad` מחזיר closure | קריאה כפולה ל-release | closure idempotent (no-op בפעם השנייה — `loopRollState.delete` כבר לא קיים) |
-| `case 'padMode'`/`'shift'` ב-dispatch | note לא מאומת (ניחוש שגוי) | שום דבר לא קורה בלחיצה — מתועד כ"לתקן ע"י Learn", לא קורס |
-| Beat Jump בלי bpm | קפיצה לא מוגדרת | `setNotice` "no tempo yet", לא זז, לא קורס |
+| `AIProvider.chat()` חדש | Worker לא עולה (שלב 2) | `onerror` דוחה כל בקשה תלויה, `phase: 'model-error'`, הודעה גלויה |
+| `validateToolCall` | שם/ארגומנטים לא תואמים קטלוג | נדחה עם `reason`, `setNotice(source:'ai')`, אף פעם לא מגיע ל-`confirm-pending` |
+| `confirm-pending` + טיימר | תפוגה בזמן שהמשתמש בדיוק לוחץ Go | טיימר מנוקה בתוך `confirmAiProposal` לפני הקריאה — race מטופל ב-JS single-thread רגיל, אין תנאי מרוץ אמיתי |
+| `load(onProgress)` (שלב 2) | אין רשת / WebGPU לא נתמך / אין מקום באחסון | `phase: 'model-error'` עם `loadError` קריא, שאר האפליקציה לא מושפעת |
+| `AI_SAFE_ACTIONS` מתרחב בעתיד | מישהו מוסיף פעולה בלי כלי תואם | בדיקת השלמות נכשלת ב-`npm test`, לא דילוג שקט |
 
 ## 5. מודל state של ה-UI ותלויות נתונים
 
 ```
-DeckState.padMode          — per-deck, לא persisted, ברירת מחדל 'hotcue'
-AppState.shiftHeld         — גלובלי, לא persisted, ברירת מחדל false
-controls.ts (module-level) — loopRollState: Map<DeckId, {entrySec, startedAtSec, padIndex}>
-                              (transient, כמו activeTransition — לא ב-store כי לא serializable-ראוי
-                              ולא צריך React re-render על כל שינוי שלו)
-manager.ts (instance)      — padHeld: Map<string, () => void> (כמו cueHeld)
+AppState.ai               — סריאלייזבילי, ב-store (phase/input/proposal/וכו')
+controls.ts (module-level) — aiProposalTimer: number | null (טיימר תפוגה, לא ב-store)
+platform/ai-local/index.ts — worker instance + pending map (כמו analyzer-worker)
 ```
-
-תלות חדשה אחת בין UI לבין store: `PadGrid.tsx` קורא `useStore((s) => s.shiftHeld)` בעצמו
-(לא מקבל כ-prop) — כי הטבעת חייבת להגיב מיידית ל-MIDI/מקלדת בלי ש-`Deck.tsx` יצטרך
-להעביר את זה ידנית דרך כל הפרופס.
+`AiControlBar.tsx` קורא `useStore((s) => s.ai)` ישירות (לא prop-drilling מ-`App.tsx`) —
+אותו נימוק כמו `shiftHeld` ב-v0.5.0: התגובה חייבת להיות מיידית בלי להעביר state דרך כל
+העץ.
 
 ## 6. בדיקות בשכבה הזולה ביותר
 
-- `tests/core/padmodes.test.ts` — vitest אמיתי, בלי mock, על `beatJumpTargetSec`/
-  `loopRollReturnSec` הטהורות. זה כל מה ש-CLAUDE.md דורש "ללא תירוץ" (לוגיקה טהורה).
-- `tests/core/hints.test.ts` הקיים — ירוץ אוטומטית נגד `flx4-labels.ts`/`flx4.ts`
-  המעודכנים; חייב לעבור בלי שינוי בקובץ הבדיקה עצמו.
-- **בדפדפן** (`npm run dev` ברקע + Playwright/Chromium בסביבה המרוחקת הזו — אין
-  `preview_start` פה): טעינת טראק, מעבר בין 4 מצבים (בדיקת `javascript_tool` שרשת
-  הפדים באמת מציגה תוכן שונה), הפעלת Loop ומעבר מצב (בדיקת notice + `loopActive`
-  חוזר ל-false), Beat Jump ליד קצוות, Shift מוחזק (מקלדת) עם טבעת+תוויות. אין FLX4
-  אמיתי בסביבה הזו — מיפוי החומרה עצמו לא ניתן לאימות כאן, רק מבנה הקוד.
+- `core/ai/toolCatalog.ts` — vitest אמיתי, טהור, כולל בדיקת השלמות (ר' סעיף 3).
+- `tests/core/ai-translate.test.ts` — קורפוס 10+2 המשפטים מול `MockAiProvider` הדטרמיניסטי.
+- **בדפדפן** (שלב 1, `npm run dev` + Playwright/Chromium, `javascript_tool`/
+  `read_console_messages`): הקלדת כל משפט מהקורפוס, וידוא `confirm`/`clarify`/`decline`
+  נכון, וידוא ש-Go קורא בדיוק לפונקציית `controls.ts` הצפויה (בדיקה דרך ה-store), וידוא
+  תפוגה עם הודעה, וידוא ה-toggle כבוי כברירת מחדל.
+- **שלב 2 בלבד**: מדידת הקורפוס מול המודל האמיתי, שיעור הצלחה נרשם ב-`HANDOFF.md`
+  (סגנון v0.1.7) — זו לא vitest, זו מדידה מתועדת כי המודל לא דטרמיניסטי טהור.
+- `npm run check` ירוק לפני כל commit, בכל שלב.
 
 ## 7. סיכונים, נסיגה, ולא-מטרות מכוונות
 
-- **סיכון:** ניחוש note שגוי ל-4 כפתורי המצב/SHIFT (אין חומרה כאן לבדוק). **מיטיגציה:**
-  מתועד באותה מוסכמה כמו כל שאר `flx4.ts`, מתוקן ע"י Learn — לא חוסם merge.
-  **נסיגה:** מחיקת 4 השורות מ-`flx4.ts` בלבד, כלום אחר לא תלוי בהן.
-- **סיכון:** Loop Roll שנשאר תקוע (note-off אבד). **מיטיגציה:** `setPadMode` בודק ומשחרר
-  לפני מעבר מצב; `onBlur` ב-App.tsx (אם מקלדת); אין מיטיגציה ל-MIDI note-off אבוד עצמו
-  (בעיה כללית קיימת כבר ב-`cueHeld`/`syncDownAt` — לא בתכולת הגרסה הזו לפתור).
-- **לא-מטרה מכוונת:** Sampler אמיתי — stub בלבד (ר' spec).
-- **נסיגה כללית:** `padMode` ברירת מחדל `'hotcue'` והתנהגות Hot Cue לא זזה בקוד קיים —
-  אם מצב כלשהו מתנהג רע על החומרה, אפשר להחזיר את `PadGrid.tsx`/`controls.ts` לגרסה
-  קודמת בלי לגעת ב-`pressHotCue`/`setHotCue`/`moveHotCue`/`deleteHotCue` כלל.
+- **סיכון גדול (שלב 2 בלבד):** אין עדיין ספריית WebGPU/WASM נבחרת — ר' ההחלטה הפתוחה
+  למעלה. **מיטיגציה:** מבודד לחלוטין ל-`platform/ai-local/` ול-spike קצר; שאר המערכת לא
+  תלויה בבחירה. **נסיגה:** אם הספרייה שנבחרת לא עובדת טוב על המחשב של שלום, `MockAiProvider`
+  נשאר קיים ל-fallback פיתוח, וה-port לא צריך לזוז.
+- **סיכון:** תרגום שגוי שעדיין עובר ולידציה (למשל דק לא נכון אבל תחבירית תקין).
+  **מיטיגציה:** בדיוק בשביל זה יש `confirm-pending` — שלב האישור הוא קו ההגנה האחרון,
+  לא הולידציה. **לא מטופל טכנית**, זה בדיוק מה שה-UX מכסה.
+- **לא-מטרה מכוונת:** קול (Web Speech API) — נדחה לגמרי מהספסיפיקציה, אין קוד בתוכנית הזו
+  שנוגע בו.
+- **לא-מטרה מכוונת:** BYO-API-key/self-hosted — ה-port פתוח לזה (`kind` union כבר כולל
+  אותם), אבל שום מימוש לא נבנה כאן.
+- **נסיגה כללית:** הפיצ'ר כולו מאחורי `ai.enabled` (כבוי כברירת מחדל) — אפשר להסיר את
+  `TopBar.tsx`'s כפתור ו-`AiControlBar.tsx` בלי לגעת בשום קוד קיים.
 
 ## 8. סדר ביצוע עם אימות אחרי כל צעד משמעותי
 
-1. **`core/types.ts` + `store.ts`**: הוספת `PadMode`/`padMode`/`shiftHeld`. אימות: `tsc -b`
-   ירוק (אין עדיין שימוש, אז אין שגיאות type משמעותיות).
-2. **`core/padmodes.ts` + `tests/core/padmodes.test.ts`**: לוגיקה טהורה + בדיקות. אימות:
-   `npm test` ירוק על הקובץ הזה בלבד.
-3. **`controls.ts`**: `setPadMode`/`pressPad`/`setShiftHeld`. אימות: `tsc -b` ירוק,
-   אין עדיין קורא בפועל (מבודד).
-4. **`core/mapping/mapping.ts`**: `ControlAction` מתרחב. אימות: `tsc -b` — כל מקום שממצה
-   `ControlAction` ב-switch (יש רק אחד: `manager.ts`) יסמן חוסר `case` אם TS strict
-   דורש exhaustiveness (לבדוק אם יש `never` check בסוף ה-switch; אם לא, זה לא ייכשל
-   אוטומטית — לוודא ידנית בצעד הבא).
-5. **`manager.ts`**: `case 'padMode'`/`'shift'`, שינוי `case 'hotcue'` ל-press/release
-   עם `padHeld`. אימות: `npm run check` מלא (tsc+oxlint+depcruise+vitest) — במיוחד
-   `depcruise` שה"warn" הקיים על הקובץ הזה לא הפך ל-`error` חדש.
-6. **`flx4.ts` + `flx4-labels.ts` + `hints.ts`**: בינדינגים חדשים + תוויות. אימות:
-   `npm test` — `tests/core/hints.test.ts` **חייב** לעבור (הבדיקה שתלויה בסנכרון בין
-   שני הקבצים).
-7. **`PadGrid.tsx` + `Deck.tsx`**: ה-UI המלא — שורת מצבים, 4 גופי-רשת, טבעת SHIFT.
-   אימות: בדפדפן (`npm run dev` + Playwright בסביבה המרוחקת) — כל קריטריון קבלה
-   מה-spec, אחד־אחד.
-8. **`App.tsx`**: מאזין מקלדת ל-`ShiftLeft`/`ShiftRight` (keydown/keyup + blur-release,
-   אותו דפוס כמו bend keys) שקורא ל-`ctl.setShiftHeld`. אימות: בדפדפן — Shift מוחזק
-   מראה טבעת, blur בזמן החזקה משחרר (בדיקה עם `window.dispatchEvent(new Event('blur'))`
-   דרך `javascript_tool` אם צריך).
-9. **`npm run check` מלא** + עדכון `HANDOFF.md`/`ROADMAP.md` + `python
-   scripts/context_check.py` + commit + push, בדיוק לפי הנוהל ב-CLAUDE.md.
+1. **`core/ports/ai.ts` + `directions.md:64,150-159`** (באותו commit) — טיפוסים חדשים
+   לצד הקיימים. אימות: `tsc -b` ירוק.
+2. **`core/ai/toolCatalog.ts` + `tests/core/ai-toolcatalog.test.ts`** — קטלוג, ולידציה,
+   בדיקת שלמות. אימות: `npm test` ירוק על הקובץ הזה.
+3. **`platform/ai-mock/index.ts`** — provider מדומה לבדיקות. אימות: `tsc -b` ירוק, אין
+   עדיין קורא.
+4. **`controls.ts`**: `submitAiCommand`/`confirmAiProposal`/`cancelAiProposal`/
+   `toggleAiControl` מול ה-mock provider. **`tests/core/ai-translate.test.ts`**. אימות:
+   `npm test` ירוק — הקורפוס עובר מול ה-mock.
+5. **`store.ts`**: `ai` slice + `'ai'` ל-`NoticeSource`. אימות: `tsc -b` ירוק.
+6. **`AiControlBar.tsx` + `TopBar.tsx`**: ה-UI המלא, מחובר ל-mock provider. אימות: בדפדפן
+   (`npm run dev` + Playwright) — כל 11 קריטריוני הקבלה מה-spec, אחד־אחד, מלבד איכות מודל
+   אמיתי.
+7. **`npm run check` מלא** + `HANDOFF.md` מעודכן + `context_check.py` + commit + push —
+   **זו נקודת עצירה טבעית**: הפיצ'ר שלם ונבדק מול provider מדומה, אבל עוד לא מול מודל
+   אמיתי. ראוי לעצור כאן ולהראות לשלום לפני שלב 2.
+8. **Spike קצר** (שלב 2, אחרי אישור שלום להמשיך): בחירת ספריית WebGPU/WASM, מדידת זמן
+   טעינה על מחדד אמיתי אם אפשר, `platform/ai-local/worker.ts`. אימות: הורדה+טעינה
+   מצליחה בדפדפן, progress גלוי.
+9. **`platform/ai-local/index.ts`** מחליף את ה-mock כברירת המחדל (ה-mock נשאר זמין
+   לבדיקות). אימות: קריאה חוזרת על כל קריטריוני הקבלה מול המודל האמיתי.
+10. **מדידת הקורפוס מול המודל האמיתי**, תוצאה נרשמת ב-`HANDOFF.md` (סגנון v0.1.7).
+11. **`npm run check` מלא** + `HANDOFF.md`/`ROADMAP.md` מעודכנים + `context_check.py` +
+    commit + push, לפי הנוהל המלא ב-CLAUDE.md.
