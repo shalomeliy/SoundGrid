@@ -58,7 +58,8 @@ screen — multiply any CSS size by 0.76 to know what they actually see.
 5. Write goal, non-goals, acceptance criteria and a verification plan before touching
    code. Fan out to the read-only expert subagents in `.claude/agents/` (product,
    architecture, design, QA; security whenever a change touches the user's files or
-   library) and merge them into one spec. The user approves every product decision.
+   library, **or adds any server/API surface**) and merge them into one spec. The user
+   approves every product decision.
 6. **Explain the change in Hebrew before writing it.**
 
 ## Engineering boundaries
@@ -100,6 +101,14 @@ SoundGrid's hard invariant, and it outranks convenience:
 - Never break the stereo fallback or the keyboard path. Chromium-only is a platform
   decision, not an excuse.
 - Prefer simple and maintainable over clever. Don't rewrite unrelated areas.
+- **Broken Access Control / IDOR — checked, not assumed.** Confirmed 2026-09-09 by
+  grepping `src/` for `fetch(`/`endpoint`/`Authorization`: zero hits. No backend exists
+  today, so there is no server deciding "whose data is this" and this bug class (an
+  endpoint returning a record by ID without checking it belongs to the caller — OWASP's
+  #1 category) cannot occur. **The day any server endpoint is added** — a Tauri sync
+  feature, a cloud library, anything — every one of its endpoints must filter by the
+  caller's own identity, never by resource ID alone. Re-run that grep before trusting
+  this note again; don't take it on faith once a backend exists.
 
 ## Definition of done
 
