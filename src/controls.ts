@@ -1730,6 +1730,8 @@ function describeAiProposal(call: AIToolCall): string {
       return `Sync deck ${a.deck}`
     case 'tapTempo':
       return `Tap tempo, deck ${a.deck}`
+    case 'setTempo':
+      return `Nudge tempo fader to ${a.amount}, deck ${a.deck}`
     case 'setFilter':
       return `Filter ${a.amount}, deck ${a.deck}`
     case 'setCrossfader':
@@ -1764,6 +1766,9 @@ function runAiToolCall(call: AIToolCall) {
       break
     case 'tapTempo':
       tapTempo(a.deck as DeckId)
+      break
+    case 'setTempo':
+      setTempo(a.deck as DeckId, a.amount as number)
       break
     case 'setFilter':
       setFilter(a.deck as DeckId, a.amount as number)
@@ -1846,7 +1851,10 @@ export async function submitAiCommand(text: string): Promise<void> {
   if (call.name === 'clarify') {
     const args = call.args as { question: string }
     patchAi({ phase: 'clarify', clarifyQuestion: args.question, proposal: null })
-    scheduleAiAutoIdle(false)
+    // Unlike decline, a clarify question is an open, unanswered state — letting
+    // it vanish with no notice would be the same silent-drop the expiry notice
+    // on `confirm` already exists to prevent, just one step earlier.
+    scheduleAiAutoIdle(true)
     return
   }
   if (call.name === 'decline') {

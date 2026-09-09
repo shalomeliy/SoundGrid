@@ -33,6 +33,7 @@ export const AI_MOCK_CORPUS: KnownCommand[] = [
   { phrase: 'קפוץ לקיו 2 בדק B', call: { name: 'jumpToHotCue', args: { deck: 'B', index: 1 } } },
   { phrase: 'עשה סנכרון לדק B', call: { name: 'syncDeck', args: { deck: 'B' } } },
   { phrase: 'טאפ טמפו על דק A', call: { name: 'tapTempo', args: { deck: 'A' } } },
+  { phrase: 'תעלה טמפו דק A', call: { name: 'setTempo', args: { deck: 'A', amount: 0.15 } } },
   { phrase: 'תוריד את הפילטר על דק A', call: { name: 'setFilter', args: { deck: 'A', amount: -0.7 } } },
   { phrase: 'קרוספיידר לגמרי לדק B', call: { name: 'setCrossfader', args: { position: 1 } } },
   { phrase: 'תוריד את הווליום של דק B לאמצע', call: { name: 'setChannelVolume', args: { deck: 'B', level: 0.5 } } },

@@ -34,6 +34,7 @@ export const AI_SAFE_ACTIONS = [
   'jumpToHotCue',
   'syncDeck',
   'tapTempo',
+  'setTempo',
   'setFilter',
   'setCrossfader',
   'setChannelVolume',
@@ -83,6 +84,12 @@ export const AI_TOOL_CATALOG: AIToolDef[] = [
     name: 'tapTempo',
     description: "Register one tap of a deck's tempo-tap.",
     parameters: { type: 'object', properties: { deck: deckArg }, required: ['deck'] },
+  },
+  {
+    name: 'setTempo',
+    description:
+      "Move a deck's tempo fader. This nudges the fader position, not an exact BPM target — the model has no way to know a track's base BPM.",
+    parameters: { type: 'object', properties: { deck: deckArg, amount: unitArg }, required: ['deck', 'amount'] },
   },
   {
     name: 'setFilter',
