@@ -10,15 +10,16 @@
  * and `chat()` are inherently streams of replies to one request, not one
  * request/response pair.
  *
- * **Not verified against a real model in this session** — the container's
- * network policy blocks `huggingface.co` (the model host), so `load()` has
- * only ever been exercised here as far as the request leaving the Worker;
- * whether the download and the model's own tool-call convention actually
- * work is what a real machine (real internet, and — per `worker.ts`'s
- * `device: 'auto'` comment — maybe a real GPU) has to confirm. Until then
- * this is verified in the type checker and in a Worker actually starting
- * and hitting a real, visible `model-error` for the actual reason (network
- * denied) rather than hanging or crashing the rest of the app.
+ * Verified in two stages, on two different machines: first in this remote
+ * container (no internet to the model host — `load()` correctly reaches
+ * `model-error` with the real reason instead of hanging), then on Shalom's
+ * own Windows machine (09/09), where `load()` genuinely downloaded and
+ * initialized the model. `chat()` then hung his real GPU driver
+ * (`DXGI_ERROR_DEVICE_HUNG`) the first time it ran — see `worker.ts`'s
+ * `device` comment for what that changed and why. Still open: whether
+ * `chat()` itself, now CPU-only, produces a usable tool call on his
+ * machine — that is the next thing for him to confirm, not something this
+ * session can verify further on its own.
  */
 import { detectCapabilities } from '@/platform/capabilities'
 import type { AIChatChunk, AIMessage, AIProvider, AISuggestion, AIToolDef } from '@/core/ports/ai'
@@ -87,6 +88,41 @@ function makeChannel<T>(): Channel<T> {
 let worker: Worker | null = null
 let nextId = 0
 const channels = new Map<number, Channel<AiWorkerReply>>()
+const watchdogs = new Map<number, ReturnType<typeof setTimeout>>()
+
+/**
+ * Every request gets a watchdog, reset on every real reply (a progress
+ * tick, a streamed text delta) and cleared on `done`/`error` — so a
+ * request that is genuinely still working (a slow download, slow
+ * inference) is never killed, only one that has gone completely silent.
+ * Added 09/09 after `chat()` hung Shalom's real GPU driver
+ * (`DXGI_ERROR_DEVICE_HUNG`, see `worker.ts`) with the UI stuck on
+ * `thinking` forever and no way for him to tell "slow" from "broken" — a
+ * driver hang never rejects a promise or fires `onerror` on its own, so
+ * without this nothing here would ever have surfaced it.
+ */
+const WATCHDOG_MS = 120_000
+
+function armWatchdog(id: number, ch: Channel<AiWorkerReply>) {
+  clearWatchdog(id)
+  watchdogs.set(
+    id,
+    setTimeout(() => {
+      watchdogs.delete(id)
+      if (channels.delete(id)) {
+        ch.fail(new Error(`The local model gave no response for ${WATCHDOG_MS / 1000}s — it may be stuck.`))
+      }
+    }, WATCHDOG_MS),
+  )
+}
+
+function clearWatchdog(id: number) {
+  const timer = watchdogs.get(id)
+  if (timer != null) {
+    clearTimeout(timer)
+    watchdogs.delete(id)
+  }
+}
 
 function getWorker(): Worker {
   if (!worker) {
@@ -94,14 +130,17 @@ function getWorker(): Worker {
     worker.onmessage = (e: MessageEvent<AiWorkerReply>) => {
       const reply = e.data
       const ch = channels.get(reply.id)
-      if (!ch) return // already settled (e.g. by onerror), or stale — ignore, don't throw
+      if (!ch) return // already settled (e.g. by onerror/watchdog), or stale — ignore, don't throw
       if (reply.kind === 'error') {
+        clearWatchdog(reply.id)
         channels.delete(reply.id)
         ch.fail(new Error(reply.error))
         return
       }
+      armWatchdog(reply.id, ch)
       ch.push(reply)
       if (reply.kind === 'done') {
+        clearWatchdog(reply.id)
         channels.delete(reply.id)
         ch.close()
       }
@@ -111,6 +150,7 @@ function getWorker(): Worker {
     // nothing hangs forever, same as `analyzer-worker/index.ts`.
     worker.onerror = (e: ErrorEvent) => {
       const message = e.message || 'worker error'
+      for (const id of watchdogs.keys()) clearWatchdog(id)
       for (const ch of channels.values()) ch.fail(new Error(message))
       channels.clear()
     }
@@ -121,6 +161,7 @@ function getWorker(): Worker {
 function send(req: AiWorkerRequest): Channel<AiWorkerReply> {
   const ch = makeChannel<AiWorkerReply>()
   channels.set(req.id, ch)
+  armWatchdog(req.id, ch)
   getWorker().postMessage(req)
   return ch
 }

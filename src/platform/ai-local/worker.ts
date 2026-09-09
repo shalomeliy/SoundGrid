@@ -9,24 +9,35 @@
  * `tsconfig.app.json` conflict `analyzer-worker/worker.ts`'s own comment
  * explains.
  *
- * `device: 'auto'` is the whole answer to "try the graphics chip, fall
- * back to the processor" (Shalom's choice, 09/09): ONNX Runtime Web's own
- * execution-provider list tries WebGPU first and falls back to WASM if a
- * WebGPU session fails to create — this is more reliable than a static
- * `navigator.gpu` capability check done ahead of time, because a probe can
- * report an adapter that turns out to be a software (non-accelerated)
- * fallback, as this container's own `SwiftShader` adapter does (see
- * `HANDOFF.md`) — letting the real session creation decide, once, beats
- * duplicating that judgment here.
+ * `device: 'wasm'` — CPU only, WebGPU deliberately not attempted. It
+ * started as `'auto'` (try the graphics chip, fall back to the processor —
+ * Shalom's choice, 09/09), on the theory that ONNX Runtime Web's own
+ * execution-provider fallback would degrade safely if WebGPU didn't work.
+ * It doesn't: on Shalom's real hardware (Windows, 09/09) the WebGPU path
+ * hung his actual GPU driver — `DXGI_ERROR_DEVICE_HUNG`, Chrome's console
+ * showing the D3D12 device removed mid-inference, CPU sitting idle while
+ * the UI stayed stuck on `thinking` forever (confirmed: Task Manager showed
+ * no load, so this was a genuine hang, not "slow"). A hung GPU driver is
+ * not a degradation this project's `Capabilities` pattern can catch and
+ * show a message for — the call itself never returns, on the JS side or
+ * off it — so there is no safe way to keep trying WebGPU here and catch
+ * the failure after the fact. `wasm` is slower but has not hung anything.
+ * Revisit only with a real measurement on real hardware that says
+ * otherwise, not a driver update assumed to have fixed it.
  *
- * `MODEL_ID`/`MODEL_DTYPE` are this project's one swap point for "which
- * model" (the port is model-agnostic by design, `core/ports/ai.ts`) — taken
- * from `@huggingface/transformers`' own documented chat-completion example
- * (`node_modules/@huggingface/transformers/types/pipelines/text-generation.d.ts`),
- * not a value this session could verify by actually downloading it: the
- * container's network policy blocks `huggingface.co` (see `HANDOFF.md`).
- * Swap both here if a real run on real hardware says a different model or
- * quantization fits better.
+ * `MODEL_DTYPE` follows: `'q8'`, not the GPU-oriented `'q4f16'` this
+ * started with — `@huggingface/transformers`' own
+ * `DEFAULT_DEVICE_DTYPE_MAPPING` maps `wasm` to `q8` for exactly this
+ * reason (fp16 arithmetic is a GPU feature; CPU/WASM doesn't get it for
+ * free). Not this session's own guess.
+ *
+ * `MODEL_ID` is this project's swap point for "which model" (the port is
+ * model-agnostic by design, `core/ports/ai.ts`) — taken from
+ * `@huggingface/transformers`' own documented chat-completion example
+ * (`node_modules/@huggingface/transformers/types/pipelines/text-generation.d.ts`).
+ * Swap it here if a real run on real hardware says a different model fits
+ * better — this is now the one path that has actually run on Shalom's
+ * machine without hanging it, so change it deliberately, not by habit.
  */
 import { pipeline, TextStreamer, type TextGenerationPipeline } from '@huggingface/transformers'
 import { extractToolCall, toOpenAiTools } from '@/core/ai/toolCallParsing'
@@ -35,7 +46,8 @@ import type { AiWorkerReply, AiWorkerRequest } from '@/platform/ai-local/protoco
 declare const self: Worker
 
 const MODEL_ID = 'onnx-community/Qwen3-0.6B-ONNX'
-const MODEL_DTYPE = 'q4f16'
+const MODEL_DEVICE = 'wasm'
+const MODEL_DTYPE = 'q8'
 const MAX_NEW_TOKENS = 128
 
 let generatorPromise: Promise<TextGenerationPipeline> | null = null
@@ -43,7 +55,7 @@ let generatorPromise: Promise<TextGenerationPipeline> | null = null
 function loadGenerator(onProgress: (pct: number) => void): Promise<TextGenerationPipeline> {
   if (!generatorPromise) {
     generatorPromise = pipeline('text-generation', MODEL_ID, {
-      device: 'auto',
+      device: MODEL_DEVICE,
       dtype: MODEL_DTYPE,
       progress_callback: (info: { status: string; progress?: number }) => {
         if (info.status === 'progress_total' && typeof info.progress === 'number') onProgress(info.progress)
