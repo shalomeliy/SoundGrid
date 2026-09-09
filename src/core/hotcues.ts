@@ -63,7 +63,20 @@ export function shouldTriggerMixEntry(
   deckPlaying: boolean,
   otherDeckPlaying: boolean,
 ): boolean {
-  return !!cue && !isOrdinalLabel(cue) && !deckPlaying && otherDeckPlaying
+  return !!cue && cue.kind === 'mixEntry' && !deckPlaying && otherDeckPlaying
+}
+
+/**
+ * The free-text part of a renamed pad's label, with this project's own
+ * " · m:ss" suffix (`renameHotCue`, v0.5.3, `PadGrid.tsx`) stripped back off
+ * — so reopening the rename box pre-fills what the DJ actually typed, not
+ * the timestamp that gets re-appended on every save regardless. A plain
+ * (never-renamed) pad has no custom text to recover, so this returns `''`
+ * for it rather than its ordinal number.
+ */
+export function customTextOf(cue: HotCue): string {
+  if (isOrdinalLabel(cue)) return ''
+  return cue.label.replace(/ · \d{1,3}:\d{2}$/, '')
 }
 
 /**

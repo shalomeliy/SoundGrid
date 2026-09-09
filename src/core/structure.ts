@@ -242,6 +242,28 @@ export function findTransitionCandidates(
 }
 
 /**
+ * v0.5.4: the next candidate a currently-*playing* deck is heading toward —
+ * an "exit point" to suggest for the *outgoing* side of a transition, reusing
+ * the exact same candidates `findTransitionCandidates` already computes for
+ * that track (there is no separate "exit" heuristic; a good place to enter a
+ * track and a good place to leave one are found the same way). Ignores
+ * anything already behind `positionSec` — a candidate the deck has already
+ * played past is not somewhere it can still exit to. Returns `null` — never
+ * a guess — when nothing is left ahead, e.g. a short track already past its
+ * last candidate.
+ */
+export function nextCandidateFrom(
+  candidates: StructureCandidate[],
+  positionSec: number,
+): StructureCandidate | null {
+  let best: StructureCandidate | null = null
+  for (const c of candidates) {
+    if (c.sec >= positionSec && (best === null || c.sec < best.sec)) best = c
+  }
+  return best
+}
+
+/**
  * How a candidate mix-in point (in the *incoming* track) compares to the
  * *outgoing* deck's energy right now — v0.4.7. Both levels are read from
  * each track's own contour and normalized to that track's own near-peak

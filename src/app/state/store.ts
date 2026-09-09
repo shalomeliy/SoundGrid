@@ -38,6 +38,7 @@ function emptyDeck(id: DeckId): DeckState {
     loopBeats: 4,
     cueMonitor: false,
     padMode: 'hotcue',
+    excellentMixPoints: [],
   }
 }
 
@@ -78,7 +79,35 @@ export interface AppState {
    * own module-level state, same split as `masterDeckId` (serializable)
    * versus `ensureSyncLoop`'s subscription (imperative, not in the store).
    */
-  activeTransition: { fromDeckId: DeckId; toDeckId: DeckId } | null
+  activeTransition: {
+    fromDeckId: DeckId
+    toDeckId: DeckId
+    /**
+     * v0.5.4: the outgoing deck's own next candidate point ahead of where it
+     * started the transition (`nextCandidateFrom`, `core/structure.ts`) —
+     * shown on the outgoing deck (`Deck.tsx`) as a suggested exit point,
+     * transparently, the moment the transition begins. `null` means the
+     * heuristic genuinely found nothing ahead (a short track, or no analysis
+     * yet) — shown as such, never guessed.
+     */
+    exitPointSec: number | null
+  } | null
+
+  /**
+   * A transition just finished mixing out `fromDeckId` (v0.5.4) — the rating
+   * prompt (`App.tsx`) asks whether the exit point worked, and only
+   * "excellent" is written to `platform/mix-ratings-idb/store.ts`. `null`
+   * once rated or dismissed; there is no queue — a second transition
+   * finishing before this one is rated simply replaces it, the same "most
+   * recent wins, nothing silently drops a *feature*" tradeoff `notice`
+   * already makes for its own single slot.
+   */
+  pendingMixRating: {
+    fromDeckId: DeckId
+    contentHash: string | undefined
+    trackName: string
+    exitPointSec: number
+  } | null
 
   library: {
     folderName: string | null
@@ -178,6 +207,7 @@ export const useStore = create<AppState>((set) => ({
   quantize: false,
   shiftHeld: false,
   activeTransition: null,
+  pendingMixRating: null,
   mixer: {
     crossfader: 0,
     masterVolume: 0.85,

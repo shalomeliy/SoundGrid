@@ -22,6 +22,7 @@ function fmt(sec: number): string {
 
 export function Deck({ deckId }: { deckId: DeckId }) {
   const deck = useStore((s) => s.decks[deckId])
+  const activeTransition = useStore((s) => s.activeTransition)
   const otherDeckId: DeckId = deckId === 'A' ? 'B' : 'A'
   const otherPlaying = useStore((s) => s.decks[otherDeckId].playing)
   const otherBands = useStore((s) => s.decks[otherDeckId].bands)
@@ -47,6 +48,14 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   // check, loading a new track over an already-eligible deck would keep
   // showing the outgoing track's candidate points during that window.
   const showTransitionPoints = loaded && !deck.loading && !deck.playing && otherPlaying
+  // v0.5.4: this deck's own suggested exit point, shown the moment it becomes
+  // the outgoing side of a running transition — transparently, per the
+  // owner's own request, not tucked away until the transition finishes.
+  // `null` covers both "no transition running on this deck" and "one is, but
+  // the heuristic found nothing ahead" (`AppState.activeTransition`'s own doc
+  // comment) — both render nothing here, on purpose.
+  const exitPointSec = activeTransition?.fromDeckId === deckId ? activeTransition.exitPointSec : null
+  const exitPointKnownGood = exitPointSec != null && deck.excellentMixPoints.includes(Math.round(exitPointSec))
   const [dropActive, setDropActive] = useState(false)
   const [gridPanelOpen, setGridPanelOpen] = useState(false)
   const closeGridPanel = () => {
@@ -157,6 +166,18 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               </>
             )}
           </div>
+          {exitPointSec != null && (
+            <div className="mt-0.5">
+              <Pill
+                tone={exitPointKnownGood ? 'accent' : 'idle'}
+                label={
+                  exitPointKnownGood
+                    ? `★ exit at ${fmt(exitPointSec)} — worked well before`
+                    : `suggested exit at ${fmt(exitPointSec)}`
+                }
+              />
+            </div>
+          )}
           {showTransitionPoints && (
             <TransitionPointsPanel
               bands={deck.bands}

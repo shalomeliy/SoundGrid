@@ -1,13 +1,21 @@
+import { useState } from 'react'
 import * as ctl from '@/controls'
 import { HOT_CUE_COLORS } from '@/core/constants'
 import { LOOP_BEATS_STEPS } from '@/core/padmodes'
-import { isOrdinalLabel } from '@/core/hotcues'
+import { customTextOf } from '@/core/hotcues'
 import { Button, HintIcon, Pill } from '@/app/components/controls'
 import { useStore } from '@/app/state/store'
 import type { DeckId, HotCue, PadMode } from '@/core/types'
 
-/** A saved mix-in point (`saveMixEntryHotCue`, v0.4.7) — pressing it re-runs the automatic transition, not just a jump. */
-const isMixEntry = (cue: HotCue): boolean => !isOrdinalLabel(cue)
+/** A saved mix-in point (`saveMixEntryHotCue`, v0.4.7) — pressing it re-runs the automatic transition, not just a jump. `kind` (v0.5.3), never the label: a manually renamed plain pad also carries a non-ordinal label now, on purpose. */
+const isMixEntry = (cue: HotCue): boolean => cue.kind === 'mixEntry'
+
+/** Same m:ss shape `Deck.tsx`/`Library.tsx`/`TransitionPointsPanel.tsx` each already format independently — no shared formatter exists yet to import instead. */
+function fmt(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
 
 interface Props {
   deckId: DeckId
@@ -95,13 +103,67 @@ export function PadGrid({ deckId, hotCues, padMode, color }: Props) {
  * relocates the cue; onto another occupied pad, it swaps them — never a
  * silent overwrite. The `×` is a `span[role=button]`, not a nested
  * `<button>`, because the whole pad is already one.
+ *
+ * `Alt`+click (v0.5.3) opens a rename box in place of the label — the
+ * owner's own request: any pad, mix-entry or plain, can carry free text, and
+ * whatever is saved always keeps the cue's own position visible in the name
+ * (`renameHotCue`, `controls.ts` — `<text> · m:ss`, or bare `m:ss` if left
+ * blank), so a renamed pad never turns into an unlabeled mystery once the
+ * custom text scrolls out of memory. `Enter` saves; `Escape` or clicking away
+ * cancels without writing anything — a stray `Alt`+click should never be able
+ * to relabel a pad by accident.
  */
 function HotCuePads({ deckId, hotCues }: { deckId: DeckId; hotCues: HotCue[] }) {
+  const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null)
+  const commitRename = (cue: HotCue) => {
+    const text = renaming!.text.trim()
+    ctl.renameHotCue(deckId, cue.index, text ? `${text} · ${fmt(cue.positionSec)}` : fmt(cue.positionSec))
+    setRenaming(null)
+  }
   return (
     <>
       {Array.from({ length: 8 }, (_, i) => {
         const cue = hotCues.find((c) => c.index === i)
         const color = cue?.color ?? HOT_CUE_COLORS[i]
+        const occupiedStyle = {
+          background: color,
+          color: '#000',
+          boxShadow: `0 0 0 1px ${color}, 0 0 14px -3px ${color}`,
+        }
+        const dot = (
+          <span
+            className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full"
+            style={{ background: cue ? '#0007' : color, opacity: cue ? 1 : 0.5 }}
+          />
+        )
+
+        // Rename mode swaps the pad's root element from `<button>` to
+        // `<div>` entirely, rather than nesting the `<input>` inside the
+        // button — an `<input>` is itself interactive, and HTML forbids
+        // interactive descendants of a `<button>` (the same reason the
+        // delete affordance below is a `span[role=button]`, never a nested
+        // `<button>`).
+        if (renaming?.index === i && cue) {
+          return (
+            <div key={i} className={padClass} style={occupiedStyle}>
+              {dot}
+              <input
+                autoFocus
+                value={renaming.text}
+                aria-label={`Rename hot cue ${i + 1}`}
+                onChange={(e) => setRenaming({ index: i, text: e.target.value })}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') commitRename(cue)
+                  else if (e.key === 'Escape') setRenaming(null)
+                }}
+                onBlur={() => setRenaming(null)}
+                className="block w-full truncate bg-transparent px-0.5 text-center outline-none"
+              />
+            </div>
+          )
+        }
+
         return (
           <button
             key={i}
@@ -121,6 +183,7 @@ function HotCuePads({ deckId, hotCues }: { deckId: DeckId; hotCues: HotCue[] }) 
             }}
             onClick={(e) => {
               if (e.shiftKey && cue) ctl.deleteHotCue(deckId, i)
+              else if (e.altKey && cue) setRenaming({ index: i, text: customTextOf(cue) })
               else ctl.pressHotCue(deckId, i)
             }}
             aria-label={
@@ -133,11 +196,7 @@ function HotCuePads({ deckId, hotCues }: { deckId: DeckId; hotCues: HotCue[] }) 
             className={padClass}
             style={
               cue
-                ? {
-                    background: color,
-                    color: '#000',
-                    boxShadow: `0 0 0 1px ${color}, 0 0 14px -3px ${color}`,
-                  }
+                ? occupiedStyle
                 : {
                     background: 'var(--color-surface-2)',
                     color: 'var(--color-grid-dim)',
@@ -145,15 +204,13 @@ function HotCuePads({ deckId, hotCues }: { deckId: DeckId; hotCues: HotCue[] }) 
                   }
             }
           >
-            <span
-              className="absolute left-1 top-1 h-1.5 w-1.5 rounded-full"
-              style={{ background: cue ? '#0007' : color, opacity: cue ? 1 : 0.5 }}
-            />
+            {dot}
             {/* Plain manually-set cues carry a label that's already just the
                 slot number (`setHotCue`, `controls.ts`) — this renders the
-                same as `{i + 1}` always did. A v0.4.7 auto-saved mix-in cue
-                carries a short descriptive label instead; `truncate` keeps
-                it from overflowing the pad rather than wrapping/clipping
+                same as `{i + 1}` always did. A v0.4.7 auto-saved mix-in cue,
+                or any manually renamed pad (v0.5.3), carries a short
+                descriptive label instead; `truncate` keeps it from
+                overflowing the pad rather than wrapping/clipping
                 mid-character. */}
             <span className="block truncate px-0.5">{cue ? cue.label : i + 1}</span>
             {cue && (

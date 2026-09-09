@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOrdinalLabel, moveHotCue, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
+import { customTextOf, isOrdinalLabel, moveHotCue, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import type { HotCue } from '@/core/types'
 
 function cue(index: number, overrides: Partial<HotCue> = {}): HotCue {
@@ -106,7 +106,7 @@ describe('shouldTriggerMixEntry', () => {
   // whether to run the automatic transition or fall through to a plain
   // seek. The rule this pins: a mix-in pad must never become a dead button
   // — worse than a plain one — when a transition genuinely can't run.
-  const mixInCue = cue(2, { label: 'Mix in' })
+  const mixInCue = cue(2, { label: 'Mix in', kind: 'mixEntry' })
   const plainCue = cue(2)
 
   it('is true for a mix-in cue when this deck is paused and the other is playing', () => {
@@ -127,5 +127,28 @@ describe('shouldTriggerMixEntry', () => {
 
   it('is false when the pad has no cue at all', () => {
     expect(shouldTriggerMixEntry(undefined, false, true)).toBe(false)
+  })
+
+  it('v0.5.3: is false for a manually renamed cue — a non-ordinal label alone is no longer enough', () => {
+    // Before `kind` existed, a non-ordinal label meant only one thing: a
+    // saved mix-in pad. Manual rename (`renameHotCue`) also produces a
+    // non-ordinal label now, on purpose, without setting `kind` — this pins
+    // that pressing a renamed-but-plain pad still just seeks.
+    const renamedCue = cue(2, { label: 'Vocal drop · 1:23' })
+    expect(shouldTriggerMixEntry(renamedCue, false, true)).toBe(false)
+  })
+})
+
+describe('customTextOf', () => {
+  it('is empty for a plain (never-renamed) ordinal cue', () => {
+    expect(customTextOf(cue(2))).toBe('')
+  })
+
+  it('strips the trailing " · m:ss" timestamp back off a renamed label', () => {
+    expect(customTextOf(cue(2, { label: 'Vocal drop · 1:23' }))).toBe('Vocal drop')
+  })
+
+  it('returns a label with no recognizable timestamp suffix as-is (legacy Mix Assist labels)', () => {
+    expect(customTextOf(cue(2, { label: 'Mix 1:23' }))).toBe('Mix 1:23')
   })
 })

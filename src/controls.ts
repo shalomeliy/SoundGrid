@@ -20,14 +20,16 @@ import {
   shiftGrid,
 } from '@/core/beatgrid'
 import { crossfadeProgress, phaseAlignedEntrySec } from '@/core/transition'
+import { findTransitionCandidates, nextCandidateFrom } from '@/core/structure'
 import { setGenreOverrideByHash } from '@/platform/genre-overrides-idb/store'
 import { getCues, putCues } from '@/platform/cues-idb/store'
+import { getExcellentPoints, markExcellent } from '@/platform/mix-ratings-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
 import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
-import { moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
+import { isOrdinalLabel, moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import { useStore } from '@/app/state/store'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
 
@@ -203,7 +205,18 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // identified", same as a track whose analysis hasn't reached it yet. Its
   // cue bank simply isn't found, the same shape as a first-ever load.
   const storedCues = contentHash ? await getCues(contentHash) : null
+  // v0.5.3: cues saved before `HotCue.kind` existed never set it — but back
+  // then a non-ordinal label had exactly one cause (`saveMixEntryHotCue`),
+  // so that's still a reliable one-time signal now that a label alone can't
+  // tell a saved mix-in pad apart from a manually renamed plain one.
+  // Recomputed on every load rather than rewritten into storage — cheap,
+  // deterministic, and no separate migration script needed for one field.
+  const hotCues = (storedCues?.hotCues ?? []).map((c) =>
+    c.kind == null && !isOrdinalLabel(c) ? { ...c, kind: 'mixEntry' as const } : c,
+  )
   const cuePointSec = storedCues?.cuePointSec ?? 0
+  // v0.5.4: same "not yet identified, not an error" treatment as `storedCues`.
+  const excellentMixPoints = contentHash ? await getExcellentPoints(contentHash) : []
   // "First cue point" (Settings › Feel › On track load) means this saved CUE
   // point — the one thing `onLoadPlayhead` had nothing to read before this
   // version (core/settings.ts's `pending` note on the field, now resolved).
@@ -236,8 +249,9 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     syncActive: false,
     peaks: null,
     bands: null,
-    hotCues: storedCues?.hotCues ?? [],
+    hotCues,
     cuePointSec,
+    excellentMixPoints,
     loopActive: false,
   })
   const { library, setLibrary } = useStore.getState()
@@ -720,9 +734,9 @@ export function setHotCue(deckId: DeckId, index: number) {
  * `'hotcue'` case) both call this instead of `setHotCue` directly (v0.4.7,
  * fallback fixed v0.4.9).
  *
- * A pad saved by `saveMixEntryHotCue` carries a descriptive (non-ordinal)
- * label — pressing it re-runs the *same* automatic transition a first click
- * in `TransitionPointsPanel` would have started, phase-aligned entry and all,
+ * A pad saved by `saveMixEntryHotCue` carries `kind: 'mixEntry'` — pressing it
+ * re-runs the *same* automatic transition a first click in
+ * `TransitionPointsPanel` would have started, phase-aligned entry and all,
  * instead of just parking the playhead there for the DJ to hit Play by hand
  * (the exact gap the owner asked to close: "I'll give the command, you land
  * it on the right beat"). But only when a transition actually makes sense
@@ -735,9 +749,11 @@ export function setHotCue(deckId: DeckId, index: number) {
  * and still show their own notice — this only guards the cases where
  * attempting a transition was never the right call in the first place.
  *
- * A plain numbered pad (`isOrdinalLabel`) keeps doing exactly what `setHotCue`
- * always did: jump-or-create. Changing *that* would break the ordinary hot-cue
- * workflow this project has shipped since v0.4.0.
+ * Every other pad — a plain numbered one, or one manually renamed
+ * (`renameHotCue`, v0.5.3) without ever going through `saveMixEntryHotCue` —
+ * keeps doing exactly what `setHotCue` always did: jump-or-create. `kind` is
+ * what draws that line now, not the label (`core/types.ts`'s own doc comment
+ * on `HotCue.kind` says why a label-based check stopped being enough).
  */
 export function pressHotCue(deckId: DeckId, index: number) {
   const { decks } = useStore.getState()
@@ -788,9 +804,33 @@ export function saveMixEntryHotCue(deckId: DeckId, positionSec: number, label: s
   const index = pickHotCueSlot(cues)
   const next = [
     ...cues.filter((c) => c.index !== index),
-    { index, positionSec, label, color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length], createdAt: Date.now() },
+    {
+      index,
+      positionSec,
+      label,
+      color: HOT_CUE_COLORS[index % HOT_CUE_COLORS.length],
+      createdAt: Date.now(),
+      kind: 'mixEntry' as const,
+    },
   ].sort((a, b) => a.index - b.index)
   patchDeck(deckId, { hotCues: next })
+  persistCues(deckId)
+}
+
+/**
+ * Manual rename (v0.5.3, `PadGrid.tsx`'s Alt-click): the label is whatever
+ * `PadGrid.tsx` already composed (custom text plus the cue's own position,
+ * same "caller formats, this just stores" split `saveMixEntryHotCue` above
+ * already uses). `kind` is deliberately left untouched either way — renaming
+ * a mix-entry pad doesn't turn it into a plain one, and renaming a plain pad
+ * doesn't turn it into a mix-entry trigger; only `saveMixEntryHotCue` ever
+ * sets that.
+ */
+export function renameHotCue(deckId: DeckId, index: number, label: string) {
+  const { patchDeck, decks } = useStore.getState()
+  const cues = decks[deckId].hotCues
+  if (!cues.some((c) => c.index === index)) return
+  patchDeck(deckId, { hotCues: cues.map((c) => (c.index === index ? { ...c, label } : c)) })
   persistCues(deckId)
 }
 
@@ -1281,6 +1321,8 @@ interface ActiveTransition {
   toPreState: { positionSec: number; playing: boolean }
   startedAtSec: number
   unsubscribe: () => void
+  /** v0.5.4: the outgoing deck's own suggested exit point — see `AppState.activeTransition`'s own doc comment. Carried here too so `finishTransition` can raise the rating prompt without recomputing it. */
+  exitPointSec: number | null
 }
 
 let activeTransition: ActiveTransition | null = null
@@ -1429,20 +1471,36 @@ export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entryS
     if (progress >= 1) finishTransition()
   })
 
+  // v0.5.4: the outgoing deck's own next candidate point, shown as a
+  // suggested exit — the same heuristic `TransitionPointsPanel` already uses
+  // for the *incoming* side, just read for whichever track is now playing
+  // out. `null` when there's no analysis yet or nothing left ahead, never a
+  // guess (`nextCandidateFrom`'s own doc comment, `core/structure.ts`).
+  const exitCandidates = from.bands ? findTransitionCandidates(from.bands, from.durationSec, from.beatGrid) : []
+  const exitPointSec = from.bands ? (nextCandidateFrom(exitCandidates, from.positionSec)?.sec ?? null) : null
+
   activeTransition = {
     fromDeckId,
     toDeckId,
     toPreState: { positionSec: to.positionSec, playing: to.playing },
     startedAtSec,
     unsubscribe,
+    exitPointSec,
   }
-  useStore.setState({ activeTransition: { fromDeckId, toDeckId } })
+  useStore.setState({ activeTransition: { fromDeckId, toDeckId, exitPointSec } })
 }
 
 /**
  * Crossfade reached 100% (ROADMAP.md): the incoming deck becomes
  * master-sync automatically, and the cancel button disappearing (via
  * `activeTransition` clearing) is the only signal the transition ended.
+ *
+ * v0.5.4: also raises the rating prompt (`App.tsx`'s `TransitionRatingPrompt`)
+ * for the exit point this transition actually used — only when one was found
+ * (`exitPointSec` non-null) and the outgoing track carries a `contentHash` to
+ * key a rating against. A cancelled transition (`cancelTransition` below)
+ * never reaches here, so backing out of a mix never triggers a rating for
+ * one that didn't happen.
  */
 function finishTransition() {
   const t = activeTransition
@@ -1451,6 +1509,18 @@ function finishTransition() {
   t.unsubscribe()
   useStore.setState({ activeTransition: null })
   setMasterDeck(t.toDeckId)
+
+  const fromTrack = useStore.getState().decks[t.fromDeckId].track
+  if (t.exitPointSec != null && fromTrack) {
+    useStore.setState({
+      pendingMixRating: {
+        fromDeckId: t.fromDeckId,
+        contentHash: fromTrack.contentHash,
+        trackName: fromTrack.name,
+        exitPointSec: t.exitPointSec,
+      },
+    })
+  }
 }
 
 /**
@@ -1481,6 +1551,35 @@ export function cancelTransition() {
   const x = crossfaderExtremeFor(t.fromDeckId)
   engine.setCrossfader(x)
   useStore.getState().patchMixer({ crossfader: x })
+}
+
+/**
+ * The rating prompt's own three buttons (v0.5.4, `App.tsx`). Only
+ * `'excellent'` is persisted (`platform/mix-ratings-idb/store.ts`'s own doc
+ * comment says why 'bad'/'needs-work' aren't) — clears the prompt either way,
+ * since "not now" and "rated" both mean there's nothing left to ask about
+ * this transition. A missing `contentHash` (hash failed at load) degrades to
+ * "can't remember this one" rather than throwing — the same "not yet
+ * identified" treatment `loadTrackToDeck` already gives it everywhere else.
+ * If the rated track is still loaded on the same deck, its live
+ * `excellentMixPoints` is patched too, so the exit-point indicator picks up
+ * the mark immediately without waiting for a reload.
+ */
+export function rateMixTransition(rating: 'bad' | 'needs-work' | 'excellent') {
+  const { pendingMixRating, decks, patchDeck } = useStore.getState()
+  if (!pendingMixRating) return
+  useStore.setState({ pendingMixRating: null })
+  if (rating !== 'excellent' || !pendingMixRating.contentHash) return
+  void markExcellent(pendingMixRating.contentHash, pendingMixRating.exitPointSec).catch((err) => {
+    console.error('markExcellent failed', err)
+  })
+  const deck = decks[pendingMixRating.fromDeckId]
+  if (deck.track?.contentHash === pendingMixRating.contentHash) {
+    const rounded = Math.round(pendingMixRating.exitPointSec)
+    if (!deck.excellentMixPoints.includes(rounded)) {
+      patchDeck(pendingMixRating.fromDeckId, { excellentMixPoints: [...deck.excellentMixPoints, rounded] })
+    }
+  }
 }
 
 export function selectedTrack(): Track | undefined {

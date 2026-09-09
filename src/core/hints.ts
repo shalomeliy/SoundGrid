@@ -49,7 +49,7 @@ const HINT_BASE = {
   },
   'deck.waveform': { text: 'Click anywhere on the waveform to jump the playhead there.' },
   'deck.padGrid': {
-    text: 'The 8 pads. What they do depends on the mode selected above: Hot Cue (set/jump, × or shift-click clears, drag to move), Loop (start/stop a loop of that length, hold SHIFT for a momentary Loop Roll), Beat Jump (jump forward, or back with SHIFT), or Sampler (not built yet).',
+    text: 'The 8 pads. What they do depends on the mode selected above: Hot Cue (set/jump, × or shift-click clears, drag to move, alt-click to rename), Loop (start/stop a loop of that length, hold SHIFT for a momentary Loop Roll), Beat Jump (jump forward, or back with SHIFT), or Sampler (not built yet).',
     action: 'hotcue',
   },
   'deck.padMode': {

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeEnergyProfile, energyProximity, findTransitionCandidates, type EnergyProfile } from '@/core/structure'
+import {
+  analyzeEnergyProfile,
+  energyProximity,
+  findTransitionCandidates,
+  nextCandidateFrom,
+  type EnergyProfile,
+  type StructureCandidate,
+} from '@/core/structure'
 import type { BeatGrid } from '@/core/types'
 
 /**
@@ -122,6 +129,30 @@ describe('findTransitionCandidates', () => {
 
   it('an empty bands array returns no candidates rather than throwing', () => {
     expect(findTransitionCandidates(new Float32Array(0), 0, null)).toEqual([])
+  })
+})
+
+describe('nextCandidateFrom', () => {
+  const candidates: StructureCandidate[] = [
+    { sec: 10, reason: 'energy-builds' },
+    { sec: 40, reason: 'quiet-passage' },
+    { sec: 70, reason: 'energy-lifts' },
+  ]
+
+  it('picks the earliest candidate at or after the given position', () => {
+    expect(nextCandidateFrom(candidates, 20)?.sec).toBe(40)
+  })
+
+  it('includes a candidate exactly at the given position', () => {
+    expect(nextCandidateFrom(candidates, 40)?.sec).toBe(40)
+  })
+
+  it('returns null when nothing is left ahead — never a guess', () => {
+    expect(nextCandidateFrom(candidates, 71)).toBeNull()
+  })
+
+  it('returns null for an empty candidate list', () => {
+    expect(nextCandidateFrom([], 0)).toBeNull()
   })
 })
 
