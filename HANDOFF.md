@@ -19,7 +19,7 @@
 | **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/mix-detection-mid-song-s0ofhj`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git fetch origin main && git merge-base --is-ancestor origin/claude/mix-detection-mid-song-s0ofhj origin/main`. |
 | **גרסה נוכחית** | `v0.5.4` (`package.json`) — נסגרה בשיחה הזו, אחרי מיזוג עם `v0.5.1` שנסגרה בשיחה מקבילה (ר' לעיל). |
 | **`npm run check`** | ירוק (09/09, על `v0.5.4`) — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` שמקורם בשיבוט git רדוד בקונטיינר המרוחק (SHA-ים ישנים מהתיעוד לא נגישים), לא קשור לדיף. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
-| **הבא בתור** | `v0.5.5` — שליטה בשפה טבעית/קול. ר' `ROADMAP.md`. עדיין לא נכתב spec. |
+| **הבא בתור** | `v0.5.5` — שליטה בשפה טבעית (הקלדה בלבד, לא קול — הוחלט 09/09). Spec מאושר: [`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md) (5 סבבי סקירה + 3 סבבי אישור מוצרי מול שלום). `workshop-output/PLAN.md` עדיין של v0.5.0 הישן — **לא עודכן**, לא לסמוך עליו; התכנון הטכני של v0.5.5 עוד לא נכתב. |
 
 ---
 
