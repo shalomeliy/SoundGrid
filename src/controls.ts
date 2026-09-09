@@ -1701,8 +1701,19 @@ async function persistGenreOverride(trackId: string, genre: string): Promise<voi
 const activeAiProvider = aiLocalProvider
 let aiModelLoaded = false
 
-/** How long an unconfirmed AI proposal stays on screen before it auto-cancels. Tunable here, not in Settings (CLAUDE.md v0.2.5 — a calibration constant, not a preference). */
-const AI_PROPOSAL_EXPIRY_MS = 8000
+/**
+ * How long an unconfirmed AI proposal stays on screen before it auto-cancels.
+ * Tunable here, not in Settings (CLAUDE.md v0.2.5 — a calibration constant,
+ * not a preference). Was 8000 through phase 1, tuned against the instant,
+ * deterministic mock provider — fine when `confirm` appears the moment
+ * someone presses Enter, because their attention is already on the screen.
+ * Against the real local model (phase 2, slow, CPU-only) `thinking` itself
+ * can run several seconds first, so by the time `confirm` actually renders
+ * the person has drifted; Shalom's real machine (09/09) hit exactly this —
+ * a correct proposal ("Play deck A") expired before he reacted to it
+ * appearing. 20000 gives real reaction time without being unreasonable.
+ */
+const AI_PROPOSAL_EXPIRY_MS = 20000
 
 let aiAutoIdleTimer: ReturnType<typeof setTimeout> | null = null
 
