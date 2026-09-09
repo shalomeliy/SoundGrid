@@ -16,8 +16,15 @@ import { detectCapabilities } from '@/platform/capabilities'
 /** Who put a message on screen, so only they can take it down. */
 export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues' | 'padMode' | 'ai'
 
-/** v0.5.5's natural-language control bar — see `controls.ts`'s AI section for the state machine this drives. */
-export type AiPhase = 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline'
+/**
+ * v0.5.5's natural-language control bar — see `controls.ts`'s AI section
+ * for the state machine this drives. `model-loading`/`model-error` (phase
+ * 2, `platform/ai-local/`) cover the one-time download a local model
+ * needs before it can chat at all — distinct from `thinking` (the model is
+ * loaded and generating a reply), so the bar can say which one is actually
+ * happening instead of one generic "AI is busy" for both.
+ */
+export type AiPhase = 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline' | 'model-loading' | 'model-error'
 
 export interface AiState {
   /** Off by default — dark launch, no effect on anything else while off. */
@@ -28,6 +35,10 @@ export interface AiState {
   proposal: { summary: string; deckId?: DeckId; call: AIToolCall } | null
   clarifyQuestion: string | null
   declineReason: string | null
+  /** Set while `phase === 'model-loading'` — 0..100, from the provider's own download/init progress. */
+  loadProgressPct: number | null
+  /** Set while `phase === 'model-error'` — why the model failed to load, shown as-is (not a generic "something went wrong"). */
+  loadError: string | null
 }
 
 function emptyDeck(id: DeckId): DeckState {
@@ -255,7 +266,16 @@ export const useStore = create<AppState>((set) => ({
   scratchError: null,
   capabilities: detectCapabilities(),
   notice: null,
-  ai: { enabled: false, phase: 'idle', input: '', proposal: null, clarifyQuestion: null, declineReason: null },
+  ai: {
+    enabled: false,
+    phase: 'idle',
+    input: '',
+    proposal: null,
+    clarifyQuestion: null,
+    declineReason: null,
+    loadProgressPct: null,
+    loadError: null,
+  },
 
   patchDeck: (id, patch) =>
     set((s) => ({ decks: { ...s.decks, [id]: { ...s.decks[id], ...patch } } })),

@@ -61,7 +61,7 @@ src/
 | **`Clock`** | `audioContext.currentTime` פזור בקוד | Ableton Link · MIDI clock · שעון מערכת | ⬜ v0.1.6 (ראה §2) |
 | **`Persistence`** | `idb-keyval` נקודתי | SQLite ב‑Tauri · sync ענן · ייצוא/ייבוא JSON נייד | ⬜ repository דק v0.1.6 |
 | **`Capabilities`** | בדיקות ad‑hoc (`setSinkId`?) | — | ⬜ אובייקט אחד v0.1.6 |
-| **`AIProvider`** | `core/ports/ai.ts`: `chat()`/tool-calling + `suggest()` — `platform/ai-mock/` (v0.5.5 שלב 1, מדומה, לבדיקות) | מודל מקומי אמיתי (WebGPU/WASM, `platform/ai-local/`, v0.5.5 שלב 2) · מפתח API של המשתמש · self‑hosted | 🔶 interface מלא v0.5.5, מימוש מדומה בלבד |
+| **`AIProvider`** | `core/ports/ai.ts`: `chat()`/tool-calling + `suggest()` — `platform/ai-mock/` (v0.5.5 שלב 1, מדומה, לבדיקות בלבד) · `platform/ai-local/` (שלב 2, `@huggingface/transformers`, `device:'auto'` — גרפי אם יש, מעבד אם אין) הוא `activeAiProvider` בפועל | מפתח API של המשתמש · self‑hosted | 🔶 שני המימושים קיימים; `ai-local` לא אומת מקצה־לקצה בסביבה הזו — הרשת שלה חסומה ל‑huggingface.co (ר' `HANDOFF.md`) |
 
 ### `AudioBackend` — סקיצת interface
 

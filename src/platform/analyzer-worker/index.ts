@@ -11,8 +11,16 @@ import { analyzeTrack } from '@/platform/analyzer-js/analyze'
 import { detectCapabilities } from '@/platform/capabilities'
 import type { Analyzer, PcmData, TrackAnalysis } from '@/core/ports/analyzer'
 import type { AnalyzeRequest, AnalyzeResponse } from '@/platform/analyzer-worker/protocol'
-
-const WORKER_URL = new URL('@/platform/analyzer-worker/worker.ts', import.meta.url)
+// `?worker`, not `new Worker(new URL(...))` — the latter only gets Vite 8
+// to copy the raw, untranspiled `.ts` source as a generic asset (works by
+// accident under `npm run dev`, where Vite serves and transpiles anything
+// on request; silently non-functional in a real `vite build`, where the
+// browser gets handed unparseable TypeScript and `worker.onerror` fires
+// with no useful reason). Found and fixed in v0.5.5 while building
+// `platform/ai-local/`'s own worker the same wrong way and catching it
+// against `vite build`, not `npm run dev` — see `HANDOFF.md`.
+// `tests/repo/worker-import-syntax.test.ts` pins the fix.
+import AnalyzerWorkerCtor from '@/platform/analyzer-worker/worker.ts?worker'
 
 let worker: Worker | null = null
 let nextId = 0
@@ -20,7 +28,7 @@ const pending = new Map<number, (response: AnalyzeResponse) => void>()
 
 function getWorker(): Worker {
   if (!worker) {
-    worker = new Worker(WORKER_URL, { type: 'module' })
+    worker = new AnalyzerWorkerCtor()
     worker.onmessage = (e: MessageEvent<AnalyzeResponse>) => {
       const resolve = pending.get(e.data.id)
       if (!resolve) return // already settled by onerror, or a stale response — ignore, don't throw

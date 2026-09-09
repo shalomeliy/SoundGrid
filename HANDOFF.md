@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **`v0.5.5` שלב 1 מומש, נבדק ועבר `change-reviewer` (09/09) — שלב 2 עדיין לא התחיל, הגרסה עוד לא סגורה.** הצנרת המלאה: `core/ports/ai.ts` הורחב, `core/ai/toolCatalog.ts` חדש (קטלוג כלים + ולידציה, טהור), `platform/ai-mock/` (provider מדומה), `controls.ts` קיבל `submitAiCommand`/`confirmAiProposal`/`cancelAiProposal`/`toggleAiControl`, `AiControlBar.tsx` + כפתור ב-`TopBar`. **הסקירה מצאה 4 ממצאים, כולם תוקנו:** (1) ניסוח "dark launch" ב-spec היה שגוי — תוקן להבהיר שכפתור ה-toggle תמיד גלוי (כמו Quantize), רק הרצועה unmounted; (2) `setTempo` נשמט מהקטלוג — נוסף (הזזת פדר, לא יעד-BPM מדויק — הוסבר ב-spec); (3) `clarify` שפג בלי הודעה — עכשיו מציג הודעה כמו `confirm`; (4) בדיקות הדפדפן לא היו מתועדות — מתועד כאן: Playwright/`npm run dev` — הדלקה/כיבוי (unmounted כשכבוי) · כל אחת מ-11 הפקודות מגיעה ל-confirm עם הטקסט הנכון · Go מריץ בלי שגיאת קונסולה · Cancel לא עושה כלום · פקודה מעורפלת→clarify עם הודעת תפוגה · פקודה לא-נתמכת (אקפלה)→decline · תפוגה אוטומטית (8s) עם הודעה גלויה בכל המצבים — כולן PASS. `npm run check` ירוק (מלבד 8 הכשלים הידועים). |
-| **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/next-development-handoff-dmy6be`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git fetch origin main && git merge-base --is-ancestor origin/claude/next-development-handoff-dmy6be origin/main`. |
-| **גרסה נוכחית** | `v0.5.4` (`package.json`) — **לא** עודכן ל-v0.5.5: שלב 2 (המודל המקומי האמיתי) עוד לא נבנה, אז הגרסה לא סגורה. |
-| **`npm run check`** | ירוק על v0.5.5 שלב 1 — מלבד אותם 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד בקונטיינר המרוחק), לא קשור לדיף. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
-| **הבא בתור** | `v0.5.5` שלב 2 — המודל המקומי האמיתי. Spec: [`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md). תכנון: [`workshop-output/PLAN.md`](workshop-output/PLAN.md) סעיף 8, צעדים 8-11 — spike קצר לבחירת ספריית WebGPU/WASM (עוד לא נבחרה), `platform/ai-local/` מחליף את `platform/ai-mock/` כברירת המחדל, מדידת שיעור הצלחה על הקורפוס מול המודל האמיתי (סגנון v0.1.7), נרשם ב-HANDOFF. **ממתין לאישור שלום להתחיל בשלב 2.** |
+| **בעבודה** | `v0.5.5` שלב 1 (צנרת מלאה מול provider מדומה) סגור ומאומת — פרטים: [`workshop-output/FEATURE_SPEC.md`](workshop-output/FEATURE_SPEC.md)/[`PLAN.md`](workshop-output/PLAN.md). **שלב 2 (מודל מקומי אמיתי) מומש, לא סגור.** `platform/ai-local/` — `@huggingface/transformers`, מודל `onnx-community/Qwen3-0.6B-ONNX` (`dtype:'q4f16'`, מהדוגמה הרשמית של הספרייה עצמה — לא אומת בפועל), `device:'auto'` (גרפי אם יש, מעבד אם אין — בחירת שלום, 09/09). הוא `activeAiProvider` (`controls.ts`) בפועל כבר. **לא אומת מקצה־לקצה כאן: הקונטיינר המרוחק חסום ל‑huggingface.co** (403 ממדיניות הפרוקסי הארגוני — ר' "סביבת המשתמש" למטה) — ההורדה עצמה לא נבדקת. מה שכן אומת בדפדפן: מעבר תקין ל‑`model-error` עם הודעה אמיתית ("Failed to fetch"), לא קריסה. **תקלה נפרדת שנמצאה ותוקנה בדרך:** `new Worker(new URL(...))` (גם כאן וגם ב‑`analyzer-worker` הקיים) לא מתאגד נכון ב‑Vite 8 — עובד ב‑`npm run dev` ונכשל שקט ב‑`vite build` (worker גולמי, TS לא-מתורגם). הפאץ': `?worker` import. תוקן בשני הקבצים; `tests/repo/worker-import-syntax.test.ts` (חדש) חוסם חזרה. `npm run check` ירוק מלבד 8 הכשלים הידועים. |
+| **branch** | עבודה ישירות על `main` (03/09) דרך branch+PR fast-forward. **השיחה הזו** דחפה ל‑`claude/handoff-documentation-dw5ya3` (דרישת ה‑harness), אחרי fast-forward מ‑`claude/next-development-handoff-dmy6be` (ששם היה שלב 1) — לוודא מיזוג: `git fetch origin main && git merge-base --is-ancestor <SHA-ה-HEAD> origin/main`. |
+| **גרסה נוכחית** | `v0.5.4` (`package.json`) — **לא** עודכן ל‑v0.5.5: שלב 2 טעון אימות אמיתי (רשת+חומרה), לא סגור. |
+| **`npm run check`** | ירוק — מלבד אותם 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור לדיף. |
+| **הבא בתור** | **שלום בודק בבית, בדפדפן האמיתי שלו, עם אינטרנט אמיתי:** מדליק AI ב‑TopBar, מקליד פקודה, ומדווח מה קרה. שלוש תוצאות אפשריות: (1) עובד — ממשיכים לצעד 10 ב‑PLAN.md (מדידת קורפוס, סגנון v0.1.7); (2) `model-error` עם הודעה אחרת — התקן/רשת ספציפי, לתקן לפי ההודעה; (3) עובד אבל המודל "טיפש"/לא מבין עברית טוב — מחליפים קבוע `MODEL_ID`/`MODEL_DTYPE` ב‑`platform/ai-local/worker.ts`, לא ארכיטקטורה. |
 
 ---
 
@@ -58,6 +58,10 @@
 - **4 בינדינגים חדשים ב‑`flx4.ts` (v0.5.0: כפתורי בחירת מצב פדים + SHIFT) לא מאומתים
   על חומרה אמיתית** — אין FLX4 בסביבה המרוחקת שבנתה אותם. לתקן דרך Learn אם לחיצה על
   כפתור מצב לא עושה כלום. פרטים: [`docs/handoff/v0.5.0.md`](docs/handoff/v0.5.0.md).
+- **`npm audit` מדווח 4 high על `@huggingface/transformers`** (v0.5.5 שלב 2) —
+  ב‑`onnxruntime-node`/`sharp`, ה‑exports של Node שהחבילה גם כן תלויה בהם. נבדק:
+  ה‑`exports` map שלה (`package.json` של החבילה) מפנה build דפדפן נפרד, לא Node —
+  לא רץ בבנדל הדפדפן בפועל. נשאר כחוב מתועד, לא הוסתר.
 
 ---
 
@@ -71,12 +75,14 @@
   ואין היפוך פאנלים — דק A שמאל, דק B ימין, כמו על ה‑FLX4. תרגום מחרוזות בלבד.
 - **הקלטה (02/09):** **WAV קודם**, לפני כל פורמט אחר (v0.10). ‏FLAC/OGG/שידור
   אחריו. ‏WAV הוא היחיד שנכתב בלי encoder חיצוני, והיחיד שנכנס לעריכה בלי אובדן.
+- **`AIProvider` (09/09):** מודל מקומי בדפדפן, לא BYO‑key/self‑hosted — חינם, פרטי,
+  לא צריך אינטרנט בשימוש (רק בהורדה החד־פעמית). `device:'auto'`: גרפי אם יש, מעבד
+  אם אין — לא צריך להחליט "איזה חומרה" בנפרד.
 
 ---
 
 ## החלטות פתוחות — להחליט מול המשתמש
 
-- `AIProvider` — מודל מקומי (WebGPU/WASM) מול BYO‑key מול self‑hosted? איזה מודל? (v0.5.5)
 - key‑lock (master tempo): phase‑vocoder ב‑`AudioWorklet` — לבנות עצמאית או WASM? (v0.9)
 - ייבוא תגיות Serato/rekordbox — פורמט קדימות? (v0.16). לתגיות פשוטות (BPM/key) — נסגר ב‑v0.1.7
 - Ableton Link — WASM port מול שרת גשר מקומי (v0.19)

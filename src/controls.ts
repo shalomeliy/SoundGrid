@@ -34,7 +34,7 @@ import { AI_TOOL_CATALOG, validateToolCall } from '@/core/ai/toolCatalog'
 import { useStore } from '@/app/state/store'
 import type { AIMessage, AIToolCall } from '@/core/ports/ai'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
-import { mockAiProvider } from '@/platform/ai-mock'
+import { aiLocalProvider } from '@/platform/ai-local'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.
@@ -1685,10 +1685,17 @@ async function persistGenreOverride(trackId: string, genre: string): Promise<voi
 //
 // `activeAiProvider` is the one place phase 2 (the real local WebGPU/WASM
 // model, `platform/ai-local/`) swaps in for the mock — nothing else in
-// this section changes when that happens.
+// this section changes when that happens. Flipped 09/09 once `ai-local`
+// existed; **not** verified end-to-end against a real model in this
+// session (the container's network policy blocks the model host) — see
+// `platform/ai-local/index.ts`'s own doc comment and `HANDOFF.md`.
+// `mockAiProvider` stays imported and exported from `platform/ai-mock` for
+// `tests/core/ai-translate.test.ts`, which deliberately keeps testing
+// against it rather than a non-deterministic real model.
 // ————————————————————————————————————————————————————————————————
 
-const activeAiProvider = mockAiProvider
+const activeAiProvider = aiLocalProvider
+let aiModelLoaded = false
 
 /** How long an unconfirmed AI proposal stays on screen before it auto-cancels. Tunable here, not in Settings (CLAUDE.md v0.2.5 — a calibration constant, not a preference). */
 const AI_PROPOSAL_EXPIRY_MS = 8000
@@ -1785,17 +1792,55 @@ function runAiToolCall(call: AIToolCall) {
   }
 }
 
-/** Turns the natural-language feature on or off. Off by default — dark launch, no effect on anything else while off. */
+/**
+ * Turns the natural-language feature on or off. Off by default — dark
+ * launch, no effect on anything else while off. Turning it on starts the
+ * one-time model load right away (not lazily on first command) so the
+ * loading state has its own visible phase instead of hiding inside
+ * `thinking` the first time someone actually types something.
+ */
 export function toggleAiControl(on: boolean) {
   clearAiAutoIdle()
-  useStore.getState().patchAi({
+  const { patchAi } = useStore.getState()
+  patchAi({
     enabled: on,
     phase: 'idle',
     input: '',
     proposal: null,
     clarifyQuestion: null,
     declineReason: null,
+    loadProgressPct: null,
+    loadError: null,
   })
+  if (on) void ensureAiModelLoaded()
+}
+
+/**
+ * Runs the active provider's `load()` once (providers with nothing to load
+ * — BYO-key, self-hosted — simply omit it, so this is a no-op for them).
+ * A failure lands in `model-error` with the real reason shown, never a
+ * silent "AI just doesn't respond" — the failure this container's own
+ * blocked network policy actually produces (see `HANDOFF.md`) is exactly
+ * the case this exists to surface, not paper over.
+ */
+async function ensureAiModelLoaded(): Promise<boolean> {
+  if (aiModelLoaded) return true
+  if (!activeAiProvider.load) {
+    aiModelLoaded = true
+    return true
+  }
+  const { patchAi } = useStore.getState()
+  patchAi({ phase: 'model-loading', loadProgressPct: 0, loadError: null })
+  try {
+    await activeAiProvider.load((pct) => useStore.getState().patchAi({ loadProgressPct: pct }))
+    aiModelLoaded = true
+    // Only return to idle if nothing else (a command typed while loading) has already moved the phase on.
+    if (useStore.getState().ai.phase === 'model-loading') patchAi({ phase: 'idle', loadProgressPct: null })
+    return true
+  } catch (err) {
+    patchAi({ phase: 'model-error', loadError: err instanceof Error ? err.message : String(err) })
+    return false
+  }
 }
 
 /** Live-updates the input box and puts the bar in `typing` state — no AI call yet, that only happens on submit. */
@@ -1817,6 +1862,9 @@ export async function submitAiCommand(text: string): Promise<void> {
   if (!trimmed) return
   const { patchAi, setNotice } = useStore.getState()
   clearAiAutoIdle()
+
+  if (!(await ensureAiModelLoaded())) return // already left in `model-error`, with the real reason shown
+
   patchAi({ phase: 'thinking', input: trimmed })
 
   const msgs: AIMessage[] = [{ role: 'user', content: trimmed }]

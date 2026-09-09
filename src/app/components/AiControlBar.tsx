@@ -40,6 +40,22 @@ export function AiControlBar() {
 
       {ai.phase === 'thinking' && <span className="text-grid-muted">AI is thinking…</span>}
 
+      {ai.phase === 'model-loading' && (
+        <>
+          <Pill tone="warn" label="AI" />
+          <span className="text-grid-muted">
+            Loading the local model{ai.loadProgressPct != null ? ` — ${Math.round(ai.loadProgressPct)}%` : '…'}
+          </span>
+        </>
+      )}
+
+      {ai.phase === 'model-error' && (
+        <>
+          <Pill tone="danger" label="AI" />
+          <span className="min-w-0 flex-1 truncate">Local model failed to load — {ai.loadError}</span>
+        </>
+      )}
+
       {ai.phase === 'confirm' && ai.proposal && (
         <>
           <Pill tone="idle" label="AI" />
