@@ -90,6 +90,9 @@ const HINT_BASE = {
   'topbar.settings': {
     text: 'Controller calibration, feel, display and library preferences — and this Hint mode toggle.',
   },
+  'topbar.ai': {
+    text: 'Type a command in plain language, e.g. "loop 8 beats on deck A". Always asks before doing anything. Off by default.',
+  },
 
   // — library —
   'library.folder': { text: 'Pick the folder SoundGrid scans for tracks.' },

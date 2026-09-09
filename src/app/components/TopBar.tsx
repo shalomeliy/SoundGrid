@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { initAudio, toggleQuantize } from '@/controls'
+import { initAudio, toggleAiControl, toggleQuantize } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
 import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
@@ -13,6 +13,7 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const midiState = useStore((s) => s.midi)
   const scratchReady = useStore((s) => s.scratchReady)
   const scratchError = useStore((s) => s.scratchError)
+  const aiEnabled = useStore((s) => s.ai.enabled)
   const setOutput = useStore((s) => s.setOutput)
   const [busy, setBusy] = useState(false)
 
@@ -154,6 +155,12 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
             <HintIcon id="topbar.connectMidi" className="absolute -right-1.5 -top-1.5" />
           </span>
         )}
+        <span className="relative inline-flex">
+          <Button variant="toggle" size="sm" active={aiEnabled} onClick={() => toggleAiControl(!aiEnabled)}>
+            AI
+          </Button>
+          <HintIcon id="topbar.ai" className="absolute -right-1.5 -top-1.5" />
+        </span>
         <span className="relative inline-flex">
           <Button variant="ghost" size="sm" onClick={onOpenSettings}>
             Settings

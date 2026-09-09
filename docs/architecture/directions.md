@@ -61,7 +61,7 @@ src/
 | **`Clock`** | `audioContext.currentTime` פזור בקוד | Ableton Link · MIDI clock · שעון מערכת | ⬜ v0.1.6 (ראה §2) |
 | **`Persistence`** | `idb-keyval` נקודתי | SQLite ב‑Tauri · sync ענן · ייצוא/ייבוא JSON נייד | ⬜ repository דק v0.1.6 |
 | **`Capabilities`** | בדיקות ad‑hoc (`setSinkId`?) | — | ⬜ אובייקט אחד v0.1.6 |
-| **`AIProvider`** | — | מודל מקומי (WebGPU/WASM) · מפתח API של המשתמש · self‑hosted | ⬜ stub v0.5.5 |
+| **`AIProvider`** | `core/ports/ai.ts`: `chat()`/tool-calling + `suggest()` — `platform/ai-mock/` (v0.5.5 שלב 1, מדומה, לבדיקות) | מודל מקומי אמיתי (WebGPU/WASM, `platform/ai-local/`, v0.5.5 שלב 2) · מפתח API של המשתמש · self‑hosted | 🔶 interface מלא v0.5.5, מימוש מדומה בלבד |
 
 ### `AudioBackend` — סקיצת interface
 
@@ -149,12 +149,19 @@ capability חסר — הוא מוסתר או עובד ב‑fallback (למשל: �
 
 ### סקיצת interface
 
+מומש בפועל ב-`core/ports/ai.ts` (v0.5.5) — שתי צורות זו לצד זו, לא אחת שמחליפה את השנייה:
+`suggest()`/`AISuggestion` לתרחישי הצעה פסיבית ומדורגת (v0.9.5/v0.13.5, עדיין לא בנויים),
+`chat()`/tool-calling לתרחיש שיחה+הבהרה (v0.5.5, בשימוש בפועל). `Msg`/`ToolDef`/`ChatChunk`
+בסקיצה הישנה כאן הם `AIMessage`/`AIToolDef`/`AIChatChunk` בקוד עצמו.
+
 ```ts
 interface AIProvider {
   readonly kind: 'local' | 'byo-key' | 'self-hosted'
-  readonly capabilities: ('chat'|'embed-audio'|'stems'|'structure')[]
-  chat(msgs: Msg[], tools?: ToolDef[]): AsyncIterable<ChatChunk>
-  embedAudio?(pcm: Float32Array): Promise<Float32Array>
+  readonly capabilities: ('chat'|'embed-audio')[]
+  suggest(prompt: string, context: unknown): Promise<AISuggestion[]>
+  chat(msgs: AIMessage[], tools?: AIToolDef[]): AsyncIterable<AIChatChunk>
+  /** רק ספק שצריך הורדה/אתחול חד-פעמי (מודל מקומי) מממש את זה */
+  load?(onProgress: (pct: number) => void): Promise<void>
 }
 ```
 

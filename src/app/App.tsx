@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { AiControlBar } from '@/app/components/AiControlBar'
 import { Deck } from '@/app/components/Deck'
 import { Library } from '@/app/components/Library'
 import { Mixer } from '@/app/components/Mixer'
@@ -190,6 +191,7 @@ export default function App() {
         </div>
       )}
       <TransitionRatingPrompt />
+      <AiControlBar />
       <main className="grid shrink-0 grid-cols-[1fr_auto_1fr] gap-3 p-3">
         <Deck deckId="A" />
         <Mixer />

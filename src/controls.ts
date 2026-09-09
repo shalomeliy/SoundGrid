@@ -30,8 +30,11 @@ import { hashBytes, hashFile } from '@/platform/source-fsaccess/hash'
 import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { isOrdinalLabel, moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
+import { AI_TOOL_CATALOG, validateToolCall } from '@/core/ai/toolCatalog'
 import { useStore } from '@/app/state/store'
+import type { AIMessage, AIToolCall } from '@/core/ports/ai'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
+import { mockAiProvider } from '@/platform/ai-mock'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.
@@ -1658,5 +1661,218 @@ async function persistGenreOverride(trackId: string, genre: string): Promise<voi
     })
   }
   await setGenreOverrideByHash(hash, genre)
+}
+
+// ————————————————————————————————————————————————————————————————
+// Natural-language control (v0.5.5) — text only, no voice this version.
+//
+// The AI layer is a third caller of this same choke point, alongside the
+// UI and MIDI: it never touches `engine`/the store directly, only the
+// exported functions above (`play`, `pause`, `pressLoopPad` via `loop`,
+// `pressHotCue`, `syncDeck`, `tapTempo`, `setFilter`, `setCrossfader`,
+// `setChannelVolume`, `setEq`). `core/ai/toolCatalog.ts`'s
+// `validateToolCall` is the gate: nothing the model returns reaches those
+// functions unless it matches a real, existing tool exactly — a
+// hallucinated or malformed call is rejected with a visible notice
+// instead of silently no-op'ing, the gap MIDI dispatch still has today
+// for an unrecognised binding.
+//
+// Every proposed action requires an explicit Go before it runs (workshop-
+// output/FEATURE_SPEC.md — a live-mixing tool has no "high confidence"
+// tier that skips confirmation). An unconfirmed proposal expires on its
+// own rather than sitting stale forever, with a visible notice that it
+// was cancelled — never a silent disappearance.
+//
+// `activeAiProvider` is the one place phase 2 (the real local WebGPU/WASM
+// model, `platform/ai-local/`) swaps in for the mock — nothing else in
+// this section changes when that happens.
+// ————————————————————————————————————————————————————————————————
+
+const activeAiProvider = mockAiProvider
+
+/** How long an unconfirmed AI proposal stays on screen before it auto-cancels. Tunable here, not in Settings (CLAUDE.md v0.2.5 — a calibration constant, not a preference). */
+const AI_PROPOSAL_EXPIRY_MS = 8000
+
+let aiAutoIdleTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearAiAutoIdle() {
+  if (aiAutoIdleTimer != null) {
+    clearTimeout(aiAutoIdleTimer)
+    aiAutoIdleTimer = null
+  }
+}
+
+/** Returns to idle on its own after `AI_PROPOSAL_EXPIRY_MS` — `withNotice` distinguishes "an actionable proposal went stale" (needs telling) from "a clarify/decline message's own text already said what happened" (doesn't). */
+function scheduleAiAutoIdle(withNotice: boolean) {
+  clearAiAutoIdle()
+  aiAutoIdleTimer = setTimeout(() => {
+    aiAutoIdleTimer = null
+    const { patchAi, setNotice } = useStore.getState()
+    patchAi({ phase: 'idle', proposal: null, clarifyQuestion: null, declineReason: null })
+    if (withNotice) {
+      setNotice({ text: 'AI proposal expired — nothing was done.', tone: 'warn', source: 'ai' })
+    }
+  }, AI_PROPOSAL_EXPIRY_MS)
+}
+
+function describeAiProposal(call: AIToolCall): string {
+  const a = call.args as Record<string, unknown>
+  switch (call.name) {
+    case 'play':
+      return `Play deck ${a.deck}`
+    case 'pause':
+      return `Pause deck ${a.deck}`
+    case 'loop':
+      return `Loop ${a.beats} beats, deck ${a.deck}`
+    case 'jumpToHotCue':
+      return `Jump to cue ${Number(a.index) + 1}, deck ${a.deck}`
+    case 'syncDeck':
+      return `Sync deck ${a.deck}`
+    case 'tapTempo':
+      return `Tap tempo, deck ${a.deck}`
+    case 'setFilter':
+      return `Filter ${a.amount}, deck ${a.deck}`
+    case 'setCrossfader':
+      return `Crossfader to ${a.position}`
+    case 'setChannelVolume':
+      return `Volume ${a.level}, deck ${a.deck}`
+    case 'setEq':
+      return `EQ ${a.band} ${a.amount}, deck ${a.deck}`
+    default:
+      return call.name
+  }
+}
+
+/** Runs the real `controls.ts` function a validated tool call names — the only place an AI-sourced call turns into an actual action. */
+function runAiToolCall(call: AIToolCall) {
+  const a = call.args as Record<string, unknown>
+  switch (call.name) {
+    case 'play':
+      play(a.deck as DeckId)
+      break
+    case 'pause':
+      pause(a.deck as DeckId)
+      break
+    case 'loop':
+      pressLoopPad(a.deck as DeckId, a.beats as number)
+      break
+    case 'jumpToHotCue':
+      pressHotCue(a.deck as DeckId, a.index as number)
+      break
+    case 'syncDeck':
+      syncDeck(a.deck as DeckId)
+      break
+    case 'tapTempo':
+      tapTempo(a.deck as DeckId)
+      break
+    case 'setFilter':
+      setFilter(a.deck as DeckId, a.amount as number)
+      break
+    case 'setCrossfader':
+      setCrossfader(a.position as number)
+      break
+    case 'setChannelVolume':
+      setChannelVolume(a.deck as DeckId, a.level as number)
+      break
+    case 'setEq':
+      setEq(a.deck as DeckId, a.band as 'low' | 'mid' | 'high', a.amount as number)
+      break
+  }
+}
+
+/** Turns the natural-language feature on or off. Off by default — dark launch, no effect on anything else while off. */
+export function toggleAiControl(on: boolean) {
+  clearAiAutoIdle()
+  useStore.getState().patchAi({
+    enabled: on,
+    phase: 'idle',
+    input: '',
+    proposal: null,
+    clarifyQuestion: null,
+    declineReason: null,
+  })
+}
+
+/** Live-updates the input box and puts the bar in `typing` state — no AI call yet, that only happens on submit. */
+export function setAiInput(text: string) {
+  const { ai, patchAi } = useStore.getState()
+  patchAi({ input: text, phase: text.trim() && ai.phase === 'idle' ? 'typing' : ai.phase })
+}
+
+/**
+ * The choke-point entry for a natural-language command: builds the
+ * request, calls the active `AIProvider`, validates whatever it returns,
+ * and lands on `confirm` (a real action, awaiting Go), `clarify` (the
+ * model asked a question instead of guessing) or `decline` (the request
+ * needs a capability that doesn't exist yet) — never runs anything by
+ * itself.
+ */
+export async function submitAiCommand(text: string): Promise<void> {
+  const trimmed = text.trim()
+  if (!trimmed) return
+  const { patchAi, setNotice } = useStore.getState()
+  clearAiAutoIdle()
+  patchAi({ phase: 'thinking', input: trimmed })
+
+  const msgs: AIMessage[] = [{ role: 'user', content: trimmed }]
+  let call: AIToolCall | null = null
+  try {
+    for await (const chunk of activeAiProvider.chat(msgs, AI_TOOL_CATALOG)) {
+      if (chunk.kind === 'toolCall') call = chunk.call
+    }
+  } catch (err) {
+    setNotice({
+      text: `AI failed to respond: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'ai',
+    })
+    patchAi({ phase: 'idle' })
+    return
+  }
+
+  if (!call) {
+    setNotice({ text: 'AI did not return an action.', tone: 'warn', source: 'ai' })
+    patchAi({ phase: 'idle' })
+    return
+  }
+
+  const result = validateToolCall(call)
+  if (!result.ok) {
+    setNotice({ text: `AI proposed an unrecognized action — ignored (${result.reason}).`, tone: 'warn', source: 'ai' })
+    patchAi({ phase: 'idle' })
+    return
+  }
+
+  if (call.name === 'clarify') {
+    const args = call.args as { question: string }
+    patchAi({ phase: 'clarify', clarifyQuestion: args.question, proposal: null })
+    scheduleAiAutoIdle(false)
+    return
+  }
+  if (call.name === 'decline') {
+    const args = call.args as { reason: string }
+    patchAi({ phase: 'decline', declineReason: args.reason, proposal: null })
+    scheduleAiAutoIdle(false)
+    return
+  }
+
+  const deck = (call.args as { deck?: DeckId }).deck
+  patchAi({ phase: 'confirm', proposal: { summary: describeAiProposal(call), deckId: deck, call } })
+  scheduleAiAutoIdle(true)
+}
+
+/** Go: runs the proposed action exactly as if it had been pressed on screen or on the controller. */
+export function confirmAiProposal() {
+  clearAiAutoIdle()
+  const { ai, patchAi } = useStore.getState()
+  const proposal = ai.proposal
+  patchAi({ phase: 'idle', proposal: null, input: '' })
+  if (proposal) runAiToolCall(proposal.call)
+}
+
+/** Cancel: the user's own explicit dismissal needs no notice — pressing Cancel already is the visible action. */
+export function cancelAiProposal() {
+  clearAiAutoIdle()
+  useStore.getState().patchAi({ phase: 'idle', proposal: null, clarifyQuestion: null, declineReason: null, input: '' })
 }
 

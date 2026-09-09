@@ -9,11 +9,26 @@ import type {
   MixerState,
   Track,
 } from '@/core/types'
+import type { AIToolCall } from '@/core/ports/ai'
 import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues' | 'padMode'
+export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues' | 'padMode' | 'ai'
+
+/** v0.5.5's natural-language control bar — see `controls.ts`'s AI section for the state machine this drives. */
+export type AiPhase = 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline'
+
+export interface AiState {
+  /** Off by default — dark launch, no effect on anything else while off. */
+  enabled: boolean
+  phase: AiPhase
+  input: string
+  /** A validated real action awaiting explicit Go/Cancel — never runs on its own. */
+  proposal: { summary: string; deckId?: DeckId; call: AIToolCall } | null
+  clarifyQuestion: string | null
+  declineReason: string | null
+}
 
 function emptyDeck(id: DeckId): DeckState {
   return {
@@ -182,9 +197,13 @@ export interface AppState {
    */
   notice: { text: string; tone: 'warn' | 'info'; source: NoticeSource } | null
 
+  /** v0.5.5 natural-language control — see `AiState`. */
+  ai: AiState
+
   patchDeck: (id: DeckId, patch: Partial<DeckState>) => void
   patchChannel: (id: DeckId, patch: Partial<ChannelState>) => void
   patchMixer: (patch: Partial<Omit<MixerState, 'channels'>>) => void
+  patchAi: (patch: Partial<AiState>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
   setMidi: (patch: Partial<AppState['midi']>) => void
@@ -236,6 +255,7 @@ export const useStore = create<AppState>((set) => ({
   scratchError: null,
   capabilities: detectCapabilities(),
   notice: null,
+  ai: { enabled: false, phase: 'idle', input: '', proposal: null, clarifyQuestion: null, declineReason: null },
 
   patchDeck: (id, patch) =>
     set((s) => ({ decks: { ...s.decks, [id]: { ...s.decks[id], ...patch } } })),
@@ -247,6 +267,7 @@ export const useStore = create<AppState>((set) => ({
       },
     })),
   patchMixer: (patch) => set((s) => ({ mixer: { ...s.mixer, ...patch } })),
+  patchAi: (patch) => set((s) => ({ ai: { ...s.ai, ...patch } })),
   set: (key, value) => set({ [key]: value } as Partial<AppState>),
   setLibrary: (patch) => set((s) => ({ library: { ...s.library, ...patch } })),
   setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
