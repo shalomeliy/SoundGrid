@@ -1476,8 +1476,13 @@ export function startAutoTransition(fromDeckId: DeckId, toDeckId: DeckId, entryS
   // for the *incoming* side, just read for whichever track is now playing
   // out. `null` when there's no analysis yet or nothing left ahead, never a
   // guess (`nextCandidateFrom`'s own doc comment, `core/structure.ts`).
+  // `fromEngine.position`, not the `from.positionSec` store snapshot taken
+  // at function entry — same freshness reason as `enterSec` two lines
+  // above: candidates are 20s+ apart (`MIN_GAP_SEC`), so it would rarely
+  // matter, but there is no reason to reintroduce the staleness that
+  // comment already measured just to save one property read.
   const exitCandidates = from.bands ? findTransitionCandidates(from.bands, from.durationSec, from.beatGrid) : []
-  const exitPointSec = from.bands ? (nextCandidateFrom(exitCandidates, from.positionSec)?.sec ?? null) : null
+  const exitPointSec = from.bands ? (nextCandidateFrom(exitCandidates, fromEngine.position)?.sec ?? null) : null
 
   activeTransition = {
     fromDeckId,

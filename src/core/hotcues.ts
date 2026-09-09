@@ -67,16 +67,26 @@ export function shouldTriggerMixEntry(
 }
 
 /**
- * The free-text part of a renamed pad's label, with this project's own
- * " · m:ss" suffix (`renameHotCue`, v0.5.3, `PadGrid.tsx`) stripped back off
- * — so reopening the rename box pre-fills what the DJ actually typed, not
- * the timestamp that gets re-appended on every save regardless. A plain
- * (never-renamed) pad has no custom text to recover, so this returns `''`
- * for it rather than its ordinal number.
+ * The free-text part of a renamed or mix-entry pad's label, with this
+ * project's own trailing "m:ss" position stripped back off — so reopening
+ * the rename box pre-fills what the DJ actually typed (or "Mix in" for a
+ * Mix Assist pad), not the timestamp that gets re-appended on every save
+ * regardless. A plain (never-renamed) pad has no custom text to recover, so
+ * this returns `''` for it rather than its ordinal number.
+ *
+ * The trailing separator is optional on purpose: `renameHotCue`/
+ * `saveMixEntryHotCue` both write "<text> · m:ss" today, but a pad saved by
+ * an older build of `saveMixEntryHotCue` (before v0.5.3 unified the format)
+ * can still be sitting in a DJ's real, already-persisted library as the
+ * bare "Mix m:ss" — no middot. Stripping only the newer shape there would
+ * leave the whole label, timestamp included, as "custom text"; renaming
+ * that pad would then glue a second, differently-formatted timestamp onto
+ * the first one. Matching either shape means both old and new data recover
+ * cleanly, and there is nothing left to migrate.
  */
 export function customTextOf(cue: HotCue): string {
   if (isOrdinalLabel(cue)) return ''
-  return cue.label.replace(/ · \d{1,3}:\d{2}$/, '')
+  return cue.label.replace(/\s*(?:·\s*)?\d{1,3}:\d{2}$/, '')
 }
 
 /**

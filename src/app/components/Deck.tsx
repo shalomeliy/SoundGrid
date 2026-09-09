@@ -199,7 +199,11 @@ export function Deck({ deckId }: { deckId: DeckId }) {
                 // several saved mix-in pads on the same deck read as
                 // distinct points instead of all showing the same "Mix in"
                 // text — the owner's own report after saving more than one.
-                ctl.saveMixEntryHotCue(deckId, sec, `Mix ${fmt(sec)}`)
+                // Same "<text> · m:ss" shape `renameHotCue` uses (v0.5.3) —
+                // one label format in the whole codebase, not two, so
+                // `customTextOf` can recover "Mix in" cleanly if this pad is
+                // later renamed instead of gluing a second timestamp on.
+                ctl.saveMixEntryHotCue(deckId, sec, `Mix in · ${fmt(sec)}`)
               }}
             />
           )}

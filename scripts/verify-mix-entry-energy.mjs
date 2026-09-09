@@ -166,14 +166,16 @@ const buildsButton = candidateButtons.filter({ hasText: 'energy builds' })
 await buildsButton.first().click()
 await page.waitForTimeout(400)
 
-const mixInPad = deckB.getByRole('button', { name: /^Start mix from Mix \d/ })
+const mixInPad = deckB.getByRole('button', { name: /^Start mix from Mix in · \d/ })
 const padCount = await mixInPad.count()
-ok('clicking a candidate saves a hot cue labeled "Mix <time>" on deck B', padCount > 0, `matches: ${padCount}`)
+ok('clicking a candidate saves a hot cue labeled "Mix in · <time>" on deck B', padCount > 0, `matches: ${padCount}`)
 if (padCount > 0) {
   const padText = await mixInPad.first().innerText()
   // `innerText` also picks up the hover-reveal delete "×" span (opacity-only
-  // hidden, not `display:none`), so anchor the start only.
-  ok('the pad shows the track time, not a bare number', /^Mix \d+:\d{2}/.test(padText), padText)
+  // hidden, not `display:none`), so anchor the start only. Same "<text> ·
+  // m:ss" shape a manual rename (v0.5.3, `renameHotCue`) also produces —
+  // one label format, not two.
+  ok('the pad shows the track time, not a bare number', /^Mix in · \d+:\d{2}/.test(padText), padText)
 }
 
 // Pause deck B (cancels the transition the candidate click just started, per

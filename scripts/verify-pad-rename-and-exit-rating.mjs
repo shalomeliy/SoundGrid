@@ -219,6 +219,23 @@ await page.waitForTimeout(300)
 const exitPill = deckA.getByText(/^suggested exit at \d+:\d{2}$/)
 ok('deck A (the outgoing side) shows a suggested-exit indicator the moment the transition starts', (await exitPill.count()) === 1)
 
+// v0.5.3/v0.5.4 interaction: renaming an *existing* Mix-Assist pad (not just
+// a plain one) must not glue a second timestamp onto the first — the exact
+// round-trip a change-reviewer pass caught before this script covered it.
+const mixEntryPad = deckB.getByRole('button', { name: /^Start mix from Mix in · \d+:\d{2}$/ })
+ok('deck B holds the mix-entry pad this candidate click just saved', (await mixEntryPad.count()) === 1)
+await mixEntryPad.click({ modifiers: ['Alt'] })
+await page.waitForTimeout(150)
+const mixEntryRenameBox = deckB.getByRole('textbox', { name: /^Rename hot cue \d$/ })
+const prefill = await mixEntryRenameBox.inputValue()
+ok('reopening rename on a mix-entry pad pre-fills only "Mix in", not the timestamp too', prefill === 'Mix in', prefill)
+await mixEntryRenameBox.press('Escape') // leave it exactly as saveMixEntryHotCue wrote it
+await page.waitForTimeout(150)
+const mixEntryUnchanged = await deckB
+  .getByRole('button', { name: /^Start mix from Mix in · \d+:\d{2}$/ })
+  .count()
+ok('canceling out of that rename leaves the mix-entry pad and its label untouched', mixEntryUnchanged === 1)
+
 // Let the 8s crossfade (TRANSITION_CROSSFADE_SEC) finish.
 await page.waitForTimeout(8500)
 const ratingPrompt = page.getByText(/How did that exit from/)

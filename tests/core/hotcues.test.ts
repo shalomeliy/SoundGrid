@@ -148,7 +148,16 @@ describe('customTextOf', () => {
     expect(customTextOf(cue(2, { label: 'Vocal drop · 1:23' }))).toBe('Vocal drop')
   })
 
-  it('returns a label with no recognizable timestamp suffix as-is (legacy Mix Assist labels)', () => {
-    expect(customTextOf(cue(2, { label: 'Mix 1:23' }))).toBe('Mix 1:23')
+  it('also strips the older, middot-less "Mix m:ss" shape (pre-v0.5.3 saved pads)', () => {
+    // `saveMixEntryHotCue` wrote bare "Mix m:ss" before v0.5.3 unified the
+    // format with `renameHotCue`'s "<text> · m:ss" — a pad saved back then
+    // can still be sitting in a real library. Recovering only "Mix", not
+    // the whole "Mix 1:23" string, is what stops a rename from gluing a
+    // second timestamp onto the first one.
+    expect(customTextOf(cue(2, { label: 'Mix 1:23' }))).toBe('Mix')
+  })
+
+  it('returns a label with no recognizable timestamp suffix as-is', () => {
+    expect(customTextOf(cue(2, { label: 'Vocal drop' }))).toBe('Vocal drop')
   })
 })
