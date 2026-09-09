@@ -13,7 +13,7 @@ import type { BeatGrid } from '@/core/types'
  * exact terms ("based on energy", never "structure detected"/"intro"/
  * "outro") — see ROADMAP.md v0.4.6.
  */
-export type StructureReason = 'energy-builds' | 'energy-drops' | 'quiet-passage'
+export type StructureReason = 'energy-builds' | 'quiet-passage' | 'energy-lifts'
 
 export interface StructureCandidate {
   sec: number
@@ -24,6 +24,10 @@ export interface StructureCandidate {
  * Below this fraction of the track's own near-peak sustained level, a
  * window counts as "quiet". Chosen, not measured — same status as
  * `beatgrid.ts`'s `CONFIDENCE_RATIO` until checked against real tracks.
+ * Global (whole-track-peak-relative) on purpose — this is only used to find
+ * the *intro* boundary (`energy-builds` below), where "quiet, then loud" is
+ * the whole point. Everything else in this file compares a point to its own
+ * *local* neighbourhood instead — see `LOCAL_DEVIATION_RATIO`.
  */
 const ENERGY_THRESHOLD_RATIO = 0.55
 
@@ -32,6 +36,40 @@ const MIN_SUSTAIN_SEC = 4
 
 /** Coarse analysis window — the raw `bands` buckets (~5ms apart) are far too fine-grained to threshold directly. */
 const WINDOW_SEC = 1
+
+/**
+ * v0.5.1: a mid-track candidate must differ from its own trailing local
+ * average by at least this fraction to count as a real shift — comparing
+ * against a nearby stretch of the *same* track, not the track's global peak
+ * (`ENERGY_THRESHOLD_RATIO`), is what lets this catch a bridge/breakdown in a
+ * loudness-war master, where every section already sits close to the global
+ * peak and a global threshold never fires there at all. Chosen, not measured.
+ */
+const LOCAL_DEVIATION_RATIO = 0.3
+
+/** How far back a mid-track candidate looks to build its "what came before" baseline. */
+const LOCAL_BASELINE_SEC = 15
+
+/** No mid-track candidate this close to the very start — `energy-builds` already owns the intro boundary. */
+const START_GUARD_SEC = 10
+
+/**
+ * No mid-track candidate this close to the very end. Almost every track
+ * thins out or fades somewhere in its last few seconds — surfacing that as a
+ * "mix point" is trivial and was the direct complaint this version fixes: a
+ * DJ mixing out with under ~20s of track left gains nothing from being told
+ * the fade exists. v0.5.1 removed the dedicated end-of-track scan outright
+ * (it used to always find that fade and label it "into the outro"); this
+ * guard keeps the general mid-track scan below from rediscovering the same
+ * non-answer.
+ */
+const END_GUARD_SEC = 20
+
+/** Two candidates closer together than this are the same transition still settling, not two distinct ones. */
+const MIN_GAP_SEC = 20
+
+/** Never flood the popover with every local wiggle that clears the bar. */
+const MAX_MID_CANDIDATES = 3
 
 /**
  * Per-second combined loudness (low+mid+high RMS summed), downsampled from
@@ -84,6 +122,68 @@ export function analyzeEnergyProfile(bands: Float32Array, durationSec: number): 
 }
 
 /**
+ * Mid-track candidates (v0.5.1): sustained rises *and* falls anywhere in the
+ * track, judged against a *local* trailing baseline instead of the global
+ * near-peak level. This is what lets a breakdown in a loudness-war master
+ * register at all — it never dips below `ENERGY_THRESHOLD_RATIO` of the
+ * track's own peak, but it is still clearly quieter than the 15s that led
+ * into it. Returns them in playback order, each at least `MIN_GAP_SEC` apart
+ * and capped at `MAX_MID_CANDIDATES` so a track with constant small wobble
+ * doesn't flood the popover.
+ *
+ * `afterSec` excludes anything within `MIN_GAP_SEC` of the `energy-builds`
+ * candidate (when one was found) so the intro boundary isn't reported twice
+ * under two different reasons.
+ */
+function findMidTrackCandidates(
+  contour: number[],
+  windowSec: number,
+  afterSec: number | null,
+): StructureCandidate[] {
+  const baselineWindows = Math.max(1, Math.round(LOCAL_BASELINE_SEC / windowSec))
+  const minWindows = Math.max(1, Math.round(MIN_SUSTAIN_SEC / windowSec))
+  const minGapWindows = Math.max(1, Math.round(MIN_GAP_SEC / windowSec))
+  const startIdx = Math.max(
+    baselineWindows,
+    Math.round(START_GUARD_SEC / windowSec),
+    afterSec != null ? Math.round((afterSec + MIN_GAP_SEC) / windowSec) : 0,
+  )
+  const endIdx = contour.length - Math.round(END_GUARD_SEC / windowSec)
+
+  const out: StructureCandidate[] = []
+  let lastPickedIdx = -Infinity
+  for (let i = startIdx; i < endIdx; i++) {
+    if (i + minWindows > contour.length) break
+    if (i - lastPickedIdx < minGapWindows) continue
+
+    let sum = 0
+    for (let k = i - baselineWindows; k < i; k++) sum += contour[k]
+    const baseline = sum / baselineWindows
+    if (baseline <= 1e-6) continue
+
+    const riseLevel = baseline * (1 + LOCAL_DEVIATION_RATIO)
+    const dropLevel = baseline * (1 - LOCAL_DEVIATION_RATIO)
+    const isRise = contour[i] >= riseLevel
+    const isDrop = contour[i] <= dropLevel
+    if (!isRise && !isDrop) continue
+
+    let sustained = true
+    for (let k = i; k < i + minWindows; k++) {
+      if (isRise ? contour[k] < riseLevel : contour[k] > dropLevel) {
+        sustained = false
+        break
+      }
+    }
+    if (!sustained) continue
+
+    out.push({ sec: i * windowSec, reason: isRise ? 'energy-lifts' : 'quiet-passage' })
+    lastPickedIdx = i
+    if (out.length >= MAX_MID_CANDIDATES) break
+  }
+  return out
+}
+
+/**
  * Find candidate mix-transition points on `bands` (from `analyzeWaveform`,
  * `platform/analyzer-js/analyze.ts`), quantized to `grid` when one is known.
  * Returns an empty array — never a fabricated guess — when the track's
@@ -111,6 +211,7 @@ export function findTransitionCandidates(
   }
 
   const candidates: StructureCandidate[] = []
+  let buildsSec: number | null = null
 
   // Earliest sustained rise — a candidate "past the intro" point. Requires an
   // actual boundary (the window right before was below threshold); otherwise
@@ -118,29 +219,23 @@ export function findTransitionCandidates(
   // i=0, when there is nothing before it to have risen from.
   for (let i = 1; i < contour.length; i++) {
     if (contour[i - 1] < threshold && sustainedFrom(i, true)) {
-      candidates.push({ sec: i * windowSec, reason: 'energy-builds' })
+      buildsSec = i * windowSec
+      candidates.push({ sec: buildsSec, reason: 'energy-builds' })
       break
     }
   }
 
-  // Latest sustained fall, scanning from the end — a candidate "into the
-  // outro" point. Same boundary requirement, mirrored.
-  for (let i = contour.length - minWindows; i >= 1; i--) {
-    if (contour[i - 1] >= threshold && sustainedFrom(i, false)) {
-      candidates.push({ sec: i * windowSec, reason: 'energy-drops' })
-      break
-    }
-  }
-
-  // A quiet passage inside the track (not near either end), if one exists.
-  const midStart = Math.max(1, Math.floor(contour.length * 0.2))
-  const midEnd = Math.ceil(contour.length * 0.8)
-  for (let i = midStart; i < midEnd; i++) {
-    if (contour[i - 1] >= threshold && sustainedFrom(i, false)) {
-      candidates.push({ sec: i * windowSec, reason: 'quiet-passage' })
-      break
-    }
-  }
+  // v0.5.1: the rest of the track, scanned against a local baseline instead
+  // of the global peak — see `findMidTrackCandidates`'s own doc comment.
+  // This replaces two things that used to live here: a single
+  // quiet-passage-in-the-middle-60% scan (too narrow a window, and blind to
+  // rises), and a dedicated end-of-track "energy-drops" scan that always
+  // trivially found the final fade and reported it as "into the outro" —
+  // never a useful mix point, since there is nothing left to mix into by
+  // then. Removed outright rather than gated, on Shalom's direct call
+  // (09/06): every track has *some* fade at the very end, so that scan could
+  // never do anything but fire.
+  candidates.push(...findMidTrackCandidates(contour, windowSec, buildsSec))
 
   if (!grid) return candidates
   return candidates.map((c) => ({ ...c, sec: quantizeToGrid(c.sec, grid) }))

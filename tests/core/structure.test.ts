@@ -32,17 +32,21 @@ function secondsOfLevel(...levels: { sec: number; level: number }[]): {
 }
 
 describe('findTransitionCandidates', () => {
-  it('finds a rise out of a quiet intro and a fall into a quiet outro', () => {
+  it('finds a rise out of a quiet intro, and never an "into the outro" candidate', () => {
+    // v0.5.1: the dedicated end-of-track scan was removed outright — every
+    // track fades or thins out somewhere in its last few seconds, so that
+    // scan always fired trivially and never pointed at a useful mix point.
+    // This fixture's own 5s "quiet outro" tail sits inside `END_GUARD_SEC`
+    // and must never produce a candidate of any kind.
     const { bands, durationSec } = secondsOfLevel(
       { sec: 5, level: 0.1 }, // quiet intro
-      { sec: 20, level: 1.0 }, // loud body
-      { sec: 5, level: 0.1 }, // quiet outro
+      { sec: 40, level: 1.0 }, // loud body
+      { sec: 5, level: 0.1 }, // quiet outro tail
     )
     const candidates = findTransitionCandidates(bands, durationSec, null)
     const builds = candidates.find((c) => c.reason === 'energy-builds')
-    const drops = candidates.find((c) => c.reason === 'energy-drops')
     expect(builds?.sec).toBe(5)
-    expect(drops?.sec).toBe(25)
+    expect(candidates.every((c) => c.reason === 'energy-builds')).toBe(true)
   })
 
   it('a track that is loud from the first second has no "builds" candidate', () => {
@@ -61,16 +65,46 @@ describe('findTransitionCandidates', () => {
     expect(findTransitionCandidates(quiet.bands, quiet.durationSec, null)).toEqual([])
   })
 
-  it('finds a quiet passage in the middle, separate from the intro/outro candidates', () => {
+  it('finds a mid-track breakdown that never crosses the global near-peak threshold', () => {
+    // v0.5.1's whole point: a loudness-war master never dips below 55% of its
+    // own peak anywhere, including its real breakdown — the dip here only
+    // goes to 65% of the surrounding level (never below `ENERGY_THRESHOLD_RATIO`
+    // = 55%, so the old global-threshold scan would have missed it entirely),
+    // but it is still a clear 35% drop relative to the 15s that led into it.
     const { bands, durationSec } = secondsOfLevel(
-      { sec: 5, level: 0.1 }, // intro
-      { sec: 10, level: 1.0 }, // body
-      { sec: 6, level: 0.1 }, // breakdown
-      { sec: 10, level: 1.0 }, // body again
-      { sec: 5, level: 0.1 }, // outro
+      { sec: 10, level: 1.0 }, // open
+      { sec: 20, level: 1.0 }, // loud body — builds the local baseline
+      { sec: 6, level: 0.65 }, // breakdown: 35% below its own local baseline, never below the global 55% floor
+      { sec: 20, level: 1.0 }, // loud body again
     )
     const candidates = findTransitionCandidates(bands, durationSec, null)
-    expect(candidates.some((c) => c.reason === 'quiet-passage')).toBe(true)
+    const drop = candidates.find((c) => c.reason === 'quiet-passage')
+    expect(drop?.sec).toBe(30)
+  })
+
+  it('finds a mid-track lift — a rise into a fuller section, not just at the very start', () => {
+    const { bands, durationSec } = secondsOfLevel(
+      { sec: 15, level: 0.6 }, // moderate open (never below the global 55% floor, so no "builds" candidate)
+      { sec: 20, level: 1.0 }, // lifts to full energy
+      { sec: 20, level: 1.0 }, // stays there
+    )
+    const candidates = findTransitionCandidates(bands, durationSec, null)
+    expect(candidates.find((c) => c.reason === 'energy-builds')).toBeUndefined()
+    const lift = candidates.find((c) => c.reason === 'energy-lifts')
+    expect(lift?.sec).toBe(15)
+  })
+
+  it('returns multiple well-separated mid-track candidates, not just the first', () => {
+    const { bands, durationSec } = secondsOfLevel(
+      { sec: 15, level: 1.0 }, // open
+      { sec: 6, level: 0.6 }, // breakdown 1
+      { sec: 20, level: 1.0 }, // recovery — long enough to rebuild the local baseline
+      { sec: 6, level: 0.6 }, // breakdown 2
+      { sec: 20, level: 1.0 }, // tail
+    )
+    const candidates = findTransitionCandidates(bands, durationSec, null)
+    const drops = candidates.filter((c) => c.reason === 'quiet-passage').map((c) => c.sec)
+    expect(drops).toEqual([15, 41])
   })
 
   it('quantizes candidates to the beat grid when one is given', () => {
