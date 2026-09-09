@@ -23,6 +23,22 @@ export function AiControlBar() {
 
   return (
     <div className="flex shrink-0 items-center gap-2 bg-surface-2 px-4 py-1.5 text-2xs">
+      {ai.phase === 'first-run-warning' && (
+        <>
+          <Pill tone="warn" label="AI" />
+          <span className="min-w-0 flex-1 truncate">
+            This runs on your own computer, not the internet — it can take a minute or two to answer, and
+            sometimes it may not answer at all. Try it anyway?
+          </span>
+          <Button variant="ghost" size="sm" onClick={() => ctl.toggleAiControl(false)}>
+            Not now
+          </Button>
+          <Button variant="toggle" size="sm" active tone="var(--color-live)" onClick={() => ctl.acknowledgeAiWarning()}>
+            Try it
+          </Button>
+        </>
+      )}
+
       {(ai.phase === 'idle' || ai.phase === 'typing') && (
         <>
           <span className="text-grid-dim">AI</span>

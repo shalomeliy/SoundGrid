@@ -22,9 +22,22 @@ export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' |
  * 2, `platform/ai-local/`) cover the one-time download a local model
  * needs before it can chat at all — distinct from `thinking` (the model is
  * loaded and generating a reply), so the bar can say which one is actually
- * happening instead of one generic "AI is busy" for both.
+ * happening instead of one generic "AI is busy" for both. `first-run-warning`
+ * sits before all of them, once per browser (`warningAck.ts`) — there is no
+ * reliable way to check "is this computer fast enough" ahead of time (see
+ * `HANDOFF.md`, 09/09), so the honest version is telling the user plainly
+ * that it can be slow or not answer at all, before the first download.
  */
-export type AiPhase = 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline' | 'model-loading' | 'model-error'
+export type AiPhase =
+  | 'idle'
+  | 'typing'
+  | 'thinking'
+  | 'confirm'
+  | 'clarify'
+  | 'decline'
+  | 'model-loading'
+  | 'model-error'
+  | 'first-run-warning'
 
 export interface AiState {
   /** Off by default — dark launch, no effect on anything else while off. */

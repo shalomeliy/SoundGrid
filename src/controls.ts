@@ -35,6 +35,10 @@ import { useStore } from '@/app/state/store'
 import type { AIMessage, AIToolCall } from '@/core/ports/ai'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
 import { aiLocalProvider } from '@/platform/ai-local'
+import {
+  acknowledgeAiWarning as acknowledgeAiWarning_idb,
+  hasAcknowledgedAiWarning,
+} from '@/platform/ai-local/warningAck'
 
 /**
  * The control surface shared by the on-screen UI and the MIDI mapping layer.
@@ -1794,10 +1798,13 @@ function runAiToolCall(call: AIToolCall) {
 
 /**
  * Turns the natural-language feature on or off. Off by default — dark
- * launch, no effect on anything else while off. Turning it on starts the
- * one-time model load right away (not lazily on first command) so the
- * loading state has its own visible phase instead of hiding inside
- * `thinking` the first time someone actually types something.
+ * launch, no effect on anything else while off. Turning it on shows the
+ * one-time "this can be slow, and sometimes won't answer at all" warning
+ * first (`first-run-warning`, once per browser — `warningAck.ts`) unless
+ * already acknowledged, in which case it starts the model load right away
+ * (not lazily on first command) so the loading state has its own visible
+ * phase instead of hiding inside `thinking` the first time someone
+ * actually types something.
  */
 export function toggleAiControl(on: boolean) {
   clearAiAutoIdle()
@@ -1812,7 +1819,17 @@ export function toggleAiControl(on: boolean) {
     loadProgressPct: null,
     loadError: null,
   })
-  if (on) void ensureAiModelLoaded()
+  if (!on) return
+  void hasAcknowledgedAiWarning().then((acknowledged) => {
+    if (!useStore.getState().ai.enabled) return // turned back off while this was in flight
+    if (acknowledged) void ensureAiModelLoaded()
+    else useStore.getState().patchAi({ phase: 'first-run-warning' })
+  })
+}
+
+/** The one-time warning's "I understand, try it" button — starts the model load it was blocking. */
+export function acknowledgeAiWarning() {
+  void acknowledgeAiWarning_idb().then(() => void ensureAiModelLoaded())
 }
 
 /**

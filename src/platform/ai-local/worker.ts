@@ -87,6 +87,16 @@ async function handleChat(id: number, req: Extract<AiWorkerRequest, { kind: 'cha
     max_new_tokens: MAX_NEW_TOKENS,
     do_sample: false,
     tools: toOpenAiTools(req.tools),
+    // Qwen3's chat template defaults to "thinking" mode: a long <think>...</think>
+    // reasoning trace before the actual answer, which is most of why a first
+    // real run took ~60s even for a one-word command and, on a second run,
+    // ran the full 120s watchdog out without ever reaching a tool call
+    // (Shalom's machine, 09/09 — see HANDOFF.md). `enable_thinking: false` is
+    // Qwen3's own documented chat-template flag for skipping that trace
+    // entirely, passed through tokenizer_encode_kwargs exactly as the
+    // pipeline's own docs describe for chat input. Not verified yet — the
+    // next real run on his machine is what confirms this actually helps.
+    tokenizer_encode_kwargs: { enable_thinking: false },
     streamer,
   })
   // `generated_text` is the full chat including the reply we just streamed —
