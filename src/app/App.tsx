@@ -4,6 +4,7 @@ import { Library } from '@/app/components/Library'
 import { Mixer } from '@/app/components/Mixer'
 import { SettingsScreen } from '@/app/components/Settings'
 import { TopBar } from '@/app/components/TopBar'
+import { TransitionRatingPrompt } from '@/app/components/TransitionRatingPrompt'
 import * as ctl from '@/controls'
 import { settings } from '@/platform/settings-idb/store'
 import { useRenderLoop } from '@/app/hooks/useRenderLoop'
@@ -188,6 +189,7 @@ export default function App() {
           </button>
         </div>
       )}
+      <TransitionRatingPrompt />
       <main className="grid shrink-0 grid-cols-[1fr_auto_1fr] gap-3 p-3">
         <Deck deckId="A" />
         <Mixer />

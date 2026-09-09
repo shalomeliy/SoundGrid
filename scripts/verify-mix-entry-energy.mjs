@@ -15,11 +15,16 @@
  * Deck A ("Flat.wav") is a constant-amplitude tone throughout, so wherever
  * its playhead happens to be when read, its own-peak-normalized level is
  * always ~1.0 — this makes the assertions independent of exact timing.
- * Deck B ("Candidate.wav") is quiet/loud/quiet (same shape
- * `tests/core/structure.test.ts` uses), giving one candidate that reads
- * "close" (the loud "energy-builds" point) and one that reads "quieter"
- * (the quiet "energy-drops"/outro point) against Deck A's flat, always-loud
- * reference — both in the same panel, from one real analysis pass.
+ * Deck B ("Candidate.wav") is quiet-intro / loud-body / mid-track breakdown /
+ * loud-tail (same shape `tests/core/structure.test.ts` uses for its "mid-track
+ * breakdown" case, v0.5.1), giving one candidate that reads "close" (the loud
+ * "energy-builds" point) and one that reads "quieter" (the mid-track
+ * "quiet-passage" breakdown) against Deck A's flat, always-loud reference —
+ * both in the same panel, from one real analysis pass. v0.5.1 removed the old
+ * end-of-track "energy-drops" scan entirely (it always trivially found the
+ * final fade and was never a useful mix point), so this fixture's second
+ * candidate now has to come from a genuine mid-track dip instead of a quiet
+ * outro tail.
  */
 import { chromium } from 'playwright'
 
@@ -65,9 +70,10 @@ const SAMPLE_RATE = 8000
 const FLAT_WAV = makeWav([{ sec: 20, amplitude: 8000 }], SAMPLE_RATE)
 const CANDIDATE_WAV = makeWav(
   [
-    { sec: 5, amplitude: 800 }, // quiet intro
-    { sec: 20, amplitude: 8000 }, // loud body — "energy-builds" candidate lands here
-    { sec: 5, amplitude: 800 }, // quiet outro — "energy-drops" candidate lands here
+    { sec: 5, amplitude: 800 }, // quiet intro — "energy-builds" candidate lands here (sec 5)
+    { sec: 25, amplitude: 8000 }, // loud body — builds the local baseline the breakdown below is judged against
+    { sec: 6, amplitude: 5200 }, // mid-track breakdown (65% of the loud body) — "quiet-passage" candidate lands here (sec 30)
+    { sec: 20, amplitude: 8000 }, // loud tail — clears the last-20s guard so the breakdown isn't suppressed as trivial
   ],
   SAMPLE_RATE,
 )
@@ -152,7 +158,7 @@ console.log(texts.map((t) => `  · ${t.replace(/\n/g, ' / ')}`).join('\n'))
 const hasClose = texts.some((t) => /close to what.s playing now/.test(t))
 const hasQuieter = texts.some((t) => /quieter than what.s playing now/.test(t))
 ok('the loud ("energy-builds") candidate reads close to deck A\'s flat level', hasClose)
-ok('the quiet outro candidate reads quieter than deck A\'s flat level', hasQuieter)
+ok('the mid-track breakdown candidate reads quieter than deck A\'s flat level', hasQuieter)
 
 // Pick the "close" (energy-builds) candidate — should save a named hot cue
 // on deck B regardless of whether the crossfade transition itself proceeds.
@@ -160,14 +166,16 @@ const buildsButton = candidateButtons.filter({ hasText: 'energy builds' })
 await buildsButton.first().click()
 await page.waitForTimeout(400)
 
-const mixInPad = deckB.getByRole('button', { name: /^Start mix from Mix \d/ })
+const mixInPad = deckB.getByRole('button', { name: /^Start mix from Mix in · \d/ })
 const padCount = await mixInPad.count()
-ok('clicking a candidate saves a hot cue labeled "Mix <time>" on deck B', padCount > 0, `matches: ${padCount}`)
+ok('clicking a candidate saves a hot cue labeled "Mix in · <time>" on deck B', padCount > 0, `matches: ${padCount}`)
 if (padCount > 0) {
   const padText = await mixInPad.first().innerText()
   // `innerText` also picks up the hover-reveal delete "×" span (opacity-only
-  // hidden, not `display:none`), so anchor the start only.
-  ok('the pad shows the track time, not a bare number', /^Mix \d+:\d{2}/.test(padText), padText)
+  // hidden, not `display:none`), so anchor the start only. Same "<text> ·
+  // m:ss" shape a manual rename (v0.5.3, `renameHotCue`) also produces —
+  // one label format, not two.
+  ok('the pad shows the track time, not a bare number', /^Mix in · \d+:\d{2}/.test(padText), padText)
 }
 
 // Pause deck B (cancels the transition the candidate click just started, per

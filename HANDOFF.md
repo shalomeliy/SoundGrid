@@ -15,10 +15,10 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | **אין גרסה פתוחה כרגע.** `v0.5.1` (תוויות "Mix in" ייחודיות) נסגרה (09/09) — ביקוש ישיר של שלום. פרטים מלאים: [`docs/handoff/v0.5.1.md`](docs/handoff/v0.5.1.md). |
-| **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/cue-pad-unique-naming-80h0hv`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git merge-base --is-ancestor origin/claude/cue-pad-unique-naming-80h0hv origin/main`. |
-| **גרסה נוכחית** | `v0.5.1` (`package.json`) — נסגרה בשיחה הזו. |
-| **`npm run check`** | ירוק (09/09, על `v0.5.1`, כולל סגירתה). **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
+| **בעבודה** | **אין גרסה פתוחה כרגע.** אותה שיחה סגרה 4 גרסאות ברצף: `v0.5.1` (תוויות "Mix in" ייחודיות) נסגרה **במקביל בשיחה אחרת** ומוזגה ישירות ל‑`main` (09/09) — `git log --oneline origin/main -1`. `v0.5.2` (תיקון נקודות המעבר) — "into the outro" הוסר לגמרי, זיהוי אמצע-שיר שופץ לסף יחסי-מקומי. `v0.5.3` (פדים ניתנים לשינוי שם) — `Alt`-קליק, שם חופשי + שנייה מדויקת תמיד בתווית; `HotCue.kind` חדש מחליף היוריסטיקת-תווית ל"האם זה mix-in". `v0.5.4` (נקודת יציאה + זיכרון דירוגים) — הדק היוצא מציע נקודת יציאה מיד כשמתחיל מעבר, פרומפט דירוג אוטומטי בסוף הקרוספייד, "מצוין" נזכר לפי `contentHash` ומודגש בפעם הבאה. פרטים מלאים: [`docs/handoff/v0.5.1.md`](docs/handoff/v0.5.1.md) / [`docs/handoff/v0.5.2.md`](docs/handoff/v0.5.2.md) / [`docs/handoff/v0.5.3.md`](docs/handoff/v0.5.3.md) / [`docs/handoff/v0.5.4.md`](docs/handoff/v0.5.4.md). |
+| **branch** | ברירת המחדל: עבודה ישירות על `main` (החלטת המשתמש, 03/09) דרך branch+PR שממוזג fast-forward. **השיחה הזו ספציפית** דחפה ל‑branch נפרד (`claude/mix-detection-mid-song-s0ofhj`) לפי דרישת ה‑harness המרוחק שהפעיל אותה — לא שינוי במדיניות הכללית. לוודא אם הוא כבר מוזג עם `git fetch origin main && git merge-base --is-ancestor origin/claude/mix-detection-mid-song-s0ofhj origin/main`. |
+| **גרסה נוכחית** | `v0.5.4` (`package.json`) — נסגרה בשיחה הזו, אחרי מיזוג עם `v0.5.1` שנסגרה בשיחה מקבילה (ר' לעיל). |
+| **`npm run check`** | ירוק (09/09, על `v0.5.4`) — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` שמקורם בשיבוט git רדוד בקונטיינר המרוחק (SHA-ים ישנים מהתיעוד לא נגישים), לא קשור לדיף. **בלי לצטט כאן מספר בדיקות** — ר' `tests/repo/handoff-counts.test.ts` |
 | **הבא בתור** | `v0.5.5` — שליטה בשפה טבעית/קול. ר' `ROADMAP.md`. עדיין לא נכתב spec. |
 
 ---

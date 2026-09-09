@@ -56,6 +56,18 @@ export interface HotCue {
    * a degraded feature the way a missing analysis is, just an ordering hint.
    */
   createdAt?: number
+  /**
+   * v0.5.3: set only by `saveMixEntryHotCue` — the precise signal that this
+   * pad re-triggers a full automatic transition on press
+   * (`shouldTriggerMixEntry`, `core/hotcues.ts`), now that a label alone
+   * can't tell the difference: manual rename (`renameHotCue`, `PadGrid.tsx`)
+   * also produces a non-ordinal label, on purpose, without making the pad a
+   * mix-entry trigger. Absent on cues saved before this field existed —
+   * `loadTrackToDeck` (`controls.ts`) backfills it once at load time using
+   * the old label-based heuristic, which was exact back when a non-ordinal
+   * label had only one possible cause.
+   */
+  kind?: 'mixEntry'
 }
 
 export interface BeatGrid {
@@ -117,6 +129,13 @@ export interface DeckState {
   cueMonitor: boolean
   /** which pad-grid mode this deck's pads are in (v0.5.0). Not persisted — resets to 'hotcue' on app reload, but survives a track load on the same deck. */
   padMode: PadMode
+  /**
+   * v0.5.4: seconds (rounded) this track's own exit points were previously
+   * rated "excellent" (`platform/mix-ratings-idb/store.ts`), loaded once at
+   * track-load time. Lets the exit-point indicator (`Deck.tsx`) mark a
+   * repeat candidate instead of treating every load as the first.
+   */
+  excellentMixPoints: number[]
 }
 
 export interface ChannelState {

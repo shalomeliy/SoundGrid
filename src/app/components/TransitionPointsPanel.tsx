@@ -29,8 +29,8 @@ import { Pill } from '@/app/components/controls'
 
 const REASON_LABEL: Record<StructureReason, string> = {
   'energy-builds': 'past the intro — energy builds',
-  'energy-drops': 'into the outro — energy drops',
   'quiet-passage': 'quiet passage — energy dips',
+  'energy-lifts': 'energy lifts — fuller section ahead',
 }
 
 /**
