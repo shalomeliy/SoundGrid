@@ -1,5 +1,6 @@
 import { EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, tempoToRate } from '@/core/constants'
 import { BufferSourcePlayer, WorkletPlayer, type SourcePlayer } from '@/platform/audio-webaudio/players'
+import type { FxRack } from '@/platform/audio-webaudio/fx'
 import { settings } from '@/platform/settings-idb/store'
 import type { DeckId } from '@/core/types'
 
@@ -32,13 +33,20 @@ const MAX_SYNC_BEND = 0.06
  * One playback deck. Owns its Web Audio graph:
  *
  *   player -> trim -> eqLow -> eqMid -> eqHigh -> filter -> channelGain
- *        channelGain -> faderGain -> (master bus)
- *        channelGain -> cueGain   -> (cue bus)
+ *        channelGain -> fxSeam -> faderGain -> (master bus)
+ *                     -> fxSeam -> cueGain   -> (cue bus)
  *
  * Everything from `trim` onwards is fixed. The head of the chain is swappable:
  * a `WorkletPlayer` when the scratch worklet loaded, a `BufferSourcePlayer`
  * when it did not. Position stays sample-accurate either way, so it never
  * depends on the render loop's cadence.
+ *
+ * `fxSeam` (v0.7.0) is a bypass point, not a processing node itself: by
+ * default `channelGain` feeds it directly (gain 1, nothing in between), so
+ * cue and master hear exactly what they heard before this existed. When
+ * `engine.ts` routes this deck's paired FX rack here (`setFxInsert`), the
+ * rack is spliced in ahead of it instead — before the fader/cue split, so
+ * cue previews the effect too, same as the dry signal always has.
  */
 export class Deck {
   readonly id: DeckId
@@ -51,6 +59,9 @@ export class Deck {
   private lpf: BiquadFilterNode
   private hpf: BiquadFilterNode
   private channelGain: GainNode
+  private fxSeam: GainNode
+  /** the FX rack currently spliced in ahead of `fxSeam`, if any — tracked so `setFxInsert` knows what to tear down. */
+  private insertedFx: FxRack | null = null
   readonly faderGain: GainNode
   readonly cueGain: GainNode
 
@@ -94,6 +105,7 @@ export class Deck {
     this.hpf.frequency.value = 20
     this.hpf.Q.value = 0.7
     this.channelGain = ctx.createGain()
+    this.fxSeam = ctx.createGain()
     this.faderGain = ctx.createGain()
     this.cueGain = ctx.createGain()
     this.cueGain.gain.value = 0
@@ -105,8 +117,9 @@ export class Deck {
       .connect(this.hpf)
       .connect(this.lpf)
       .connect(this.channelGain)
-    this.channelGain.connect(this.faderGain)
-    this.channelGain.connect(this.cueGain)
+    this.channelGain.connect(this.fxSeam) // bypass by default — see class doc comment
+    this.fxSeam.connect(this.faderGain)
+    this.fxSeam.connect(this.cueGain)
 
     this.player = new BufferSourcePlayer(ctx, this.trim)
     this.player.onEnd = () => this.handleEnd()
@@ -406,6 +419,31 @@ export class Deck {
       this.hpf.frequency.setTargetAtTime(f, now, 0.02)
       this.lpf.frequency.setTargetAtTime(22050, now, 0.02)
     }
+  }
+
+  /**
+   * Splice this deck's paired FX rack in ahead of `fxSeam`, or remove it
+   * (`null`) to go back to a bare bypass. Called only from `engine.ts` in
+   * response to a routing change — routing is rare (a DJ sets it up, then
+   * leaves it), unlike on/off which `FxRack` itself handles internally
+   * without ever touching this graph, so a reconnect here on every toggle
+   * would be the wrong cost to pay.
+   */
+  setFxInsert(rack: FxRack | null) {
+    if (this.insertedFx === rack) return
+    if (this.insertedFx) {
+      this.channelGain.disconnect(this.insertedFx.input)
+      this.insertedFx.output.disconnect(this.fxSeam)
+    } else {
+      this.channelGain.disconnect(this.fxSeam)
+    }
+    if (rack) {
+      this.channelGain.connect(rack.input)
+      rack.output.connect(this.fxSeam)
+    } else {
+      this.channelGain.connect(this.fxSeam)
+    }
+    this.insertedFx = rack
   }
 
   setCueMonitor(on: boolean) {

@@ -1,4 +1,5 @@
 import { Deck } from '@/platform/audio-webaudio/deck'
+import { FxRack } from '@/platform/audio-webaudio/fx'
 import { SamplerEngine } from '@/platform/audio-webaudio/sampler'
 import { bootLatencyHint } from '@/platform/settings-idb/boot-latency'
 import { equalPowerMix } from '@/core/fx'
@@ -24,8 +25,18 @@ export class AudioEngine {
   decks: Record<DeckId, Deck>
   /** the sampler bank's playback engine (v0.6.0) — one instance, wired into the same master/cue split as the two decks. */
   sampler: SamplerEngine
+  /** two global FX racks (v0.7.0) — rack 0 pairs with deck A, rack 1 with deck B, when channel-routed. See `setFxRouting`. */
+  fx: [FxRack, FxRack]
 
   private masterBus: GainNode
+  /**
+   * What `wireOutput()` actually reads from — always present, downstream of
+   * whatever's currently routed to master (nothing, by default: `masterBus`
+   * connects to it directly). This is the seam `setFxRouting('master')`
+   * splices a rack into, and the stable tap point v0.7.5's recording will
+   * use, so FX always sits ahead of both.
+   */
+  private masterPostFx: GainNode
   private cueBus: GainNode
   private samplerBus: GainNode
   private samplerCueGain: GainNode
@@ -33,6 +44,8 @@ export class AudioEngine {
   private stereoSum: GainNode | null = null
   private cueMix = 0
   private multichannel = false
+  /** rack indices currently routed to master, in the fixed order they chain (0 then 1) — see `rebuildMasterChain`. */
+  private masterChain: (0 | 1)[] = []
 
   constructor() {
     // Fixed for the life of the context — AudioContext takes latencyHint at
@@ -42,11 +55,13 @@ export class AudioEngine {
     // from the settings store: see `boot-latency.ts`.
     this.ctx = new AudioContext({ latencyHint: bootLatencyHint() }) as AudioContextWithSink
     this.masterBus = this.ctx.createGain()
+    this.masterPostFx = this.ctx.createGain()
     this.cueBus = this.ctx.createGain()
     this.decks = {
       A: new Deck(this.ctx, 'A'),
       B: new Deck(this.ctx, 'B'),
     }
+    this.fx = [new FxRack(this.ctx), new FxRack(this.ctx)]
     // Sampler channel (v0.6.0): its own bus, same master/cue split as a deck
     // (`faderGain`/`cueGain`), but connected straight to `masterBus` — the
     // crossfader is an A/B control and has no meaning for a sample bank.
@@ -74,13 +89,14 @@ export class AudioEngine {
     this.decks.B.faderGain.connect(this.masterBus)
     this.decks.A.cueGain.connect(this.cueBus)
     this.decks.B.cueGain.connect(this.cueBus)
+    this.rebuildMasterChain() // masterBus -> masterPostFx direct; no rack routed yet
     this.wireOutput()
   }
 
   private wireOutput() {
     this.merger?.disconnect()
     this.stereoSum?.disconnect()
-    this.masterBus.disconnect()
+    this.masterPostFx.disconnect()
     this.cueBus.disconnect()
 
     const maxCh = this.ctx.destination.maxChannelCount
@@ -93,7 +109,7 @@ export class AudioEngine {
       const merger = this.ctx.createChannelMerger(4)
       const splitM = this.ctx.createChannelSplitter(2)
       const splitC = this.ctx.createChannelSplitter(2)
-      this.masterBus.connect(splitM)
+      this.masterPostFx.connect(splitM)
       this.cueBus.connect(splitC)
       splitM.connect(merger, 0, 0)
       splitM.connect(merger, 1, 1)
@@ -104,12 +120,51 @@ export class AudioEngine {
     } else {
       // Stereo device: fold cue into master so the user still hears a preview.
       const sum = this.ctx.createGain()
-      this.masterBus.connect(sum)
+      this.masterPostFx.connect(sum)
       this.cueBus.connect(sum)
       sum.connect(this.ctx.destination)
       this.stereoSum = sum
       this.applyCueMix()
     }
+  }
+
+  /**
+   * Rebuild the chain between `masterBus` and `masterPostFx` from
+   * `masterChain` — full teardown and relink, same disconnect-then-rebuild
+   * shape `wireOutput()` already uses for the output-device stage, applied
+   * here to the (much rarer) master-FX-routing stage instead. Independent
+   * of `wireOutput()` on purpose: an output-device change must never drop a
+   * rack that's routed to master, and a routing change must never touch the
+   * output-device wiring.
+   */
+  private rebuildMasterChain() {
+    this.masterBus.disconnect()
+    for (const i of this.masterChain) this.fx[i].output.disconnect()
+    let node: AudioNode = this.masterBus
+    for (const i of this.masterChain) {
+      node.connect(this.fx[i].input)
+      node = this.fx[i].output
+    }
+    node.connect(this.masterPostFx)
+  }
+
+  /**
+   * Route `fx[rackIndex]` to its paired deck's channel (before the fader/cue
+   * split, so cue previews it — `Deck.setFxInsert`'s doc comment) or to the
+   * master chain. Only ever one or the other: moving a rack always tears
+   * down its previous spot first, so a rack can't end up inserted twice.
+   */
+  setFxRouting(rackIndex: 0 | 1, target: 'channel' | 'master') {
+    const rack = this.fx[rackIndex]
+    const deck = this.decks[rackIndex === 0 ? 'A' : 'B']
+    deck.setFxInsert(null)
+    this.masterChain = this.masterChain.filter((i) => i !== rackIndex)
+    if (target === 'channel') {
+      deck.setFxInsert(rack)
+    } else {
+      this.masterChain = [...this.masterChain, rackIndex].sort()
+    }
+    this.rebuildMasterChain()
   }
 
   get isMultichannel() {
