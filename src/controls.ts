@@ -39,7 +39,8 @@ import {
   saveSamplerBank,
   type StoredSamplerBank,
 } from '@/platform/sampler-idb/store'
-import { useStore } from '@/app/state/store'
+import { getFxBank, saveFxBank, type StoredFxBank } from '@/platform/fx-idb/store'
+import { useStore, type FxState } from '@/app/state/store'
 import type { AIMessage, AIToolCall } from '@/core/ports/ai'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
 import { aiLocalProvider } from '@/platform/ai-local'
@@ -107,6 +108,7 @@ export async function initAudio() {
     useStore.setState({ audioReady: true })
     syncScratchState()
     void restoreSamplerBankMeta()
+    void restoreFxBank()
   }
 }
 
@@ -722,6 +724,25 @@ export function setTempo(deckId: DeckId, tempo: number) {
   const t = Math.max(-1, Math.min(1, tempo))
   engine.decks[deckId].setTempo(t)
   useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
+  if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
+}
+
+/**
+ * Re-applies both racks' stored beat-time so a beat-synced Delay/Echo/Filter
+ * follows the master deck's tempo fader instead of staying locked to the
+ * BPM it happened to compute at when the time was last set — the product
+ * decision recorded in `workshop-output/FEATURE_SPEC.md`. Only wired to the
+ * tempo fader touching the *current* master deck (`setTempo`, above), not to
+ * SYNC engaging or the master deck being reassigned — a narrower scope than
+ * the spec's own wording, named here rather than silently missing: those
+ * paths run deep inside SYNC/transition logic this version doesn't touch,
+ * and widening the change there risks the exact kind of regression Shalom
+ * asked this version to guard against.
+ */
+function refreshFxTimeForMasterTempo() {
+  const { fx } = useStore.getState()
+  const bpm = masterPlayingBpm()
+  fx.forEach((rack, i) => engine.fx[i as 0 | 1].setTime(rack.time, bpm))
 }
 
 export function setHotCue(deckId: DeckId, index: number) {
@@ -1355,28 +1376,93 @@ export function setFxEffect(rack: 0 | 1, effect: number) {
   // — the store would then claim an effect that isn't actually playing.
   if (engine.fx[rack].setEffect(effect)) {
     useStore.getState().patchFx(rack, { effect })
+    schedulePersistFxBank()
   }
 }
 
 export function setFxWetDry(rack: 0 | 1, v: number) {
   engine.fx[rack].setWetDry(v)
   useStore.getState().patchFx(rack, { wetDry: v })
+  schedulePersistFxBank()
 }
 
 export function setFxTime(rack: 0 | 1, fraction: number) {
   engine.fx[rack].setTime(fraction, masterPlayingBpm())
   useStore.getState().patchFx(rack, { time: fraction })
+  schedulePersistFxBank()
 }
 
 export function toggleFxOn(rack: 0 | 1) {
   const on = !useStore.getState().fx[rack].on
   engine.fx[rack].setOn(on)
   useStore.getState().patchFx(rack, { on })
+  schedulePersistFxBank()
 }
 
 export function setFxRoute(rack: 0 | 1, route: 'channel' | 'master') {
   engine.setFxRouting(rack, route)
   useStore.getState().patchFx(rack, { route })
+  schedulePersistFxBank()
+}
+
+let persistFxBankTimer = 0
+/** Debounced — dragging the wet/dry knob fires many times a second, same reasoning as `schedulePersistSamplerBank`. */
+function schedulePersistFxBank() {
+  window.clearTimeout(persistFxBankTimer)
+  persistFxBankTimer = window.setTimeout(() => void persistFxBank(), 400)
+}
+
+async function persistFxBank(): Promise<void> {
+  const { fx, setNotice } = useStore.getState()
+  const bank = fx.map((r): StoredFxBank[number] => ({
+    effect: r.effect,
+    wetDry: r.wetDry,
+    time: r.time,
+    on: r.on,
+    route: r.route,
+  })) as StoredFxBank
+  try {
+    await saveFxBank(bank)
+  } catch (err) {
+    console.error('FX bank save failed', err)
+    setNotice({
+      text: `FX settings didn't save — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'fx',
+    })
+  }
+}
+
+let fxBankRestored: Promise<void> | null = null
+
+/**
+ * Boot-time restore (v0.7.0). Unlike the sampler bank, FX settings carry no
+ * reference to a track — no library-scan resolution needed, so this is one
+ * pass, not a two-phase meta-then-resolve restore. Idempotent, same shape
+ * as `restoreSamplerBankMeta`.
+ */
+export function restoreFxBank(): Promise<void> {
+  if (!fxBankRestored) {
+    fxBankRestored = (async () => {
+      const bank = await getFxBank()
+      if (!bank) return
+      const { patchFx } = useStore.getState()
+      const bpm = masterPlayingBpm()
+      bank.forEach((r, i) => {
+        const rack = i as 0 | 1
+        const patch: Partial<FxState> = { wetDry: r.wetDry, time: r.time, on: r.on, route: r.route }
+        // Same refusal rule as a live setFxEffect click — a Reverb that
+        // fails to rebuild on this boot must not be restored as "selected".
+        if (engine.fx[rack].setEffect(r.effect)) patch.effect = r.effect
+        engine.fx[rack].setWetDry(r.wetDry)
+        engine.fx[rack].setTime(r.time, bpm)
+        engine.fx[rack].setOn(r.on)
+        engine.setFxRouting(rack, r.route)
+        patchFx(rack, patch)
+      })
+    })()
+  }
+  return fxBankRestored
 }
 
 /** Save-as (ROADMAP.md v0.6.0's "export bank"). `'cancelled'` (the owner closed the dialog) is silent on purpose — everything else, including "this browser can't do this", is a notice. */

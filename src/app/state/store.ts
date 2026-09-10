@@ -26,6 +26,7 @@ export type NoticeSource =
   | 'padMode'
   | 'ai'
   | 'sampler'
+  | 'fx'
 
 /**
  * v0.5.5's natural-language control bar — see `controls.ts`'s AI section
