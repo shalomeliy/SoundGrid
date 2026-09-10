@@ -2,8 +2,124 @@ import * as ctl from '@/controls'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 import { Button, Fader, HintIcon, Knob } from '@/app/components/controls'
+import { FX_EFFECTS, FX_TIME_STEPS, type FxEffect } from '@/core/fx'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
+
+const FX_EFFECT_LABEL: Record<FxEffect, string> = {
+  delay: 'Delay',
+  echo: 'Echo',
+  reverb: 'Reverb',
+  filter: 'Filter',
+}
+
+/** Only Delay is wired up in `FxRack` so far — Echo/Reverb/Filter are added one at a time; each gets removed from here as it lands. */
+const FX_EFFECT_AVAILABLE: ReadonlySet<number> = new Set([0])
+
+function fxTimeLabel(beats: number) {
+  return beats < 1 ? `1/${Math.round(1 / beats)}` : `${beats}`
+}
+
+function nextAvailableEffect(from: number) {
+  for (let i = 1; i <= FX_EFFECTS.length; i++) {
+    const next = (from + i) % FX_EFFECTS.length
+    if (FX_EFFECT_AVAILABLE.has(next)) return next
+  }
+  return from
+}
+
+/**
+ * One FX rack's compact strip (v0.7.0) — rack 0 pairs with deck A, rack 1
+ * with deck B (`engine.ts`'s `setFxRouting`). Lives in the mixer column
+ * next to its paired deck's `ChannelStrip`, not a full-height panel: the
+ * design review found no free vertical/horizontal slot for one at this
+ * layout's ~710px height.
+ *
+ * Effect and time are single cycle-buttons (tap to advance), not a row per
+ * option — measured in the running app at 1536×710: a `PadGrid`-style
+ * 4/5-button row per control pushed the deck panels' own content into
+ * clipping (446px wanted, squeezed to 347px). A cycle-button is the
+ * "dropdown-or-cycle-button" alternative the design review already named.
+ */
+function FxStrip({ rack, deckId }: { rack: 0 | 1; deckId: DeckId }) {
+  const state = useStore((s) => s.fx[rack])
+  const color = DECK_COLOR[deckId]
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <span className="label self-center" style={{ color }}>
+        FX
+      </span>
+      <span className="relative inline-flex">
+        <Button
+          variant="toggle"
+          size="sm"
+          tone={color}
+          active
+          onClick={() => ctl.setFxEffect(rack, nextAvailableEffect(state.effect))}
+          aria-label="FX effect"
+        >
+          {FX_EFFECT_LABEL[FX_EFFECTS[state.effect]]}
+        </Button>
+        <HintIcon id="fx.effect" className="absolute -right-1.5 -top-1.5" />
+      </span>
+      <Knob
+        label="Wet"
+        size={30}
+        min={0}
+        max={1}
+        value={state.wetDry}
+        tone={color}
+        onChange={(v) => ctl.setFxWetDry(rack, v)}
+        hint="fx.wetDry"
+        format={(v) => `${Math.round(v * 100)}`}
+      />
+      <span className="relative inline-flex">
+        <Button
+          variant="toggle"
+          size="sm"
+          tone={color}
+          active
+          onClick={() => {
+            const i = FX_TIME_STEPS.indexOf(state.time as (typeof FX_TIME_STEPS)[number])
+            ctl.setFxTime(rack, FX_TIME_STEPS[(i + 1) % FX_TIME_STEPS.length])
+          }}
+          aria-label="FX beat time"
+        >
+          {fxTimeLabel(state.time)}
+        </Button>
+        <HintIcon id="fx.time" className="absolute -right-1.5 -top-1.5" />
+      </span>
+      <div className="flex items-center gap-1">
+        <span className="relative inline-flex">
+          <Button
+            variant="toggle"
+            size="sm"
+            active={state.on}
+            tone="var(--color-live)"
+            onClick={() => ctl.toggleFxOn(rack)}
+            aria-label="FX on/off"
+          >
+            On
+          </Button>
+          <HintIcon id="fx.on" className="absolute -right-1.5 -top-1.5" />
+        </span>
+        <span className="relative inline-flex">
+          <Button
+            variant="toggle"
+            size="sm"
+            tone={color}
+            active={state.route === 'master'}
+            onClick={() => ctl.setFxRoute(rack, state.route === 'channel' ? 'master' : 'channel')}
+            aria-label="FX routing"
+          >
+            {state.route === 'channel' ? deckId : 'Mst'}
+          </Button>
+          <HintIcon id="fx.route" className="absolute -right-1.5 -top-1.5" />
+        </span>
+      </div>
+    </div>
+  )
+}
 
 /**
  * Sampler channel strip (v0.6.0) — volume + cue send only, no EQ/filter:
@@ -105,6 +221,8 @@ export function Mixer() {
 
       <div className="flex items-start gap-4">
         <ChannelStrip deckId="A" />
+        <FxStrip rack={0} deckId="A" />
+        <FxStrip rack={1} deckId="B" />
         <ChannelStrip deckId="B" />
         <SamplerStrip />
       </div>
