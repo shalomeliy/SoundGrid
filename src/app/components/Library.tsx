@@ -15,6 +15,7 @@ import {
 } from '@/platform/source-fsaccess/library'
 import { useShallow } from 'zustand/react/shallow'
 import { bootCopy, bootFor, bootForScanError } from '@/core/library-boot'
+import { libraryEmptyCopy } from '@/core/library-list-copy'
 import { mixRecommendations, type MixMatch } from '@/core/recommend'
 import { settings } from '@/platform/settings-idb/store'
 import { useSettings } from '@/app/hooks/useSettings'
@@ -128,9 +129,17 @@ export function Library() {
   // triggered off a ref, since the effect must fire only on that transition,
   // not on every render while a deck keeps playing) — a manual click back to
   // the full list during that same playback is still respected afterward.
+  // It must also turn itself back off the instant *both* decks stop: the
+  // toggle button only renders while `anyPlaying` is true (below), so once
+  // playback ends there is no control left on screen to undo it — with
+  // mixOnly stuck on and no deck playing to recommend against, the whole
+  // library silently disappears behind an empty "no mixable tracks" filter
+  // the panel can no longer explain (a real folder read as "no audio files
+  // found" — exactly the silent-skip this project forbids).
   const wasPlayingForMixOnly = useRef(false)
   useEffect(() => {
     if (anyPlaying && !wasPlayingForMixOnly.current) setMixOnly(true)
+    else if (!anyPlaying && wasPlayingForMixOnly.current) setMixOnly(false)
     wasPlayingForMixOnly.current = anyPlaying
   }, [anyPlaying])
 
@@ -409,9 +418,12 @@ export function Library() {
     )
   }
 
-  const list = mixOnly
-    ? ctl.filteredTracks().filter((t) => recs.has(t.id))
-    : ctl.filteredTracks()
+  // Kept separate from `list` so the empty state below can tell "mixOnly
+  // filtered everything out" apart from "the folder genuinely has nothing" —
+  // the two used to render the identical "no audio files" message.
+  const preMixList = ctl.filteredTracks()
+  const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
+  const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length)
 
   // null once tracks are on screen — that is the only state with no sentence
   const boot = bootCopy(library.boot, library.folderName, library.bootDetail ?? undefined)
@@ -609,11 +621,14 @@ export function Library() {
         />
       ) : list.length === 0 ? (
         <EmptyState
-          title={library.query ? 'No tracks match that filter' : 'No audio files found'}
-          body={
-            library.query
-              ? 'Clear the filter to see the whole library.'
-              : 'This folder has no readable .mp3, .wav, .flac, .ogg or .m4a files.'
+          title={emptyCopy.title}
+          body={emptyCopy.body}
+          action={
+            emptyCopy.offerMixOnlyReset ? (
+              <Button variant="toggle" active tone="var(--color-accent)" onClick={() => setMixOnly(false)}>
+                Show all tracks
+              </Button>
+            ) : undefined
           }
         />
       ) : (
