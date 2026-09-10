@@ -1,3 +1,4 @@
+import { FX_EFFECTS } from '@/core/fx'
 import type { ControlAction } from '@/core/mapping/mapping'
 
 /**
@@ -36,6 +37,11 @@ export const FLX4_LABELS: Partial<Record<ControlAction, string | ((param?: numbe
   cueMonitor: 'Headphone cue (PFL) button',
   browse: 'Browse encoder (turn)',
   browseEnter: 'Browse encoder (press)',
+  fxEffect: (param) => `FX effect-select button (${FX_EFFECTS[param ?? 0]})`,
+  fxWetDry: 'FX wet/dry knob',
+  fxTime: 'FX beat-time knob (quantized to 1/4…4 beats)',
+  fxOn: 'FX on/off button',
+  fxRoute: 'FX routing paddle (channel / master)',
 }
 
 /** The label for one action, or null when this action has no FLX4 binding. */

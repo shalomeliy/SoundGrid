@@ -28,12 +28,20 @@ export type ControlAction =
   | 'cueMonitor'
   | 'browse'
   | 'browseEnter'
+  // FX (v0.7.0) — global racks, not per-deck; see `Binding.rack`
+  | 'fxEffect'
+  | 'fxWetDry'
+  | 'fxTime'
+  | 'fxOn'
+  | 'fxRoute'
 
 export interface Binding {
   action: ControlAction
   deck?: DeckId
   /** hot-cue index, etc. */
   param?: number
+  /** which FX rack (0 or 1) an `fx*` action targets — racks are global, not per-deck, so this is separate from `deck` */
+  rack?: 0 | 1
   /** button = note/gate, absolute = 0..127 knob/fader, relative = jog/encoder */
   mode: 'button' | 'absolute' | 'relative'
   /** invert an absolute control */

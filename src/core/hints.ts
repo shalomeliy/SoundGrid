@@ -76,6 +76,22 @@ const HINT_BASE = {
   },
   'mixer.samplerCue': { text: 'Send the sampler channel to the headphone cue mix.' },
 
+  // — FX (v0.7.0) —
+  'fx.effect': {
+    text: 'Choose this rack’s effect: Delay, Echo, Reverb, or an auto filter-sweep. Separate from the static Filter knob on each channel.',
+    action: 'fxEffect',
+  },
+  'fx.wetDry': { text: 'Blend between the dry signal and the effect.', action: 'fxWetDry' },
+  'fx.time': {
+    text: 'How long the effect takes, synced to the beat — 1/4 to 4 beats.',
+    action: 'fxTime',
+  },
+  'fx.on': { text: 'Turn this FX rack on or off.', action: 'fxOn' },
+  'fx.route': {
+    text: 'Where this rack sits: on its own channel (also heard in cue) or on the master mix.',
+    action: 'fxRoute',
+  },
+
   // — beat grid panel —
   'beatgrid.nudge': { text: 'Shift the whole grid earlier or later without changing its BPM.' },
   'beatgrid.halveDouble': {

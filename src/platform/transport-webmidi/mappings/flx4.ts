@@ -100,5 +100,32 @@ export const FLX4_MAPPING: MidiMapping = {
     // per deck, so it lives here with the other shared/mixer controls
     // rather than inside `deck(ch)`. **Not hardware-confirmed.**
     [bindingKey('note', 6, 0x3f)]: { action: 'shift', mode: 'button' },
+    // FX (v0.7.0) — two global racks (0 paired with deck A, 1 with deck B),
+    // controls live in the mixer section like filter/EQ above, not inside
+    // `deck(ch)`. `fxEffect` follows `padMode`'s shape (one button per
+    // index, `param` selects `FX_EFFECTS[param]`). **None of this is
+    // hardware-confirmed** — the FLX4's real Beat FX section layout was
+    // never measured; fix via the Learn button in Settings if a press does
+    // nothing or hits the wrong control.
+    [bindingKey('cc', 6, 0x19)]: { action: 'fxWetDry', rack: 0, mode: 'absolute' },
+    [bindingKey('cc', 6, 0x1a)]: { action: 'fxWetDry', rack: 1, mode: 'absolute' },
+    [bindingKey('cc', 6, 0x1b)]: { action: 'fxTime', rack: 0, mode: 'absolute' },
+    [bindingKey('cc', 6, 0x1c)]: { action: 'fxTime', rack: 1, mode: 'absolute' },
+    [bindingKey('note', 6, 0x56)]: { action: 'fxOn', rack: 0, mode: 'button' },
+    [bindingKey('note', 6, 0x57)]: { action: 'fxOn', rack: 1, mode: 'button' },
+    [bindingKey('note', 6, 0x58)]: { action: 'fxRoute', rack: 0, mode: 'button' },
+    [bindingKey('note', 6, 0x59)]: { action: 'fxRoute', rack: 1, mode: 'button' },
+    ...Object.fromEntries(
+      Array.from({ length: 4 }, (_, i) => [
+        bindingKey('note', 6, 0x20 + i),
+        { action: 'fxEffect' as const, rack: 0 as const, param: i, mode: 'button' as const },
+      ]),
+    ),
+    ...Object.fromEntries(
+      Array.from({ length: 4 }, (_, i) => [
+        bindingKey('note', 6, 0x24 + i),
+        { action: 'fxEffect' as const, rack: 1 as const, param: i, mode: 'button' as const },
+      ]),
+    ),
   },
 }
