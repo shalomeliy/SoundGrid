@@ -1,278 +1,291 @@
-# PLAN — v0.5.5: שליטה בשפה טבעית (הקלדה)
+# PLAN — v0.7.0: FX Units (סיבוב ראשון)
 
-מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר 09/09). כל ההחלטות המוצריות כבר נסגרו
-שם — התוכנית הזו היא רק "איך". **מחליף** את התוכן הישן שהיה כאן (זה היה `PLAN.md` של
-`v0.5.0`, גרסה אחרת שכבר שודרגה).
+מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר 09/10). ה-spec כבר סגר את כל ההחלטות
+המוצריות — התוכנית הזו היא רק "איך", קובץ-אחרי-קובץ, מבוססת על קריאה מלאה של הקוד הקיים
+(`engine.ts`, `deck.ts`, `mapping.ts`, `controls.ts`, `manager.ts`, `flx4.ts`, `hints.ts`,
+`Mixer.tsx`, `sampler-idb/store.ts`, `App.tsx`). **מחליפה** את התוכן הישן שהיה כאן (`PLAN.md`
+של v0.5.5).
 
-## החלטה טכנית אחת שדורשת עצירה — לא מוכרעת כאן
+**תזכורת מפורשת מהמשתמש (09/10):** v0.6.0 (הסאמפלר) יצא עם כמה באגים אחרי הסגירה, כולל
+אחד שסקירה עצמאית תפסה. הפלאן הזה מוסיף במפורש **בדיקות רגרסיה** — לא רק "החדש עובד", גם
+"הישן לא זז" — ר' סעיף 6 ו-8.
 
-**איזו ספריית WebGPU/WASM תריץ את המודל המקומי בפועל** (מועמדות: WebLLM, wllama,
-transformers.js, או משהו אחר) **לא נבחרה**, כי אף אחת מהסקירות הקודמות לא בדקה זאת, ואין
-תקדים בקוד היום. זו לא רק "עוד תלות" — היא ה-block הכי גדול בגודל באנדל, בזמן טעינה,
-וברישוי, שהצוות (סעיף 7 ב-`directions.md`, "AI תלוי מחקר") כבר סימן כבלתי-ודאי מראש.
+## תגלית תכנון אחת שדורשת ציון: התנגשות שם "Filter"
 
-**איך זה לא חוסם את שאר התוכנית:** הפרוסה מתוכננת בשני שלבים (ר' סעיף 2) — שלב 1 בונה
-ובודק את כל הצנרת (UI, ולידציה, קטלוג כלים, state machine) מול `AIProvider` **מדומה
-ודטרמיניסטי** (בלי WebGPU, בלי הורדת מודל, נבדק במלואו בסביבה המרוחקת הזו). שלב 2, האחרון,
-הוא spike קצר וממוקד לבחירת הספרייה + מדידת זמן טעינה אמיתי — **מוצג לשלום כהחלטה, לא
-מוכרע כאן מראש**.
+תוך כדי קריאת `Mixer.tsx` התגלה שכבר קיים היום כפתור "Filter" על כל ערוץ (`ChannelStrip`,
+שורה 68: `ctl.setFilter(deckId, v)` → `deck.ts`'s `lpf`/`hpf`, סטטי, תמיד פעיל). זה לא נתפס
+באף אחת מ-4 הסקירות. **נסגר מול שלום (09/10): ה-FX "Filter" הוא פילטר-סוויפ אוטומטי
+(LFO מסונכרן-ביט) — יצור נפרד לגמרי, לא נוגע ב-`deck.ts`'s `lpf`/`hpf` הקיימים.** שני
+השמות "Filter" יישארו זה לצד זה במיקסר (אחד ידית סטטית, אחד toggle ב-FX rack) — לא בעיה
+כי הם ב-UI מבחין (ידית לעומת שורת כפתורים).
 
-## 1. ארכיטקטורה נוכחית וזרימת הנתונים הרלוונטית
+## 1. ארכיטקטורה נוכחית וזרימת נתונים רלוונטית
 
-**Port קיים, לא שלם** (`src/core/ports/ai.ts`): `AIProvider { id, available, suggest(prompt,
-context): Promise<AISuggestion[]> }`. `AISuggestion { action: ControlAction, value, reason,
-confidence }`. אף מקום בקוד לא מייבא אותו מלבד הבארל (`core/ports/index.ts:13`) — stub
-טהור, שום מימוש.
+```
+Deck A: trim→eqLow→eqMid→eqHigh→hpf→lpf→channelGain──┬─→ faderGain ─┐
+Deck B: (אותו דבר)                                    └─→ cueGain  ─┼─→ cueBus
+samplerBus ─────────────────────────────────────────────────────────┼─→ masterBus
+                                                                     ┘
+masterBus ──(wireOutput, engine.ts:95 & :106, ישיר היום)──→ destination
+```
 
-**מה `directions.md:150-159` מתאר** (`chat(msgs, tools?): AsyncIterable<ChatChunk>`,
-`kind`, `capabilities[]`) — זה מה ש-v0.5.5 צריך בפועל (שיחה/tool-calling עם מסלול הבהרה),
-לא ה-`suggest()` החד-פעמי. `Msg`/`ChatChunk`/`ToolDef` לא קיימים בקוד היום מעבר לשם
-בהערה.
+`controls.ts` הוא צוואר הבקבוק היחיד: UI ו-MIDI (`manager.ts`'s `dispatch`) קוראים אליו,
+אף אחד לא נוגע ב-`engine`/`deck` ישירות. `core/mapping/mapping.ts` מגדיר את ה-`ControlAction`
+היחיד שגם UI וגם MIDI מדברים בו. `core/hints.ts` + `core/mapping/flx4-labels.ts` נבדקים זה
+מול זה ב-`tests/core/hints.test.ts` ("FLX4 label drift") — כל `ControlAction` חדש שנקשר
+ב-`flx4.ts` **חייב** תווית ב-`flx4-labels.ts` אחרת הבדיקה נופלת.
 
-**`ControlAction`/`Binding`** (`core/mapping/mapping.ts:5-41`) — שפה MIDI-ית גולמית: ערך
-0-127, `param: number`. `manager.ts`'s `dispatch` (**פרטי**, `manager.ts:112-234`) ממיר
-בייטים→קריאה ל-`controls.ts`. AI לא יכול לקרוא ל-`dispatch` (פרטי, ומיועד ל-MIDI), וגם לא
-כדאי לו "לדבר" באוצר המילים הגולמי הזה — מודל שפה אמור לפלוט `{deck:'B', beats:8}`, לא
-`{param:100, mode:'button'}`.
+## 2. הפרוסה הדקה מקצה-לקצה
 
-**`controls.ts`** — צוואר הבקבוק היחיד, **מחוץ** לשלוש השכבות (`CLAUDE.md`). ~50 פונקציות
-מיוצאות (`play`, `pause`, `togglePlay`, `setTempo`, `toggleLoop`, `setLoopBeats`,
-`pressHotCue`, `syncDeck`, `setFilter`, `setEq`, `setCrossfader`, `tapTempo` ועוד — נבדק
-ב-`controls.ts` השלם). כל פונקציה עושה `guard` על `hasTrack`/`deck` בעצמה — שום דבר חדש לא
-צריך להמציא guard משלו, רק לקרוא לפונקציה הקיימת.
+הכי קטן שמוכיח את כל השרשרת: הדלקת Delay 1/4 על דק A מהעכבר → נשמע גם ב-cue → נשמע במאסטר →
+שורד רענון. זה כבר עובר דרך כל שכבה (core math → platform FX node → deck insert → store →
+persistence), בלי לחכות ל-4 האפקטים או לחיווט FLX4. נבנה ראשון, שאר האפקטים/חיווט/UI נבנים
+עליו.
 
-**דפוס Worker לחישוב כבד אופציונלי** (`platform/analyzer-worker/index.ts`): `Worker` נפרד,
-`postMessage`/transferable, `Map<id, resolve>` לבקשות תלויות, `worker.onerror` דוחה **את
-כולן** במקום לתקוע (שורות 33-37), נפילה חזרה ל-main thread כש-`capabilities.webWorker`
-כבוי. זה הדפוס להעתיק ל-AI המקומי — WebGPU זמין בתוך Worker.
+## 3. קבצים מדויקים — מה משתנה ולמה
 
-**`Capabilities`** (`platform/capabilities.ts`) — כבר בודק `webgpu: 'gpu' in nav`,
-`webWorker`. **אין** היום מצב "המודל בהורדה/בטעינה" — זה משהו אחר, אסינכרוני, לא בדיקת
-boot סינכרונית.
+### 3.1 `src/core/fx.ts` (חדש, טהור — בלי DOM/AudioContext)
+- `export const FX_EFFECTS = ['delay', 'echo', 'reverb', 'filter'] as const` + `type FxEffect`
+- `export const FX_TIME_STEPS = [0.25, 0.5, 1, 2, 4] as const` (בבתי-שיר)
+- `export function beatFractionToSeconds(bpm: number | null, fraction: number): number` —
+  `bpm && bpm > 0 ? (60 / bpm) * fraction : 0.5` (fallback סביר, לא NaN/Infinity)
+- `export function equalPowerMix(t: number): { dry: number; wet: number }` — **מופק מ-
+  `engine.ts:250-257`'s `setCrossfader`**, לא משוכפל: `{ dry: Math.cos((t*PI)/2), wet:
+  Math.cos(((1-t)*PI)/2) }`. `engine.ts`'s `setCrossfader` ממשיך לקרוא לפונקציה הזו במקום
+  לחשב בעצמו — **שינוי שקוף, בלי לגעת בהתנהגות הקיימת** (ר' 6.1, בדיקת רגרסיה).
 
-**Store** (`app/state/store.ts`) — `NoticeSource` (שורה 16) היא union סגור בלי ערך ל-AI.
-`notice`/`setNotice`/`clearNotice` (183-201) הם המנגנון הקיים ל"משהו נדחה/השתנה — תגיד
-למה". `activeTransition`/`pendingMixRating`/`loopRollState`-style module-level state הם
-התקדים ל"state זמני, לא ל-store" (טיימרים, closures).
+### 3.2 `tests/core/fx.test.ts` (חדש)
+- `beatFractionToSeconds(128, f)` מול 5 הערכים המדויקים (0.1172, 0.2344, 0.46875, 0.9375,
+  1.875 שניות, ±0.0001)
+- `beatFractionToSeconds(null, 0.25)` → לא NaN, לא Infinity, לא שלילי
+- `equalPowerMix(0)` / `(0.5)` / `(1)` מול הערכים ש-`setCrossfader` היה מייצר היום ב-x=-1/0/1
+  — **בדיקת רגרסיה מפורשת על הקרוספיידר הקיים**, לא רק על FX (בקשת שלום)
 
-**UI idiom לרצועה מותנית** (`App.tsx:177-191`, `TransitionRatingPrompt.tsx`): רכיב
-שמופיע/נעלם לפי state, `shrink-0`, יושב מתחת ל-`TopBar` ומעל הדקים — **אין עלות גובה
-במנוחה**. `Pill`/`Button`/`tone={color}` (`app/components/controls.tsx`) הם שפת העיצוב
-הקיימת.
+### 3.3 `src/core/mapping/mapping.ts`
+- הוספה ל-`ControlAction`: `'fxEffect' | 'fxWetDry' | 'fxTime' | 'fxOn' | 'fxRoute'`
+- הוספה ל-`Binding`: `rack?: 0 | 1` (FX racks גלובליים, לא לפי דק כמו `deck?: DeckId`)
+- **בלי לגעת בשום `ControlAction`/שדה קיים** — תוספת טהורה, `tsc -b` הוא הבדיקה.
 
-## 2. הפרוסה הדקה מקצה־לקצה
+### 3.4 `src/core/mapping/flx4-labels.ts`
+- 5 רשומות חדשות ב-`FLX4_LABELS` (`fxEffect`, `fxWetDry`, `fxTime`, `fxOn`, `fxRoute`),
+  חלקן `(param) => ...` (למשל `fxEffect` מציג את שם האפקט לפי `FX_EFFECTS[param]`) — נדרש
+  כדי ש-`tests/core/hints.test.ts`'s "FLX4 label drift" יישאר ירוק ברגע שנוספים binding-ים
+  ב-3.9.
 
-**שלב 1 — הצנרת המלאה מול provider מדומה** (נבדק כאן, בסביבה המרוחקת, בלי חומרה מיוחדת):
-טקסט → קטלוג כלים → `MockAiProvider` (תשובות דטרמיניסטיות, מקודדות ביד לפי הקורפוס של 10
-המשפטים + כמה מקרי קצה) → ולידציה → אישור/הבהרה/דחייה → dispatch לפונקציית `controls.ts`
-האמיתית. כל 11 קריטריוני הקבלה נבדקים בשלב הזה **מלבד** האמינות של מודל אמיתי.
+### 3.5 `src/core/hints.ts`
+- 5 `HintId` חדשים (`fx.effect`, `fx.wetDry`, `fx.time`, `fx.on`, `fx.route`), כל אחד עם
+  `action` שמצביע לרשומה המתאימה ב-3.3 — אותו מנגנון בדיוק כמו כל שאר האפליקציה, שום
+  שינוי ל-`HintIcon`/`hint()` עצמם.
 
-**שלב 2 — המודל המקומי האמיתי**: מחליף רק את המימוש מאחורי ה-port (`platform/ai-local/`)
-— שום שינוי בשאר הצנרת. זה בדיוק העניין ב-port: שלב 1 כבר מוכיח שהחלפה כזו לא נוגעת
-ב-UI/ולידציה/state machine.
+### 3.6 `src/platform/audio-webaudio/fx.ts` (חדש)
+מחלקת `FxRack` — **כל ה-wet/dry וה-on/off קורים בפנים**, כלפי חוץ זה סתם insert טורי
+(input→output), בדיוק כמו פדאל אפקט:
 
-## 3. קבצים לשינוי/הוספה, ותפקיד כל שינוי
+- `input: GainNode`, `output: GainNode` — הממשק היחיד כלפי חוץ.
+- `dryGain`/`wetGain` פנימיים: `input` מתפצל לשניהם, שניהם מתחברים ל-`output`.
+  `equalPowerMix` (מ-3.1) קובע את שני ה-gains לפי wet/dry knob.
+- 4 תת-גרפים, **nodes טבעיים בלבד, בלי AudioWorklet**, נבנים פעם אחת ב-constructor
+  (זולים, לא worklet) ומחוברים/מנותקים מ-`wetGain` לפי `setEffect`:
+  - **Delay** (index 0): `DelayNode` + `GainNode` feedback (~0.35)
+  - **Echo** (index 1): `DelayNode` + `BiquadFilterNode` (lowpass, ~2kHz) בתוך לולאת ה-feedback
+    — אותו רעיון כמו Delay, הד "מתעמעם" בגלל הפילטר בלולאה
+  - **Reverb** (index 2): `ConvolverNode` עם impulse response **מיוצר בקוד** (רעש לבן מעוצב
+    בדעיכה אקספוננציאלית ב-`OfflineAudioContext` או ישירות ל-buffer) — **לא קובץ חיצוני**,
+    עומד מול "אפס נכסים ממוצר מסחרי" (`CLAUDE.md`)
+  - **Filter** (index 3, **הפילטר-סוויפ שנסגר למעלה**): `BiquadFilterNode` (lowpass, Q~4)
+    + `OscillatorNode` (sine) מחובר ישירות ל-`frequency` AudioParam של הפילטר (טכניקת
+    audio-rate modulation סטנדרטית) + `GainNode` שקובע את עומק הסוויפ (טווח תדר)
+- `setEffect(i: number)`: מנתק את התת-גרף הפעיל מ-`wetGain`, מחבר את הבא. Reverb: אם יצירת
+  ה-buffer נכשלה ב-constructor, `setEffect(2)` **לא מתחבר** ומסמן `reverbAvailable = false`
+  (חשוף כ-getter) — UI מציג "Reverb לא זמין" (ר' 3.10), לא נופל בשקט לסיגנל יבש בלי הודעה.
+- `setWetDry(v: number)`: `equalPowerMix(v)` על `dryGain`/`wetGain`, `setTargetAtTime` (לא
+  step) — עקבי עם כל שאר ה-gain changes בקודבייס.
+- `setTime(fraction: number, bpm: number | null)`: מעדכן את הפרמטר התלוי-זמן של האפקט
+  הפעיל — `delayTime` ל-Delay/Echo, `oscillator.frequency = 1 / beatFractionToSeconds(...)`
+  ל-Filter. **Reverb: מניח שכרגע "זמן" משפיע על משך הדעיכה של ה-IR (סקאלה של הפרוצדורה
+  לפי `beatFractionToSeconds`) — הנחה טכנית שלי, לא נבדקה מול שלום, קלה לשנות בלי לגעת
+  בשאר המנוע אם יתברר שלא מתאים בשמיעה.**
+- `setOn(on: boolean)`: **לא reconnect** — ramp פנימי של תרומת ה-wet ל-0/1. כשכבוי,
+  `dryGain` נשאר על 1 ו-`output` = `input` בפועל (שקוף לחלוטין). זה מה שהופך
+  on/off (תכוף, בזמן מיקס חי) לזול וללא קליק, לעומת ניתוב (נדיר, כן דורש reconnect —
+  ר' 3.7).
 
-### `src/core/ports/ai.ts`
-מורחב, לא מוחלף. מוסיף **לצד** `suggest`/`AISuggestion` הקיימים:
+### 3.7 `src/platform/audio-webaudio/deck.ts`
+- Deck A מזוהה קבוע עם rack 0, Deck B עם rack 1 (**החלטת יישום שלי** — הכי פשוט, תואם
+  את "שני racks, אחד לכל דק" שכבר ב-spec; לא דורש UI לבחירת "איזה rack על איזה דק").
+- node חדש `fxSeam: GainNode`, מוחלף בתוך השרשרת הקיימת:
+  ```
+  channelGain.connect(this.fxSeam)     // היה: channelGain.connect(faderGain) + connect(cueGain)
+  this.fxSeam.connect(this.faderGain)
+  this.fxSeam.connect(this.cueGain)
+  ```
+  כברירת מחדל `channelGain` מחובר ישירות ל-`fxSeam` (bypass, gain=1) — **cue ו-master
+  שומעים בדיוק מה ששמעו היום** כל עוד אין rack מנותב לערוץ הזה (ר' בדיקת רגרסיה 6.2).
+- `setChannelFxInsert(rack: FxRack | null)`: כשלא-null, מנתק `channelGain→fxSeam` הישיר,
+  מחבר `channelGain→rack.input` ו-`rack.output→fxSeam`. כשnull, חוזר ל-bypass. נקרא רק
+  מ-`engine.ts` (לא נחשף ל-`controls.ts` ישירות) בתגובה לשינוי ניתוב — **לא** בכל
+  הדלקה/כיבוי של FX (זה קורה בפנים ל-FxRack, ר' 3.6).
+
+### 3.8 `src/platform/audio-webaudio/engine.ts`
+- `masterPostFx: GainNode` — חדש, קבוע. `wireOutput()` (שורות 95, 106) קורא ממנו במקום
+  מ-`masterBus` ישירות. זו גם נקודת ה-tap היציבה ש-v0.7.5 (הקלטה) תזדקק לה.
+- `fx: [FxRack, FxRack]` — שני מופעים, נוצרים ב-constructor.
+- `setFxRouting(rack: 0 | 1, target: 'channel' | 'master')`:
+  - `target === 'channel'`: `decks[rack === 0 ? 'A' : 'B'].setChannelFxInsert(fx[rack])`,
+    ומוודא שאותו rack **לא** גם מחובר למאסטר (`rebuildMasterChain` בלי אותו rack).
+  - `target === 'master'`: מנתק אותו rack מהדק שלו (`setChannelFxInsert(null)`), ומכניס
+    אותו ל-`rebuildMasterChain`.
+  - `rebuildMasterChain()`: מנתק הכל בין `masterBus` ל-`masterPostFx`, מחבר מחדש
+    `masterBus → [racks שמנותבים למאסטר, לפי סדר rack 0 ואז rack 1] → masterPostFx`
+    (או ישירות אם אף rack לא שם) — **אותה שיטת נתק-וחבר-מחדש ש-`wireOutput()` כבר
+    עושה** על שינוי התקן פלט (עקבי עם הקודבייס, לא דפוס חדש).
+  - ה-reconnect קורה **רק כששינוי ניתוב קורה** (נדיר), לא על כל on/off (תכוף) — ר' 3.6.
+- **בדיקת רגרסיה קריטית (בקשת שלום):** כש-`masterPostFx` נכנס, כל מה שהיה מחובר ל-
+  `masterBus` (שני הדקים, הסאמפלר) חייב להמשיך להישמע בדיוק כמו היום — ר' 6.3.
+
+### 3.9 `src/controls.ts`
+5 פונקציות choke-point חדשות, אותו דפוס כמו `setFilter`/`toggleLoop` הקיימים:
 ```ts
-export type AIRole = 'user' | 'assistant' | 'tool'
-export interface AIMessage { role: AIRole; content: string }
-export interface AIToolDef { name: string; description: string; parameters: JsonSchema }
-export interface AIToolCall { name: string; args: unknown }
-export type AIChatChunk =
-  | { kind: 'text'; delta: string }
-  | { kind: 'toolCall'; call: AIToolCall }
-  | { kind: 'done' }
-
-export interface AIProvider {
-  readonly id: string
-  readonly kind: 'local' | 'byo-key' | 'self-hosted'
-  readonly available: boolean
-  readonly capabilities: ('chat' | 'embed-audio')[]
-  suggest(prompt: string, context: unknown): Promise<AISuggestion[]>
-  chat(msgs: AIMessage[], tools?: AIToolDef[]): AsyncIterable<AIChatChunk>
-  /** רק ספקים שצריכים הורדה/אתחול חד-פעמי מממשים את זה (מקומי). BYO-key לא. */
-  load?(onProgress: (pct: number) => void): Promise<void>
+export function setFxEffect(rack: 0 | 1, index: number) {
+  engine.fx[rack].setEffect(index)
+  useStore.getState().patchFx(rack, { effect: index })
+  void persistFxSettings()
+}
+export function setFxWetDry(rack: 0 | 1, v: number) { /* אותו דפוס */ }
+export function setFxTime(rack: 0 | 1, fraction: number) { /* מזין גם BPM נוכחי מה-clock */ }
+export function toggleFxOn(rack: 0 | 1) { /* engine.fx[rack].setOn(!prev) */ }
+export function setFxRoute(rack: 0 | 1, target: 'channel' | 'master') {
+  engine.setFxRouting(rack, target)
+  useStore.getState().patchFx(rack, { route: target })
+  void persistFxSettings()
 }
 ```
-`JsonSchema` — טיפוס מינימלי משלו (לא תלות חדשה — רק המפתחות שבאמת בשימוש: `type`,
-`properties`, `required`, `enum`).
+`persistFxSettings()` שומר את שני ה-racks ל-idb-keyval (ר' 3.11), עקבי עם דפוס הסאמפלר
+(`saveSamplerBank` נקרא אחרי כל שינוי מבני, לא debounce — ר' `controls.ts:1053,1406`).
 
-### `docs/architecture/directions.md`
-עדכון §4 (שורות 150-159) כך שהסקיצה תואמת בדיוק את מה ש-`ai.ts` מכיל בפועל, ועדכון שורת
-הסטטוס של AIProvider (שורה 64: "⬜ stub v0.5.5" → "🔶 v0.5.5, מקומי בלבד"). **באותו commit**
-כמו השינוי ל-`ai.ts` — זה בדיוק הכלל של "שני קבצים לא זזים לבד".
+### 3.10 UI — `src/app/components/Mixer.tsx`
+`FxStrip({ rack, deckColor })` חדש, אותו קובץ (לא קובץ נפרד — `SamplerStrip` כבר יושב שם,
+אותה שכבה): שורת בחירת אפקט (4 `Button variant="toggle" size="sm"`, אותה תבנית כמו
+`PadGrid`'s mode row), `Knob` ל-wet/dry (כמו EQ knobs), שורת זמן (5 `Button` קטנים ל-
+FX_TIME_STEPS), `Button` on/off עם זוהר כשדלוק (כמו Cue Monitor של הסאמפלר), toggle דו-מצבי
+ערוץ/מאסטר. כל control מקבל `HintIcon` מה-`HintId`-ים החדשים (3.5). כשReverb לא זמין
+(`engine.fx[rack].reverbAvailable === false`) — כפתור הבחירה שלו מושבת עם tooltip "Reverb
+unavailable", לא נעלם בשקט.
+מוצב ב-`<div className="flex items-start gap-4">` הקיים (`Mixer.tsx:106-110`), בין
+`ChannelStrip` לזה שמתאים לו ל-`SamplerStrip` — לא פאנל חדש בגובה מלא (אין מקום, ר' סקירת
+העיצוב).
 
-### `src/core/ai/toolCatalog.ts` (חדש, טהור — אין import של controls.ts/store/React)
-- `AI_TOOL_CATALOG: AIToolDef[]` — כלי אמיתי אחד לכל פעולה "בטוחה ל-AI" (הרשימה הראשונית:
-  play, pause, toggleLoop+setLoopBeats כ-`loop(deck, beats)` משולב, `jumpToHotCue(deck,
-  index)`, `setTempo(deck, bpm)`, `syncDeck(deck)`, `setFilter(deck, amount)`,
-  `setCrossfader(position)`, `tapTempo(deck)`) **+ שני כלים מיוחדים תמיד זמינים**:
-  `clarify(question: string)` ו-`decline(reason: string)`. המודל **חייב** לבחור כלי אחד
-  מתוך הרשימה הזו בכל תשובה — זה מה שהופך "לא ברור"/"לא נתמך" למסלולים מפורשים בתוך
-  ה-tool-calling עצמו, לא ניחוש שהצנרת צריכה לזהות אחר כך.
-- `validateToolCall(call: AIToolCall): { ok: true; call: AIToolCall } | { ok: false; reason:
-  string }` — בודק שם קיים בקטלוג + פרמטרים תואמים סכימה (deck הוא 'A'|'B', beats במספרים
-  חוקיים וכו'). **זה שער הולידציה** — כל מה שלא עובר כאן נדחה עם `reason` קריא, אף פעם לא
-  מגיע ל-`controls.ts`.
-- `AI_SAFE_ACTIONS: (keyof typeof import('@/controls'))[]` — רשימה מפורשת (לא מחושבת)
-  של שמות הפונקציות ב-`controls.ts` שנחשבות "בטוחות ל-AI" בגרסה הזו — זה מה שבדיקת
-  השלמות (סעיף 6) משווה מול `AI_TOOL_CATALOG`.
+### 3.11 `src/platform/fx-idb/store.ts` (חדש, תיקיה חדשה)
+אותו דפוס בדיוק כמו `sampler-idb/store.ts`: `getFxSettings()`/`saveFxSettings()` על
+מפתח `idb-keyval` יחיד (`soundgrid:fx:racks`), אף פעם לא throw על read, throw על write
+(השכבה שמעל מטפלת). מבנה: `[{ effect, wetDry, time, on, route }, {...}]` (שני racks,
+index-aligned). נקרא ב-boot (כמו `getSamplerBank`) ומוחל על `engine.fx[i]` + store.
 
-### `src/controls.ts`
-פונקציות choke-point חדשות, ליד הקיימות:
-- `submitAiCommand(text: string): Promise<void>` — בונה `AIMessage[]` + `AI_TOOL_CATALOG`,
-  קורא ל-provider הפעיל (ר' `platform/ai-local` למטה) דרך `chat()`, צובר chunks, בסיום
-  קורא ל-`validateToolCall`. תוצאה תקינה `clarify`/`decline` → מעדכן state בהתאם. תוצאה
-  תקינה עם פעולה אמיתית → `confirm-pending` + מתחיל טיימר תפוגה (`AI_PROPOSAL_EXPIRY_MS`,
-  module-level `setTimeout`, לא ב-store — אותו דפוס כמו `loopRollState`). תוצאה לא-תקינה
-  (ולידציה נכשלה) → `setNotice({ text: '...', tone: 'warn', source: 'ai' })`, חוזר ל-idle.
-- `confirmAiProposal(): void` — מנקה את הטיימר, קורא **ישירות** לפונקציית `controls.ts`
-  שהכלי מייצג (switch פנימי קטן, tool name → קריאה לפונקציה הקיימת — `loop` →
-  `setLoopBeats`+`toggleLoop`, `jumpToHotCue` → `pressHotCue`, וכו'), חוזר ל-idle.
-- `cancelAiProposal(reason: 'user' | 'expired'): void` — מנקה טיימר, `setNotice` רק אם
-  `reason === 'expired'` ("ההצעה בוטלה — עברו X שניות"), חוזר ל-idle. לחיצת Cancel של
-  המשתמש לא צריכה הודעה — היא כבר הפעולה הגלויה בעצמה.
-- `toggleAiControl(on: boolean): void` — הדלקה/כיבוי הפיצ'ר (ברירת מחדל כבוי).
-- קבוע `AI_PROPOSAL_EXPIRY_MS = 8000` ליד קבועי הכיול האחרים (`MAX_SYNC_BEND` וכו') —
-  **לא** נחשף ב-Settings (CLAUDE.md v0.2.5).
+### 3.12 `src/platform/transport-webmidi/mappings/flx4.ts`
+5 binding-ים חדשים לכל rack (10 סה"כ), על CC/note לא בשימוש בערוץ 6 (מיקסר) —
+**לא מאומתים על חומרה אמיתית**, אותו סטטוס כמו `shift`/`padMode` שכבר ב-קובץ הזה
+("Not hardware-confirmed" בהערה). `beat knob` (זמן) → `fxTime` מצב `absolute`, כפתורי
+on → `fxOn` מצב `button`, paddle → `fxEffect`/`fxRoute` לפי המספר הפיזי של הכפתורים
+שקיימים בפועל על ה-FLX4 (לא נבדק כאן — יסומן ב-`HANDOFF.md` כחוב, בדיוק כמו 4
+הבינדינגים הלא-מאומתים מ-v0.5.0).
 
-### `src/app/state/store.ts`
-- `NoticeSource` (שורה 16): מוסיף `'ai'`.
-- `AppState` slice חדש:
-  ```ts
-  ai: {
-    enabled: boolean
-    phase: 'idle' | 'typing' | 'thinking' | 'confirm' | 'clarify' | 'decline'
-           | 'model-loading' | 'model-error'
-    input: string
-    proposal: { summary: string; deckId?: DeckId; call: AIToolCall } | null
-    clarifyQuestion: string | null
-    declineReason: string | null
-    loadProgressPct: number | null
-    loadError: string | null
-  }
-  ```
-  + `setAiInput`/`patchAi` פעולות פשוטות, באותה צורה כמו `patchDeck`/`setLibrary`.
-
-### `src/platform/ai-local/index.ts` (חדש)
-מממש `AIProvider` (`kind: 'local'`, `capabilities: ['chat']`). מראה על משקל
-`platform/analyzer-worker/index.ts` **בדיוק**: `Worker` יחיד, `pending: Map<id, resolve>`,
-`worker.onerror` דוחה הכל. `chat()` שולח בקשה ל-Worker ומזרים chunks בחזרה דרך
-`postMessage` סדרתיים (טקסט חלקי/tool-call/done). `load(onProgress)` — מפעיל את הורדת
-המשקלים בתוך ה-Worker, מדווח progress חזרה.
-
-### `src/platform/ai-local/worker.ts` (חדש)
-טוען את המודל (הספרייה נבחרת ב"שלב 2" — ר' ההחלטה הפתוחה למעלה), מריץ tool-calling
-inference, כותב חזרה chunks. **לא נכתב בשלב 1** — שלב 1 עובד מול `MockAiProvider` בלבד.
-
-### `src/platform/ai-mock/index.ts` (חדש, זמני-לצמיתות — נשאר גם אחרי שלב 2 לבדיקות)
-`AIProvider` מדומה, `kind: 'local'` (מתחזה לאותה צורה), תשובות דטרמיניסטיות: טבלת
-`Record<string, AIToolCall>` שממפה תת-מחרוזות ידועות (10 משפטי הבדיקה + "תכניס אקפלה" +
-משפט מעורפל אחד) לתגובה קבועה. זה מה שהופך את כל שאר הצנרת לבדיקה — נבדק בסביבה המרוחקת
-הזו בלי WebGPU בכלל.
-
-### `src/app/components/AiControlBar.tsx` (חדש)
-רצועה מותנית, אותו idiom כמו `TransitionRatingPrompt.tsx` — `shrink-0`, מוצג ב-`App.tsx`
-מיד אחרי ה-`notice` bar הקיים, `null` כש-`ai.phase === 'idle'` וגם אין input פתוח.
-- `typing`: `<input>` פשוט + Enter → `ctl.submitAiCommand`.
-- `thinking`: תווית "חושב…" (לא רק spinner).
-- `confirm`: `Pill tone={color-of-targeted-deck}` + טקסט + `Button` Go/Cancel.
-- `clarify`: `Pill tone="warn"` + השאלה + אפשרות להקליד שוב.
-- `decline`: `Pill tone="warn"` + הסיבה, נעלם אחרי כמה שניות (כמו notice).
-- `model-loading`/`model-error`: progress % / הודעת כישלון ממוקדת.
-
-### `src/app/components/TopBar.tsx`
-כפתור טקסט/מיקרופון קטן (רק טקסט בגרסה זו — אין אייקון מיקרופון) ליד `MidiBadge`/Settings,
-`onClick` פותח את `AiControlBar` (`ctl.toggleAiControl`), מוצג רק כש-`ai.enabled` נכון
-(המשתמש הדליק את הפיצ'ר, לא ברירת מחדל).
-
-### `tests/core/ai-toolcatalog.test.ts` (חדש)
-- `validateToolCall`: כלי תקין עם ארגומנטים תקינים → `ok`; שם לא קיים → `ok:false`;
-  ארגומנטים לא תואמי סכימה (deck='C', beats=-5) → `ok:false`.
-- **בדיקת שלמות** (סגנון `tests/core/hints.test.ts`): כל שם ב-`AI_SAFE_ACTIONS` יש לו
-  ערך תואם ב-`AI_TOOL_CATALOG`, ולהפך — נכשלת אם מישהו מוסיף פעולה בטוחה בלי כלי, או כלי
-  בלי פעולה אמיתית מאחוריו.
-
-### `tests/core/ai-translate.test.ts` (חדש)
-קורפוס 10 המשפטים + "תכניס אקפלה" + משפט מעורפל אחד, רץ מול `MockAiProvider` (דטרמיניסטי
-— vitest אמיתי, לא mock-של-mock) → `submitAiCommand` מייצר את ה-`AIToolCall` הצפוי /
-`clarify`/`decline` הצפוי. **זה לא מודד את איכות המודל האמיתי** (זה שלב 2) — זה מודד
-שהצנרת (קטלוג→ולידציה→state) לא שוברת תשובה תקינה.
-
-## 4. שינויי API/טיפוסים, כולל התנהגות כשל
-
-| שינוי | כשל אפשרי | טיפול |
-|---|---|---|
-| `AIProvider.chat()` חדש | Worker לא עולה (שלב 2) | `onerror` דוחה כל בקשה תלויה, `phase: 'model-error'`, הודעה גלויה |
-| `validateToolCall` | שם/ארגומנטים לא תואמים קטלוג | נדחה עם `reason`, `setNotice(source:'ai')`, אף פעם לא מגיע ל-`confirm-pending` |
-| `confirm-pending` + טיימר | תפוגה בזמן שהמשתמש בדיוק לוחץ Go | טיימר מנוקה בתוך `confirmAiProposal` לפני הקריאה — race מטופל ב-JS single-thread רגיל, אין תנאי מרוץ אמיתי |
-| `load(onProgress)` (שלב 2) | אין רשת / WebGPU לא נתמך / אין מקום באחסון | `phase: 'model-error'` עם `loadError` קריא, שאר האפליקציה לא מושפעת |
-| `AI_SAFE_ACTIONS` מתרחב בעתיד | מישהו מוסיף פעולה בלי כלי תואם | בדיקת השלמות נכשלת ב-`npm test`, לא דילוג שקט |
-
-## 5. מודל state של ה-UI ותלויות נתונים
-
+### 3.13 `src/platform/transport-webmidi/manager.ts`
+5 `case`-ים חדשים ב-`dispatch`, אותו דפוס בדיוק כמו `case 'filter'`/`case 'loopToggle'`:
+```ts
+case 'fxEffect':
+  if (value > 0 && b.rack != null && b.param != null) ctl.setFxEffect(b.rack, b.param)
+  break
+case 'fxWetDry':
+  if (b.rack != null) ctl.setFxWetDry(b.rack, unipolar(value, b.invert))
+  break
+// fxTime, fxOn, fxRoute — אותו דפוס
 ```
-AppState.ai               — סריאלייזבילי, ב-store (phase/input/proposal/וכו')
-controls.ts (module-level) — aiProposalTimer: number | null (טיימר תפוגה, לא ב-store)
-platform/ai-local/index.ts — worker instance + pending map (כמו analyzer-worker)
-```
-`AiControlBar.tsx` קורא `useStore((s) => s.ai)` ישירות (לא prop-drilling מ-`App.tsx`) —
-אותו נימוק כמו `shiftHeld` ב-v0.5.0: התגובה חייבת להיות מיידית בלי להעביר state דרך כל
-העץ.
 
-## 6. בדיקות בשכבה הזולה ביותר
+## 4. שינויי API/טיפוסים והתנהגות כשלים
 
-- `core/ai/toolCatalog.ts` — vitest אמיתי, טהור, כולל בדיקת השלמות (ר' סעיף 3).
-- `tests/core/ai-translate.test.ts` — קורפוס 10+2 המשפטים מול `MockAiProvider` הדטרמיניסטי.
-- **בדפדפן** (שלב 1, `npm run dev` + Playwright/Chromium, `javascript_tool`/
-  `read_console_messages`): הקלדת כל משפט מהקורפוס, וידוא `confirm`/`clarify`/`decline`
-  נכון, וידוא ש-Go קורא בדיוק לפונקציית `controls.ts` הצפויה (בדיקה דרך ה-store), וידוא
-  תפוגה עם הודעה, וידוא ה-toggle כבוי כברירת מחדל.
-- **שלב 2 בלבד**: מדידת הקורפוס מול המודל האמיתי, שיעור הצלחה נרשם ב-`HANDOFF.md`
-  (סגנון v0.1.7) — זו לא vitest, זו מדידה מתועדת כי המודל לא דטרמיניסטי טהור.
-- `npm run check` ירוק לפני כל commit, בכל שלב.
+| שינוי | כשל אפשרי | התנהגות |
+| --- | --- | --- |
+| `ConvolverNode` buffer ל-Reverb | יצירת ה-buffer נכשלת (זיכרון/דפדפן) | `reverbAvailable=false`, UI חוסם בחירה, שאר 3 האפקטים לא מושפעים |
+| `masterPostFx` node חדש | אין — GainNode רגיל, לא יכול להיכשל בבנייה | — |
+| `fxSeam` node חדש בכל דק | אין — GainNode רגיל | bypass=gain 1, שקוף |
+| `rebuildMasterChain`/`setChannelFxInsert` | reconnect לא-אטומי (disconnect ואז connect הם 2 קריאות נפרדות) | חלון קצר מאוד (JS single-thread, אין audio thread contention על הקריאות עצמן) — לא נדרש declick כאן כי זה קורה רק על **שינוי ניתוב**, שכבר עובר ramp פנימי ב-FxRack |
 
-## 7. סיכונים, נסיגה, ולא-מטרות מכוונות
+## 5. מודל מצב UI ותלויות נתונים
 
-- **סיכון גדול (שלב 2 בלבד):** אין עדיין ספריית WebGPU/WASM נבחרת — ר' ההחלטה הפתוחה
-  למעלה. **מיטיגציה:** מבודד לחלוטין ל-`platform/ai-local/` ול-spike קצר; שאר המערכת לא
-  תלויה בבחירה. **נסיגה:** אם הספרייה שנבחרת לא עובדת טוב על המחשב של שלום, `MockAiProvider`
-  נשאר קיים ל-fallback פיתוח, וה-port לא צריך לזוז.
-- **סיכון:** תרגום שגוי שעדיין עובר ולידציה (למשל דק לא נכון אבל תחבירית תקין).
-  **מיטיגציה:** בדיוק בשביל זה יש `confirm-pending` — שלב האישור הוא קו ההגנה האחרון,
-  לא הולידציה. **לא מטופל טכנית**, זה בדיוק מה שה-UX מכסה.
-- **לא-מטרה מכוונת:** קול (Web Speech API) — נדחה לגמרי מהספסיפיקציה, אין קוד בתוכנית הזו
-  שנוגע בו.
-- **לא-מטרה מכוונת:** BYO-API-key/self-hosted — ה-port פתוח לזה (`kind` union כבר כולל
-  אותם), אבל שום מימוש לא נבנה כאן.
-- **נסיגה כללית:** הפיצ'ר כולו מאחורי `ai.enabled` (כבוי כברירת מחדל) — אפשר להסיר את
-  `TopBar.tsx`'s כפתור ו-`AiControlBar.tsx` בלי לגעת בשום קוד קיים.
+`store.ts` מקבל slice חדש: `fx: [FxState, FxState]` עם `patchFx(rack, partial)`, אותו
+דפוס בדיוק כמו `mixer.channels`. `FxStrip` קורא ממנו בלבד (לא נוגע ב-`engine` ישירות,
+כמו כל קומפוננטת UI אחרת בקודבייס). `reverbAvailable` **לא** ב-store (זה עובדה על
+ה-engine instance, לא state שניתן לשנות מבחוץ) — `FxStrip` קורא אותו ישירות מ-
+`engine.fx[rack].reverbAvailable` פעם אחת ב-mount, כמו ש-`scratchAvailable` כבר נקרא היום.
 
-## 8. סדר ביצוע עם אימות אחרי כל צעד משמעותי
+## 6. בדיקות — השכבה הזולה ביותר, כולל רגרסיה מפורשת
 
-1. **`core/ports/ai.ts` + `directions.md:64,150-159`** (באותו commit) — טיפוסים חדשים
-   לצד הקיימים. אימות: `tsc -b` ירוק.
-2. **`core/ai/toolCatalog.ts` + `tests/core/ai-toolcatalog.test.ts`** — קטלוג, ולידציה,
-   בדיקת שלמות. אימות: `npm test` ירוק על הקובץ הזה.
-3. **`platform/ai-mock/index.ts`** — provider מדומה לבדיקות. אימות: `tsc -b` ירוק, אין
-   עדיין קורא.
-4. **`controls.ts`**: `submitAiCommand`/`confirmAiProposal`/`cancelAiProposal`/
-   `toggleAiControl` מול ה-mock provider. **`tests/core/ai-translate.test.ts`**. אימות:
-   `npm test` ירוק — הקורפוס עובר מול ה-mock.
-5. **`store.ts`**: `ai` slice + `'ai'` ל-`NoticeSource`. אימות: `tsc -b` ירוק.
-6. **`AiControlBar.tsx` + `TopBar.tsx`**: ה-UI המלא, מחובר ל-mock provider. אימות: בדפדפן
-   (`npm run dev` + Playwright) — כל 11 קריטריוני הקבלה מה-spec, אחד־אחד, מלבד איכות מודל
-   אמיתי.
-7. **`npm run check` מלא** + `HANDOFF.md` מעודכן + `context_check.py` + commit + push —
-   **זו נקודת עצירה טבעית**: הפיצ'ר שלם ונבדק מול provider מדומה, אבל עוד לא מול מודל
-   אמיתי. ראוי לעצור כאן ולהראות לשלום לפני שלב 2.
-8. **Spike קצר** (שלב 2, אחרי אישור שלום להמשיך): בחירת ספריית WebGPU/WASM, מדידת זמן
-   טעינה על מחדד אמיתי אם אפשר, `platform/ai-local/worker.ts`. אימות: הורדה+טעינה
-   מצליחה בדפדפן, progress גלוי.
-9. **`platform/ai-local/index.ts`** מחליף את ה-mock כברירת המחדל (ה-mock נשאר זמין
-   לבדיקות). אימות: קריאה חוזרת על כל קריטריוני הקבלה מול המודל האמיתי.
-10. **מדידת הקורפוס מול המודל האמיתי**, תוצאה נרשמת ב-`HANDOFF.md` (סגנון v0.1.7).
-11. **`npm run check` מלא** + `HANDOFF.md`/`ROADMAP.md` מעודכנים + `context_check.py` +
-    commit + push, לפי הנוהל המלא ב-CLAUDE.md.
+### 6.1 חדש, יחידה (`tests/core/fx.test.ts`)
+ר' 3.2 — כולל את בדיקת הרגרסיה על `equalPowerMix` מול הקרוספיידר הקיים.
+
+### 6.2 חדש, Playwright/Chromium (כמו v0.6.0 — אין חומרה אמיתית בקונטיינר)
+**פיצ'ר חדש:**
+- Delay 1/4 על דק ב-128 BPM → `DelayNode.delayTime.value` תואם `beatFractionToSeconds`
+- FX מנותב לערוץ → נשמע גם ב-`cueGain`/`cueBus` (בדיקת level, לא רק "לא קרס")
+- FX מנותב למאסטר → יושב לפני `masterPostFx` (בדיקת graph, לא רק שמיעה)
+- רענון דפדפן עם FX דלוק → אפקט/wet-dry/זמן/on-off/ניתוב חוזרים זהים
+- Reverb buffer generation מדומה-נכשל → UI מציג "לא זמין", שאר 3 האפקטים עובדים
+
+**רגרסיה מפורשת (בקשת שלום — "לא לשבור מה שכבר עובד"):**
+- **`ctl.setFilter` הקיים** (הידית הסטטית) ממשיך לשנות את `lpf`/`hpf` בדיוק כמו לפני —
+  FX "Filter" (הסוויפ) לא נוגע ב-nodes האלה בכלל
+- **דק בלי FX מנותב** נשמע זהה (level, לא רק "משהו יוצא") לפני/אחרי השינוי — `fxSeam`
+  ב-bypass הוא באמת gain=1 שקוף
+- **הסאמפלר ממשיך להישמע** אחרי הכנסת `masterPostFx` — `samplerBus→masterBus→
+  masterPostFx→destination` שלם, לא נשבר באמצע
+- **קרוספיידר, EQ, cue mix, multichannel/stereo-fold split** — כל ההתנהגות הקיימת
+  ב-`engine.ts`/`Mixer.tsx` שלא נוגעים ב-FX נשארת זהה (smoke test מקיף, לא רק unit)
+- **פרסיסטנס סאמפלר קיימת** (v0.6.0) ממשיכה לעבוד — `fx-idb` הוא storage נפרד
+  (`soundgrid:fx:racks`), לא משותף עם `soundgrid:sampler:bank`
+
+### 6.3 `npm run check` ירוק לפני כל קומיט — tsc + oxlint + depcruise + vitest, כולל
+כל הבדיקות הקיימות (128+ שעברו לפני השינוי, לא רק החדשות).
+
+## 7. סיכונים, נסיגה, לא-מטרות מכוונות
+
+**סיכון עיקרי:** reconnect-based routing (3.8) הוא הלוגיקה הכי חדשה/מורכבת בפלאן הזה —
+אין לה תקדים ישיר בקודבייס מלבד `wireOutput()` (שמטפל רק בהחלפת התקן פלט, לא בניתוב FX
+דינמי). ממותן ע"י: (א) reconnect קורה רק על שינוי ניתוב, לא בזמן מיקס תכוף, (ב) בדיקת
+רגרסיה מפורשת (6.2) על הדקים/סאמפלר, (ג) Playwright בודק graph state ישירות, לא רק שמיעה.
+
+**נסיגה:** כל שינוי הוא תוספתי — `masterPostFx`/`fxSeam` הם nodes חדשים בשרשרת קיימת, לא
+שכתוב שלה. Revert = מחיקת ה-commit(ים) הרלוונטיים; אין מיגרציית נתונים הפיכה (ה-`fx-idb`
+store חדש ונפרד, מחיקתו לא פוגעת בשום דבר אחר).
+
+**לא-מטרות (מ-`FEATURE_SPEC.md`, לא נפתחות מחדש כאן):** Bit Crusher, Roll, Flanger,
+Phaser, ניתוב Send, MIDI Learn גנרי — כולם `v0.7.1`/`v0.11.0`.
+
+## 8. סדר יישום, עם אימות אחרי כל צעד
+
+1. **`core/fx.ts` + `tests/core/fx.test.ts`** — `npm test` ירוק, כולל בדיקת הרגרסיה על
+   `equalPowerMix`. שום קוד אחר לא זז עדיין.
+2. **`engine.ts`'s `setCrossfader` קורא ל-`equalPowerMix`** — שינוי בן שורה אחת. אימות:
+   קרוספיידר בדפדפן מתנהג זהה (A only / B only / אמצע) לפני commit.
+3. **`mapping.ts` + `flx4-labels.ts` + `hints.ts`** — תוספות טיפוסים/מפות בלבד, בלי חיווט
+   בפועל עדיין. אימות: `tsc -b` ירוק, `tests/core/hints.test.ts` עדיין ירוק (אין binding
+   חדש ל-flx4.ts עדיין, אז אין דרישה חדשה).
+4. **`fx.ts` (FxRack) — Delay בלבד קודם**, שאר 3 האפקטים כ-stub שזורק. אימות: Playwright,
+   Delay 1/4 על דק ב-128 BPM, `delayTime` נכון.
+5. **`deck.ts`'s `fxSeam` + `engine.ts`'s `masterPostFx`/`fx`/`setFxRouting`** — עדיין בלי
+   UI/MIDI. אימות: **בדיקת רגרסיה קודם** (דק בלי FX = זהה להיום, סאמפלר עדיין נשמע), *אז*
+   רק Delay מנותב ידנית (דרך console/טסט) לערוץ ולמאסטר, cue שומע נכון.
+6. **`controls.ts`'s 5 הפונקציות + `store.ts`'s `fx` slice** — Delay נגיש מקוד היישום.
+   אימות: אותה בדיקת Delay, הפעם דרך `ctl.setFxEffect` לא ישירות על ה-engine.
+7. **`Mixer.tsx`'s `FxStrip`** — Delay נגיש מה-UI. אימות בדפדפן: לחיצות עכבר, hint mode
+   מציג טקסט, הרצועה נכנסת בפועל ב-710px (מדידת DOM, לא ניחוש).
+8. **Echo, Reverb, Filter** — אחד-אחד, כל אחד עם בדיקת Playwright ייעודית (Reverb כולל
+   מסלול הכשל).
+9. **`fx-idb/store.ts` + פרסיסטנס ב-`controls.ts`** — אימות: רענון דפדפן, כל 4 השדות חוזרים.
+10. **`flx4.ts` + `manager.ts`'s dispatch** — חיווט FLX4 קבוע, מסומן לא-מאומת.
+11. **`HANDOFF.md`** — סעיף חוב חדש: "10 בינדינגי FX על FLX4 לא מאומתים על חומרה", עקבי
+    עם איך v0.5.0 תועד.
+12. **`npm run check` מלא + סבב שימוש אמיתי בדפדפן** (שני הדקים, FX ביחד עם הסאמפלר, SYNC
+    פעיל) לפני סגירת הגרסה — לא רק תרחיש בודד, בדיוק ההערה של שלום.
+
+לאחר אישור התוכנית הזו, הצעדים הופכים למשימות בפועל (task list) — צעד אחד "בעבודה" בכל
+רגע, אימות כמשימה נפרדת ומפורשת, לא "בערך נבדק".
