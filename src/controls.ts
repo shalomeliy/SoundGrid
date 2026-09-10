@@ -1343,6 +1343,39 @@ export function toggleSamplerCueMonitor() {
   useStore.getState().patchSamplerChannel({ cueMonitor: on })
 }
 
+/** The master deck's *playing* BPM (track BPM adjusted by its tempo fader), same computation `setSamplerSyncEnabled` uses — the app-wide reference tempo for anything beat-synced, FX included. */
+function masterPlayingBpm(): number | null {
+  const { decks, masterDeckId } = useStore.getState()
+  const master = masterDeckId ? decks[masterDeckId] : null
+  return master?.bpm ? master.bpm * tempoToRate(master.tempo, cfg.tempoRange) : null
+}
+
+export function setFxEffect(rack: 0 | 1, effect: number) {
+  engine.fx[rack].setEffect(effect)
+  useStore.getState().patchFx(rack, { effect })
+}
+
+export function setFxWetDry(rack: 0 | 1, v: number) {
+  engine.fx[rack].setWetDry(v)
+  useStore.getState().patchFx(rack, { wetDry: v })
+}
+
+export function setFxTime(rack: 0 | 1, fraction: number) {
+  engine.fx[rack].setTime(fraction, masterPlayingBpm())
+  useStore.getState().patchFx(rack, { time: fraction })
+}
+
+export function toggleFxOn(rack: 0 | 1) {
+  const on = !useStore.getState().fx[rack].on
+  engine.fx[rack].setOn(on)
+  useStore.getState().patchFx(rack, { on })
+}
+
+export function setFxRoute(rack: 0 | 1, route: 'channel' | 'master') {
+  engine.setFxRouting(rack, route)
+  useStore.getState().patchFx(rack, { route })
+}
+
 /** Save-as (ROADMAP.md v0.6.0's "export bank"). `'cancelled'` (the owner closed the dialog) is silent on purpose — everything else, including "this browser can't do this", is a notice. */
 export async function exportSamplerBank(): Promise<void> {
   const { sampler, setNotice } = useStore.getState()

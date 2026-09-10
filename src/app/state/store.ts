@@ -13,6 +13,7 @@ import type { AIToolCall } from '@/core/ports/ai'
 import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 import { emptySamplerSlot, SAMPLER_SLOT_COUNT, type SamplerSlot } from '@/core/sampler'
+import { FX_TIME_STEPS } from '@/core/fx'
 
 /** Who put a message on screen, so only they can take it down. */
 export type NoticeSource =
@@ -95,6 +96,19 @@ function emptyChannel(): ChannelState {
   return { volume: 0.9, eqLow: 0, eqMid: 0, eqHigh: 0, filter: 0 }
 }
 
+/** One FX rack's state (v0.7.0). `effect` indexes `core/fx.ts`'s `FX_EFFECTS`, `time` is one of `FX_TIME_STEPS`. */
+export interface FxState {
+  effect: number
+  wetDry: number
+  time: number
+  on: boolean
+  route: 'channel' | 'master'
+}
+
+function emptyFx(): FxState {
+  return { effect: 0, wetDry: 0.5, time: FX_TIME_STEPS[0], on: false, route: 'channel' }
+}
+
 export interface AppState {
   decks: Record<DeckId, DeckState>
   mixer: MixerState
@@ -110,6 +124,9 @@ export interface AppState {
     slots: SamplerSlot[]
     channel: { volume: number; cueMonitor: boolean }
   }
+
+  /** Two global FX racks (v0.7.0) — index 0 pairs with deck A, 1 with deck B when channel-routed. See `platform/audio-webaudio/engine.ts`'s `setFxRouting`. */
+  fx: [FxState, FxState]
 
   /**
    * Which deck SYNC's phase-align locks the other deck to (v0.3.0). `null`
@@ -252,6 +269,7 @@ export interface AppState {
   patchAi: (patch: Partial<AiState>) => void
   patchSamplerSlot: (index: number, patch: Partial<SamplerSlot>) => void
   patchSamplerChannel: (patch: Partial<AppState['sampler']['channel']>) => void
+  patchFx: (rack: 0 | 1, patch: Partial<FxState>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
   setMidi: (patch: Partial<AppState['midi']>) => void
@@ -286,6 +304,7 @@ export const useStore = create<AppState>((set) => ({
     slots: Array.from({ length: SAMPLER_SLOT_COUNT }, emptySamplerSlot),
     channel: { volume: 0.85, cueMonitor: false },
   },
+  fx: [emptyFx(), emptyFx()],
   library: {
     folderName: null,
     tracks: [],
@@ -338,6 +357,10 @@ export const useStore = create<AppState>((set) => ({
     })),
   patchSamplerChannel: (patch) =>
     set((s) => ({ sampler: { ...s.sampler, channel: { ...s.sampler.channel, ...patch } } })),
+  patchFx: (rack, patch) =>
+    set((s) => ({
+      fx: rack === 0 ? [{ ...s.fx[0], ...patch }, s.fx[1]] : [s.fx[0], { ...s.fx[1], ...patch }],
+    })),
   set: (key, value) => set({ [key]: value } as Partial<AppState>),
   setLibrary: (patch) => set((s) => ({ library: { ...s.library, ...patch } })),
   setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),
