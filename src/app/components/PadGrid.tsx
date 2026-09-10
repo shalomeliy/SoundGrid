@@ -87,23 +87,14 @@ export function PadGrid({ deckId, hotCues, padMode, color }: Props) {
       <div
         className="grid grid-cols-4 gap-1 rounded-[var(--radius-sm)] transition-shadow duration-100"
         style={shiftHeld ? { boxShadow: `0 0 0 2px var(--color-accent)` } : undefined}
-        // Sampler mode only: `Deck.tsx` wraps the *whole* deck panel —
-        // pads included — in its own "drop to load deck" zone. Without
-        // stopping propagation here, every dragover/drop over this grid
-        // also reaches that outer zone, which paints its full-panel
-        // overlay on top of the pads and, on drop, would load the track
-        // onto the deck *in addition to* whatever pad-level handling ran.
-        // Stopping it here — after a pad's own onDrop already fired via
-        // bubbling — keeps the deck's drop zone for everywhere outside
-        // this grid, exactly where it still belongs.
-        onDragOver={
-          padMode === 'sampler'
-            ? (e) => {
-                if (e.dataTransfer.types.includes(TRACK_MIME)) e.stopPropagation()
-              }
-            : undefined
-        }
-        onDrop={padMode === 'sampler' ? (e) => e.stopPropagation() : undefined}
+        // Sampler mode only: `Deck.tsx` wraps the *whole* deck panel — pads
+        // included — in its own "drop to load deck" zone for the same drag
+        // payload. This marker is how it recognizes "this drop belongs to a
+        // pad, not to me" and defers, without stopping the event itself —
+        // stopping propagation here was tried first and broke the deck's
+        // own `dropActive` reset (its overlay got stuck on after a pad
+        // drop, found by Shalom on the real app).
+        data-drop-zone={padMode === 'sampler' ? 'sampler' : undefined}
       >
         {padMode === 'hotcue' && <HotCuePads deckId={deckId} hotCues={hotCues} />}
         {padMode === 'loop' && <LoopPads deckId={deckId} shiftHeld={shiftHeld} />}

@@ -100,9 +100,22 @@ export function Deck({ deckId }: { deckId: DeckId }) {
   }
 
   const TRACK_MIME = 'application/x-soundgrid-track'
+  // The sampler pad grid (`PadGrid.tsx`) is its own, more specific drop
+  // target for the exact same drag payload, and it lives inside this
+  // section. `closest` is checked directly against the event, not against
+  // stopped propagation — an earlier version tried stopping the event from
+  // reaching this section instead, but that also stopped `setDropActive`
+  // from ever resetting on a pad drop, leaving this panel's "Drop to load
+  // deck" overlay stuck on permanently (found by Shalom on the real app).
+  // Letting every event still reach here, and simply deferring to the pad
+  // grid when that's where it landed, keeps this section's own state
+  // correct no matter which drop target the browser actually resolved.
+  const overSamplerGrid = (e: React.DragEvent) =>
+    (e.target as HTMLElement).closest('[data-drop-zone="sampler"]') != null
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDropActive(false)
+    if (overSamplerGrid(e)) return
     const id = e.dataTransfer.getData(TRACK_MIME)
     const track = useStore.getState().library.tracks.find((t) => t.id === id)
     if (track) void ctl.loadTrackToDeck(deckId, track)
@@ -119,10 +132,18 @@ export function Deck({ deckId }: { deckId: DeckId }) {
       className="panel relative flex min-h-0 min-w-0 flex-col gap-2 p-2.5 transition-shadow"
       style={dropActive ? { boxShadow: `0 0 0 2px ${color}, var(--shadow-panel)` } : undefined}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes(TRACK_MIME)) {
-          e.preventDefault()
-          setDropActive(true)
+        if (!e.dataTransfer.types.includes(TRACK_MIME)) return
+        // A drag can enter this panel somewhere else first (the overlay is
+        // meant to cover that case) and only *then* reach the pad grid —
+        // dragover never fires again for a target it's already true for,
+        // so without this the overlay would sit there the whole time the
+        // pointer is over the pads, only clearing on drop.
+        if (overSamplerGrid(e)) {
+          setDropActive(false)
+          return
         }
+        e.preventDefault()
+        setDropActive(true)
       }}
       onDragLeave={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropActive(false)
