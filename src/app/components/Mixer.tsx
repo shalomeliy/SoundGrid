@@ -3,6 +3,7 @@ import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
 import { Button, Fader, HintIcon, Knob } from '@/app/components/controls'
 import { FX_EFFECTS, FX_TIME_STEPS, type FxEffect } from '@/core/fx'
+import { engine } from '@/platform/audio-webaudio/engine'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
 
@@ -13,17 +14,30 @@ const FX_EFFECT_LABEL: Record<FxEffect, string> = {
   filter: 'Filter',
 }
 
-/** Only Delay is wired up in `FxRack` so far — Echo/Reverb/Filter are added one at a time; each gets removed from here as it lands. */
-const FX_EFFECT_AVAILABLE: ReadonlySet<number> = new Set([0])
+const REVERB_INDEX = FX_EFFECTS.indexOf('reverb')
+
+/**
+ * Whether `rack` can actually select `effectIndex` right now. Every effect
+ * except Reverb is unconditionally available; Reverb depends on its
+ * procedurally-generated impulse response having built successfully
+ * (`FxRack.reverbAvailable`) — read directly off the engine, not mirrored
+ * into the store, because it settles once at construction (before React
+ * ever renders) and never changes again, the same one-shot-read shape
+ * `scratchAvailable` would use if it needed no store mirroring either.
+ */
+function isFxEffectAvailable(rack: 0 | 1, effectIndex: number) {
+  if (effectIndex === REVERB_INDEX) return engine.fx[rack].reverbAvailable
+  return true
+}
 
 function fxTimeLabel(beats: number) {
   return beats < 1 ? `1/${Math.round(1 / beats)}` : `${beats}`
 }
 
-function nextAvailableEffect(from: number) {
+function nextAvailableEffect(rack: 0 | 1, from: number) {
   for (let i = 1; i <= FX_EFFECTS.length; i++) {
     const next = (from + i) % FX_EFFECTS.length
-    if (FX_EFFECT_AVAILABLE.has(next)) return next
+    if (isFxEffectAvailable(rack, next)) return next
   }
   return from
 }
@@ -55,7 +69,7 @@ function FxStrip({ rack, deckId }: { rack: 0 | 1; deckId: DeckId }) {
           size="sm"
           tone={color}
           active
-          onClick={() => ctl.setFxEffect(rack, nextAvailableEffect(state.effect))}
+          onClick={() => ctl.setFxEffect(rack, nextAvailableEffect(rack, state.effect))}
           aria-label="FX effect"
         >
           {FX_EFFECT_LABEL[FX_EFFECTS[state.effect]]}

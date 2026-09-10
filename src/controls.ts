@@ -1351,8 +1351,11 @@ function masterPlayingBpm(): number | null {
 }
 
 export function setFxEffect(rack: 0 | 1, effect: number) {
-  engine.fx[rack].setEffect(effect)
-  useStore.getState().patchFx(rack, { effect })
+  // A refused switch (Reverb unavailable) must not be recorded as selected
+  // — the store would then claim an effect that isn't actually playing.
+  if (engine.fx[rack].setEffect(effect)) {
+    useStore.getState().patchFx(rack, { effect })
+  }
 }
 
 export function setFxWetDry(rack: 0 | 1, v: number) {
