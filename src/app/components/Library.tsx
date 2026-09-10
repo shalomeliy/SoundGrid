@@ -298,8 +298,16 @@ export function Library() {
     // reload end-to-end rather than injecting an already-hashed track
     // straight into the store the way this version's own closing
     // verification had (`docs/handoff/v0.6.0.md`), which never exercised
-    // this ordering at all.
-    await ctl.resolveSamplerSlots()
+    // this ordering at all. `silent: true` here and on every call before
+    // the library has finished getting identities (below, and the
+    // per-patch call in `applyAnalysisQueue`) — at this point almost no
+    // track has a `contentHash` yet, so "unresolved" here almost never
+    // means genuinely missing, only "not hashed yet". Reporting it here
+    // flashed a scary, wrong "couldn't be matched" warning on every real
+    // scan with a saved bank, found live: it read exactly like the bug
+    // this whole fix exists to close. Only the final call, once nothing
+    // else will hash any more tracks this scan, reports for real.
+    await ctl.resolveSamplerSlots({ silent: true })
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
     if (!scan.cancelled) await ctl.resolveSamplerSlots()
   }
@@ -313,9 +321,6 @@ export function Library() {
     const picked = await pickTrackFiles()
     if (!picked.length) return
 
-    const scan = { cancelled: false }
-    tagScan.current = scan
-
     const current = useStore.getState().library.tracks
     const known = new Set(current.map((t) => t.id))
     const fresh = picked.filter((t) => !known.has(t.id))
@@ -323,6 +328,18 @@ export function Library() {
       setLibrary({ scanMsg: `${picked.length} already in the library` })
       return
     }
+    // A scan already in flight (from `runScan` or an earlier `addFiles`)
+    // must not keep tagging/resolving after this one starts — `runScan`
+    // already does this; missing here let two overlapping scans' own
+    // `resolveSamplerSlots()` calls run concurrently against the same
+    // slots (harmless — same content-hash match either way — but wasted
+    // decode work, found reviewing this diff, not from a live report).
+    // After the "nothing new to add" check above, not before it: this
+    // function can still return with the previous scan's own tagging
+    // usefully in flight, and that one must not be cancelled for nothing.
+    tagScan.current.cancelled = true
+    const scan = { cancelled: false }
+    tagScan.current = scan
     const queued = fresh.map((t) => ({ ...t, analysisState: 'queued' as const }))
     setLibrary({
       tracks: [...current, ...queued].sort((a, b) => a.path.localeCompare(b.path)),
@@ -336,8 +353,9 @@ export function Library() {
     // Sampler slots saved from a previous session (v0.6.0) key on content
     // hash, same as genre overrides — see the matching call in `runScan`
     // for why this needs a second pass after tagging/analysis actually
-    // hashes these files.
-    await ctl.resolveSamplerSlots()
+    // hashes these files. `silent: true` for the same reason as `runScan`'s
+    // matching call — almost nothing has a `contentHash` yet at this point.
+    await ctl.resolveSamplerSlots({ silent: true })
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
     if (!scan.cancelled) await ctl.resolveSamplerSlots()
   }
@@ -433,8 +451,11 @@ export function Library() {
         // it eventually would. Re-checking after every patch (the same
         // "resolve the moment this pass gives it an identity" shape the hash
         // override lookup above already uses) resolves it the instant ITS
-        // track gets hashed, not the library's last one.
-        if ([...patch.values()].some((p) => p.contentHash)) void ctl.resolveSamplerSlots()
+        // track gets hashed, not the library's last one. Silent — most other
+        // slots still have no hash yet at any given patch, so "unresolved"
+        // here is not evidence of anything; the one call after the whole
+        // queue settles (below) is what actually reports for real.
+        if ([...patch.values()].some((p) => p.contentHash)) void ctl.resolveSamplerSlots({ silent: true })
       },
       { signal: scan },
     )

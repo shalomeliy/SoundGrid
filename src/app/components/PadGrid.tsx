@@ -350,6 +350,13 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
   const [hovered, setHovered] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null)
+  // `pointerdown` and the `click` that follows it are two different browser
+  // events — reading `e.altKey` separately on each means releasing Alt
+  // between them (a fast Alt+click is enough to do this) makes pointerdown
+  // skip the trigger *and* click skip the rename: the pad does nothing,
+  // with no feedback either way. Captured once, at pointerdown, and reused
+  // for the click's decision closes that gap.
+  const altAtPointerDown = useRef(false)
   const base = shiftHeld ? 8 : 0
 
   // The editor row sits *above* the grid, not inside each pad, so the mouse
@@ -420,6 +427,7 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
             onMouseEnter={() => openEditor(index)}
             onMouseLeave={scheduleClose}
             onPointerDown={(e) => {
+              altAtPointerDown.current = e.altKey
               // Alt+click renames (below) — must not also trigger the pad.
               if (e.altKey) return
               const release = ctl.pressPad(deckId, i)
@@ -429,8 +437,8 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
               }
               window.addEventListener('pointerup', up)
             }}
-            onClick={(e) => {
-              if (e.altKey && occupied) setRenaming({ index, text: slot.trackName ?? '' })
+            onClick={() => {
+              if (altAtPointerDown.current && occupied) setRenaming({ index, text: slot.trackName ?? '' })
             }}
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes(TRACK_MIME)) {

@@ -1098,13 +1098,25 @@ export function restoreSamplerBankMeta(): Promise<void> {
 
 /**
  * Re-resolves every saved-but-not-yet-loaded slot (`contentHash` set,
- * `trackId` still null) against the tracks currently on screen. Called after
- * every library scan (`Library.tsx`), the same "post-scan enrichment pass"
- * shape `applyGenreOverrides` already uses. A slot that stays unresolved
- * after this is named in a notice, never left to look like an empty slot
- * that was simply never used.
+ * `trackId` still null) against the tracks currently on screen. Called
+ * repeatedly during a scan (`Library.tsx`) as more tracks get an identity —
+ * right after the synchronous scan, again on every analysis patch that
+ * carries a fresh `contentHash`, and once more after the whole tag+analysis
+ * pass settles — the same "post-scan enrichment pass" shape
+ * `applyGenreOverrides` already uses, just repeated instead of one-shot.
+ *
+ * `silent` exists because most of those calls happen *before* the library
+ * has finished getting identities: a slot with no match yet almost always
+ * just means its track hasn't been hashed by the analysis queue yet, not
+ * that it is genuinely missing. Reporting "couldn't be matched" on every
+ * early call would flash a scary, wrong warning on every real scan (found
+ * live: the exact "couldn't be matched" notice fired the instant a saved
+ * bank existed, self-corrected a few seconds later, and read exactly like
+ * the bug this function exists to fix). A slot that stays unresolved is
+ * still always named in a notice — from the one call each scan makes with
+ * `silent: false`, once every track that could get an identity has one.
  */
-export async function resolveSamplerSlots(): Promise<void> {
+export async function resolveSamplerSlots(opts: { silent?: boolean } = {}): Promise<void> {
   // Metadata (`contentHash` per slot) has to be in the store before this can
   // match anything — see `restoreSamplerBankMeta`'s doc comment. A no-op
   // once it has already run, from here or from `initAudio()`.
@@ -1121,7 +1133,7 @@ export async function resolveSamplerSlots(): Promise<void> {
     }
     await loadSamplerSlotAudio(i, track, { keepSavedSettings: true })
   }
-  if (unresolved > 0) {
+  if (unresolved > 0 && !opts.silent) {
     setNotice({
       text: `${unresolved} sampler slot${unresolved === 1 ? '' : 's'} from your saved bank couldn't be matched to a file in this library — they'll fill in once the right folder is scanned.`,
       tone: 'warn',
