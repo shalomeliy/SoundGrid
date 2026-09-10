@@ -1,6 +1,7 @@
 import { Deck } from '@/platform/audio-webaudio/deck'
 import { SamplerEngine } from '@/platform/audio-webaudio/sampler'
 import { bootLatencyHint } from '@/platform/settings-idb/boot-latency'
+import { equalPowerMix } from '@/core/fx'
 // Bundled and transpiled by Vite, handed to addModule as a URL. The processor
 // itself imports nothing: an AudioWorkletGlobalScope has no DOM, so a single
 // transitive DOM-touching import turns into an opaque addModule rejection.
@@ -248,9 +249,7 @@ export class AudioEngine {
 
   /** Equal-power crossfader. -1 => A only, +1 => B only. */
   setCrossfader(x: number) {
-    const t = (x + 1) / 2
-    const a = Math.cos((t * Math.PI) / 2)
-    const b = Math.cos(((1 - t) * Math.PI) / 2)
+    const { dry: a, wet: b } = equalPowerMix((x + 1) / 2)
     const now = this.ctx.currentTime
     this.decks.A.faderGain.gain.setTargetAtTime(a, now, 0.005)
     this.decks.B.faderGain.gain.setTargetAtTime(b, now, 0.005)
