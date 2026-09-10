@@ -1,6 +1,7 @@
 import * as ctl from '@/controls'
 import { useStore } from '@/app/state/store'
 import { LONG_PRESS_MS } from '@/core/constants'
+import { FX_TIME_STEPS } from '@/core/fx'
 import type { DeckId, PadMode } from '@/core/types'
 import { FLX4_MAPPING } from '@/platform/transport-webmidi/mappings/flx4'
 import {
@@ -32,6 +33,12 @@ function bipolar(v: number, invert?: boolean) {
 function unipolar(v: number, invert?: boolean) {
   const n = v / 127
   return invert ? 1 - n : n
+}
+
+/** The FX beat-time knob is continuous hardware quantized to `FX_TIME_STEPS` in software — same "continuous knob, discrete steps" shape as the UI's cycle-button, just driven by position instead of taps. */
+function nearestFxTimeStep(t: number) {
+  const i = Math.round(t * (FX_TIME_STEPS.length - 1))
+  return FX_TIME_STEPS[Math.max(0, Math.min(FX_TIME_STEPS.length - 1, i))]
 }
 
 class MidiManager {
@@ -231,6 +238,24 @@ class MidiManager {
         }
         break
       }
+      case 'fxEffect':
+        if (value > 0 && b.rack != null && b.param != null) ctl.setFxEffect(b.rack, b.param)
+        break
+      case 'fxWetDry':
+        if (b.rack != null) ctl.setFxWetDry(b.rack, unipolar(value, b.invert))
+        break
+      case 'fxTime':
+        if (b.rack != null) ctl.setFxTime(b.rack, nearestFxTimeStep(unipolar(value, b.invert)))
+        break
+      case 'fxOn':
+        if (value > 0 && b.rack != null) ctl.toggleFxOn(b.rack)
+        break
+      case 'fxRoute':
+        if (value > 0 && b.rack != null) {
+          const current = useStore.getState().fx[b.rack].route
+          ctl.setFxRoute(b.rack, current === 'channel' ? 'master' : 'channel')
+        }
+        break
     }
   }
 
