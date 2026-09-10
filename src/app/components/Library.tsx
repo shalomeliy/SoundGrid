@@ -290,8 +290,18 @@ export function Library() {
     // Sampler slots saved from a previous session (v0.6.0) key on content
     // hash, same as genre overrides — this is what turns a saved-but-not-
     // yet-matched slot into a loaded one once its file is back on screen.
+    // A `contentHash` is filled in lazily (`core/types.ts`), not at scan
+    // time — this first call, right here, essentially never matches
+    // anything on a real scan, because no track has one yet. The second
+    // call below, once tagging/analysis has actually hashed the library,
+    // is what really resolves a saved bank — found by testing a real cold
+    // reload end-to-end rather than injecting an already-hashed track
+    // straight into the store the way this version's own closing
+    // verification had (`docs/handoff/v0.6.0.md`), which never exercised
+    // this ordering at all.
     await ctl.resolveSamplerSlots()
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
+    if (!scan.cancelled) await ctl.resolveSamplerSlots()
   }
 
   /**
@@ -324,10 +334,12 @@ export function Library() {
     })
     await applyGenreOverrides(scan)
     // Sampler slots saved from a previous session (v0.6.0) key on content
-    // hash, same as genre overrides — this is what turns a saved-but-not-
-    // yet-matched slot into a loaded one once its file is back on screen.
+    // hash, same as genre overrides — see the matching call in `runScan`
+    // for why this needs a second pass after tagging/analysis actually
+    // hashes these files.
     await ctl.resolveSamplerSlots()
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
+    if (!scan.cancelled) await ctl.resolveSamplerSlots()
   }
 
   /**

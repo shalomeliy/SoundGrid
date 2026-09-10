@@ -83,6 +83,7 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="flex flex-col gap-3">
             {group === 'hardware' && <JogMeasure />}
+            {group === 'library' && <SamplerBankIO />}
             {FIELDS.filter((f) => f.group === group).map((f) => (
               <FieldRow key={f.key} field={f} values={values} />
             ))}
@@ -291,6 +292,46 @@ function JogMeasure() {
           </span>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Save-as / open for the sampler bank (ROADMAP.md v0.6.0's "export/import").
+ * The functions already existed in `controls.ts` — `exportSamplerBank` and
+ * `importSamplerBank` — but v0.6.0 shipped with no button anywhere calling
+ * them, so the feature was unreachable even though HANDOFF.md counted it as
+ * built. Both functions already report success/failure through the notice
+ * banner, so this button is a thin trigger, same shape as `JogMeasure`
+ * above — no local result state to manage here.
+ */
+function SamplerBankIO() {
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null)
+
+  async function run(kind: 'export' | 'import') {
+    setBusy(kind)
+    try {
+      await (kind === 'export' ? ctl.exportSamplerBank() : ctl.importSamplerBank())
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+      <div className="text-xs font-semibold text-grid-text">Sampler bank</div>
+      <div className="text-2xs text-grid-dim">
+        Save the 16 sampler slots to a file, or load a bank saved earlier. Importing replaces
+        every slot.
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run('export')}>
+          {busy === 'export' ? 'Saving…' : 'Export bank'}
+        </Button>
+        <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run('import')}>
+          {busy === 'import' ? 'Loading…' : 'Import bank'}
+        </Button>
+      </div>
     </div>
   )
 }

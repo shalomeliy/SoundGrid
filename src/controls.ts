@@ -1061,23 +1061,39 @@ async function persistSamplerBank(): Promise<void> {
   }
 }
 
-/** Boot-time restore, metadata only (v0.6.0) — sets every saved slot's name/mode/gain/sync/bpm immediately so the bank looks right before the library has even scanned. The actual audio for each slot is loaded separately by `resolveSamplerSlots`, once tracks exist to match against. */
-async function restoreSamplerBankMeta(): Promise<void> {
-  const bank = await getSamplerBank()
-  if (!bank.length) return
-  const { patchSamplerSlot } = useStore.getState()
-  bank.forEach((s, i) => {
-    if (!s) return
-    patchSamplerSlot(i, {
-      trackName: s.trackName,
-      contentHash: s.contentHash,
-      bpm: s.bpm,
-      mode: s.mode,
-      gain: s.gain,
-      syncEnabled: s.syncEnabled,
-    })
-    engine.sampler.setGain(i, s.gain)
-  })
+// `initAudio()` only runs on the first user gesture (loading a deck,
+// pressing a pad, the output picker) — but the library's own boot-time
+// folder restore (`Library.tsx`) runs unattended, no gesture needed, and
+// used to call `resolveSamplerSlots` before this had ever run. Every saved
+// slot still had no `contentHash` to match against, so the whole bank came
+// back silently empty on a plain page reload: no error, no notice, exactly
+// the silent skip this project forbids. Guarded here (not at each call
+// site) so `resolveSamplerSlots` can simply require it finished, from
+// *either* trigger, without caring which one got there first.
+let samplerBankMetaRestored: Promise<void> | null = null
+
+/** Boot-time restore, metadata only (v0.6.0) — sets every saved slot's name/mode/gain/sync/bpm immediately so the bank looks right before the library has even scanned. The actual audio for each slot is loaded separately by `resolveSamplerSlots`, once tracks exist to match against. Idempotent: safe to call from both `initAudio()` and `resolveSamplerSlots()` — the second call is a no-op. */
+export function restoreSamplerBankMeta(): Promise<void> {
+  if (!samplerBankMetaRestored) {
+    samplerBankMetaRestored = (async () => {
+      const bank = await getSamplerBank()
+      if (!bank.length) return
+      const { patchSamplerSlot } = useStore.getState()
+      bank.forEach((s, i) => {
+        if (!s) return
+        patchSamplerSlot(i, {
+          trackName: s.trackName,
+          contentHash: s.contentHash,
+          bpm: s.bpm,
+          mode: s.mode,
+          gain: s.gain,
+          syncEnabled: s.syncEnabled,
+        })
+        engine.sampler.setGain(i, s.gain)
+      })
+    })()
+  }
+  return samplerBankMetaRestored
 }
 
 /**
@@ -1089,6 +1105,10 @@ async function restoreSamplerBankMeta(): Promise<void> {
  * that was simply never used.
  */
 export async function resolveSamplerSlots(): Promise<void> {
+  // Metadata (`contentHash` per slot) has to be in the store before this can
+  // match anything — see `restoreSamplerBankMeta`'s doc comment. A no-op
+  // once it has already run, from here or from `initAudio()`.
+  await restoreSamplerBankMeta()
   const { sampler, library, setNotice } = useStore.getState()
   let unresolved = 0
   for (let i = 0; i < sampler.slots.length; i++) {
