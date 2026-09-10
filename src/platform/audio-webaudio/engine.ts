@@ -1,4 +1,5 @@
 import { Deck } from '@/platform/audio-webaudio/deck'
+import { SamplerEngine } from '@/platform/audio-webaudio/sampler'
 import { bootLatencyHint } from '@/platform/settings-idb/boot-latency'
 // Bundled and transpiled by Vite, handed to addModule as a URL. The processor
 // itself imports nothing: an AudioWorkletGlobalScope has no DOM, so a single
@@ -20,9 +21,13 @@ interface AudioContextWithSink extends AudioContext {
 export class AudioEngine {
   ctx: AudioContextWithSink
   decks: Record<DeckId, Deck>
+  /** the sampler bank's playback engine (v0.6.0) — one instance, wired into the same master/cue split as the two decks. */
+  sampler: SamplerEngine
 
   private masterBus: GainNode
   private cueBus: GainNode
+  private samplerBus: GainNode
+  private samplerCueGain: GainNode
   private merger: ChannelMergerNode | null = null
   private stereoSum: GainNode | null = null
   private cueMix = 0
@@ -41,6 +46,16 @@ export class AudioEngine {
       A: new Deck(this.ctx, 'A'),
       B: new Deck(this.ctx, 'B'),
     }
+    // Sampler channel (v0.6.0): its own bus, same master/cue split as a deck
+    // (`faderGain`/`cueGain`), but connected straight to `masterBus` — the
+    // crossfader is an A/B control and has no meaning for a sample bank.
+    this.samplerBus = this.ctx.createGain()
+    this.samplerCueGain = this.ctx.createGain()
+    this.samplerCueGain.gain.value = 0
+    this.sampler = new SamplerEngine(this.ctx, this.samplerBus)
+    this.samplerBus.connect(this.masterBus)
+    this.samplerBus.connect(this.samplerCueGain)
+    this.samplerCueGain.connect(this.cueBus)
     // A worklet that dies mid-render takes its deck's audio with it, silently.
     // Route it to the same place a failed addModule goes, so the UI says so.
     for (const d of [this.decks.A, this.decks.B]) {
@@ -203,6 +218,15 @@ export class AudioEngine {
 
   setMasterVolume(v: number) {
     this.masterBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01)
+  }
+
+  setSamplerVolume(v: number) {
+    this.samplerBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.01)
+  }
+
+  /** Send the sampler channel to the headphone cue mix, same on/off shape as a deck's `setCueMonitor`. */
+  setSamplerCueMonitor(on: boolean) {
+    this.samplerCueGain.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.01)
   }
 
   setCueVolume(v: number) {

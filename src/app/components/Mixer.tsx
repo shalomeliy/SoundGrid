@@ -1,9 +1,51 @@
 import * as ctl from '@/controls'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
-import { Fader, Knob } from '@/app/components/controls'
+import { Button, Fader, HintIcon, Knob } from '@/app/components/controls'
 
 const DECK_COLOR: Record<DeckId, string> = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' }
+
+/**
+ * Sampler channel strip (v0.6.0) — volume + cue send only, no EQ/filter:
+ * the sample bank isn't a deck, and ROADMAP.md's spec for it is exactly
+ * "gain + toward master/cue". Goes straight to `masterBus`, bypassing the
+ * crossfader (an A/B-only control) — see `AudioEngine`'s constructor.
+ */
+function SamplerStrip() {
+  const channel = useStore((s) => s.sampler.channel)
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span
+        className="grid h-4 w-4 place-items-center rounded-[var(--radius-xs)] text-[9px] font-bold text-black"
+        style={{ background: 'var(--color-accent)' }}
+      >
+        S
+      </span>
+      <span className="relative inline-flex">
+        <Button
+          variant="toggle"
+          size="sm"
+          active={channel.cueMonitor}
+          tone="var(--color-live)"
+          onClick={ctl.toggleSamplerCueMonitor}
+          aria-label="Sampler to cue"
+        >
+          Cue
+        </Button>
+        <HintIcon id="mixer.samplerCue" className="absolute -right-1.5 -top-1.5" />
+      </span>
+      <Fader
+        label="Sampler"
+        value={channel.volume}
+        onChange={ctl.setSamplerChannelVolume}
+        color="var(--color-accent)"
+        length={92}
+        hint="mixer.samplerVolume"
+        format={(v) => `${Math.round(v * 100)}`}
+      />
+    </div>
+  )
+}
 
 function ChannelStrip({ deckId }: { deckId: DeckId }) {
   const ch = useStore((s) => s.mixer.channels[deckId])
@@ -64,6 +106,7 @@ export function Mixer() {
       <div className="flex items-start gap-4">
         <ChannelStrip deckId="A" />
         <ChannelStrip deckId="B" />
+        <SamplerStrip />
       </div>
 
       <div className="flex items-center gap-4 pt-0.5">

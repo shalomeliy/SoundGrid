@@ -12,9 +12,19 @@ import type {
 import type { AIToolCall } from '@/core/ports/ai'
 import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
+import { emptySamplerSlot, SAMPLER_SLOT_COUNT, type SamplerSlot } from '@/core/sampler'
 
 /** Who put a message on screen, so only they can take it down. */
-export type NoticeSource = 'load' | 'output' | 'library' | 'quantize' | 'sync' | 'cues' | 'padMode' | 'ai'
+export type NoticeSource =
+  | 'load'
+  | 'output'
+  | 'library'
+  | 'quantize'
+  | 'sync'
+  | 'cues'
+  | 'padMode'
+  | 'ai'
+  | 'sampler'
 
 /**
  * v0.5.5's natural-language control bar — see `controls.ts`'s AI section
@@ -88,6 +98,18 @@ function emptyChannel(): ChannelState {
 export interface AppState {
   decks: Record<DeckId, DeckState>
   mixer: MixerState
+
+  /**
+   * The sampler bank (v0.6.0) — one global 16-slot bank, not per-deck; both
+   * decks' pad grids reach the same slots in Sampler mode. `channel` is its
+   * own mixer strip, wired straight to master (no crossfader — that's an
+   * A/B control) and optionally the cue mix, the same split a deck's own
+   * `faderGain`/`cueGain` already give it.
+   */
+  sampler: {
+    slots: SamplerSlot[]
+    channel: { volume: number; cueMonitor: boolean }
+  }
 
   /**
    * Which deck SYNC's phase-align locks the other deck to (v0.3.0). `null`
@@ -228,6 +250,8 @@ export interface AppState {
   patchChannel: (id: DeckId, patch: Partial<ChannelState>) => void
   patchMixer: (patch: Partial<Omit<MixerState, 'channels'>>) => void
   patchAi: (patch: Partial<AiState>) => void
+  patchSamplerSlot: (index: number, patch: Partial<SamplerSlot>) => void
+  patchSamplerChannel: (patch: Partial<AppState['sampler']['channel']>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
   setMidi: (patch: Partial<AppState['midi']>) => void
@@ -257,6 +281,10 @@ export const useStore = create<AppState>((set) => ({
     cueMix: 0.5,
     cueVolume: 0.7,
     channels: { A: emptyChannel(), B: emptyChannel() },
+  },
+  sampler: {
+    slots: Array.from({ length: SAMPLER_SLOT_COUNT }, emptySamplerSlot),
+    channel: { volume: 0.85, cueMonitor: false },
   },
   library: {
     folderName: null,
@@ -301,6 +329,15 @@ export const useStore = create<AppState>((set) => ({
     })),
   patchMixer: (patch) => set((s) => ({ mixer: { ...s.mixer, ...patch } })),
   patchAi: (patch) => set((s) => ({ ai: { ...s.ai, ...patch } })),
+  patchSamplerSlot: (index, patch) =>
+    set((s) => ({
+      sampler: {
+        ...s.sampler,
+        slots: s.sampler.slots.map((slot, i) => (i === index ? { ...slot, ...patch } : slot)),
+      },
+    })),
+  patchSamplerChannel: (patch) =>
+    set((s) => ({ sampler: { ...s.sampler, channel: { ...s.sampler.channel, ...patch } } })),
   set: (key, value) => set({ [key]: value } as Partial<AppState>),
   setLibrary: (patch) => set((s) => ({ library: { ...s.library, ...patch } })),
   setMidi: (patch) => set((s) => ({ midi: { ...s.midi, ...patch } })),

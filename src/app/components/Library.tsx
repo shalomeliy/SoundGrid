@@ -278,6 +278,10 @@ export function Library() {
       })
     }
     await applyGenreOverrides(scan)
+    // Sampler slots saved from a previous session (v0.6.0) key on content
+    // hash, same as genre overrides — this is what turns a saved-but-not-
+    // yet-matched slot into a loaded one once its file is back on screen.
+    await ctl.resolveSamplerSlots()
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
 
@@ -310,6 +314,10 @@ export function Library() {
       scanMsg: `+${fresh.length} · reading tags…`,
     })
     await applyGenreOverrides(scan)
+    // Sampler slots saved from a previous session (v0.6.0) key on content
+    // hash, same as genre overrides — this is what turns a saved-but-not-
+    // yet-matched slot into a loaded one once its file is back on screen.
+    await ctl.resolveSamplerSlots()
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
   }
 

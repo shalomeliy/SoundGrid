@@ -79,10 +79,10 @@ export interface BeatGrid {
 /**
  * What the pad grid does right now (v0.5.0). Per-deck — each deck's pad
  * grid is a physically independent surface on the FLX4, so the two decks
- * can legitimately sit in different modes at once. `sampler` is a stub in
- * this version (`ROADMAP.md` v0.6.0 owns the real sampler engine); every
- * pad in it shows a visible "not built yet" notice rather than doing
- * nothing silently.
+ * can legitimately sit in different modes at once. `sampler` (real engine,
+ * v0.6.0 — `core/sampler.ts`) reaches one *global* 16-slot bank shared by
+ * both decks, not a per-deck bank: 8 pads show slots 0-7, the existing
+ * SHIFT layer shows 8-15.
  */
 export type PadMode = 'hotcue' | 'loop' | 'beatJump' | 'sampler'
 

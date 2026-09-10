@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import * as ctl from '@/controls'
 import { HOT_CUE_COLORS } from '@/core/constants'
 import { LOOP_BEATS_STEPS } from '@/core/padmodes'
 import { customTextOf } from '@/core/hotcues'
-import { Button, HintIcon, Pill } from '@/app/components/controls'
+import type { SamplerMode, SamplerSlot } from '@/core/sampler'
+import { Button, HintIcon, Knob, Pill } from '@/app/components/controls'
 import { useStore } from '@/app/state/store'
 import type { DeckId, HotCue, PadMode } from '@/core/types'
+
+/** Same drag payload `Library.tsx` sets and `Deck.tsx`'s own drop zone reads — a track dropped on a sampler pad loads it the same way one dropped on a deck does. */
+const TRACK_MIME = 'application/x-soundgrid-track'
 
 /** A saved mix-in point (`saveMixEntryHotCue`, v0.4.7) — pressing it re-runs the automatic transition, not just a jump. `kind` (v0.5.3), never the label: a manually renamed plain pad also carries a non-ordinal label now, on purpose. */
 const isMixEntry = (cue: HotCue): boolean => cue.kind === 'mixEntry'
@@ -87,7 +91,7 @@ export function PadGrid({ deckId, hotCues, padMode, color }: Props) {
         {padMode === 'hotcue' && <HotCuePads deckId={deckId} hotCues={hotCues} />}
         {padMode === 'loop' && <LoopPads deckId={deckId} shiftHeld={shiftHeld} />}
         {padMode === 'beatJump' && <BeatJumpPads deckId={deckId} shiftHeld={shiftHeld} />}
-        {padMode === 'sampler' && <SamplerPadsStub deckId={deckId} />}
+        {padMode === 'sampler' && <SamplerPads deckId={deckId} shiftHeld={shiftHeld} />}
       </div>
     </div>
   )
@@ -309,30 +313,194 @@ function BeatJumpPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolea
   )
 }
 
+const SAMPLER_MODE_BADGE: Record<SamplerMode, string> = { oneShot: '1×', loop: '⟲', gated: '◉' }
+
 /**
- * Sampler pads (v0.5.0) — a visible stub. The real sampler engine is
- * `ROADMAP.md`'s v0.6.0; every pad here is grayed out and pressing one
- * shows the "not built yet" notice from `ctl.pressPad` rather than doing
- * nothing silently, per this project's central rule.
+ * Sampler pads (v0.6.0) — one *global* 16-slot bank (`core/sampler.ts`),
+ * not per-deck: both decks' grids reach the same slots. 8 pads show slots
+ * 0-7; the existing SHIFT layer (v0.5.0) shows 8-15, the same modifier
+ * Loop/Beat Jump already use for their own alternate layer, so no new
+ * hardware binding is needed to reach all 16 from an 8-pad controller.
+ *
+ * Loading is drag-and-drop from the library (`Library.tsx`'s rows are
+ * already draggable for `Deck.tsx`'s drop zone — this reads the same
+ * payload). Pressing triggers per the slot's mode (`ctl.pressPad`, which
+ * resolves the absolute slot index and calls into `controls.ts`).
+ * Hovering a pad opens the compact editor row above the grid — mode, gain,
+ * sync and clear all live there rather than crammed into a 40px pad, the
+ * same reasoning `HotCuePads`' inline rename swap keeps controls in place
+ * rather than opening a separate panel.
  */
-function SamplerPadsStub({ deckId }: { deckId: DeckId }) {
+function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean }) {
+  const slots = useStore((s) => s.sampler.slots)
+  const [hovered, setHovered] = useState<number | null>(null)
+  const [dragOver, setDragOver] = useState<number | null>(null)
+  const base = shiftHeld ? 8 : 0
+
+  // The editor row sits *above* the grid, not inside each pad, so the mouse
+  // has to cross from one to the other to reach its buttons — a bare
+  // onMouseLeave on the pad closes the row before that crossing finishes.
+  // A short close delay, cancelled by entering either the pad or the row,
+  // is the standard fix (a "hover intent"); found by actually driving the
+  // UI in a browser, not by looking at a static screenshot of it.
+  const closeTimer = useRef(0)
+  const openEditor = (index: number) => {
+    window.clearTimeout(closeTimer.current)
+    setHovered(index)
+  }
+  const scheduleClose = () => {
+    closeTimer.current = window.setTimeout(() => setHovered(null), 150)
+  }
+
   return (
     <>
-      {Array.from({ length: 8 }, (_, i) => (
-        <button
-          key={i}
-          onClick={() => ctl.pressPad(deckId, i)}
-          aria-label={`Sampler pad ${i + 1} — not built yet`}
-          className={padClass}
-          style={{
-            background: 'var(--color-surface-1)',
-            color: 'var(--color-grid-dim)',
-            boxShadow: 'inset 0 0 0 1px var(--color-hairline)',
-          }}
-        >
-          <span className="block truncate px-0.5">—</span>
-        </button>
-      ))}
+      <div
+        onMouseEnter={() => window.clearTimeout(closeTimer.current)}
+        onMouseLeave={scheduleClose}
+        className="col-span-4 flex h-9 items-center gap-1.5 rounded-[var(--radius-sm)] bg-surface-0/60 px-1.5 shadow-[inset_0_0_0_1px_var(--color-hairline)]"
+      >
+        {hovered != null ? (
+          <SamplerSlotEditor index={hovered} slot={slots[hovered]} />
+        ) : (
+          <span className="text-2xs text-grid-dim">Drag a track here to load it. Hover a pad to edit it.</span>
+        )}
+      </div>
+      {Array.from({ length: 8 }, (_, i) => {
+        const index = base + i
+        const slot = slots[index]
+        const occupied = slot.trackId != null
+        // On, but nothing to lock to — shown on the pad itself rather than
+        // a notice on every press, per this project's central rule: a
+        // degraded state is surfaced, not swallowed, but a per-trigger
+        // notice on a real-time percussive control would just be noise.
+        const syncStuck = slot.syncEnabled && !slot.bpm
+        return (
+          <button
+            key={i}
+            onMouseEnter={() => openEditor(index)}
+            onMouseLeave={scheduleClose}
+            onPointerDown={() => {
+              const release = ctl.pressPad(deckId, i)
+              const up = () => {
+                release()
+                window.removeEventListener('pointerup', up)
+              }
+              window.addEventListener('pointerup', up)
+            }}
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes(TRACK_MIME)) {
+                e.preventDefault()
+                setDragOver(index)
+              }
+            }}
+            onDragLeave={() => setDragOver((d) => (d === index ? null : d))}
+            onDrop={(e) => {
+              if (!e.dataTransfer.types.includes(TRACK_MIME)) return
+              e.preventDefault()
+              setDragOver(null)
+              const id = e.dataTransfer.getData(TRACK_MIME)
+              const track = useStore.getState().library.tracks.find((t) => t.id === id)
+              if (track) void ctl.loadSamplerSlot(index, track)
+            }}
+            aria-label={
+              occupied
+                ? `Sampler slot ${index + 1}: ${slot.trackName}, ${slot.mode} mode`
+                : `Sampler slot ${index + 1} — empty, drag a track here`
+            }
+            className={padClass}
+            style={
+              dragOver === index
+                ? { background: 'var(--color-surface-3)', boxShadow: `inset 0 0 0 2px var(--color-accent)` }
+                : slot.playing
+                  ? { background: 'var(--color-accent)', color: '#000' }
+                  : occupied
+                    ? {
+                        background: 'var(--color-surface-2)',
+                        color: 'var(--color-grid-text)',
+                        boxShadow: `inset 0 0 0 1px ${syncStuck ? 'var(--color-warn)' : 'var(--color-hairline-strong)'}`,
+                      }
+                    : {
+                        background: 'var(--color-surface-1)',
+                        color: 'var(--color-grid-dim)',
+                        boxShadow: 'inset 0 0 0 1px var(--color-hairline)',
+                      }
+            }
+          >
+            {occupied && (
+              <span className="absolute left-1 top-1 text-[9px] font-bold leading-none opacity-70">
+                {SAMPLER_MODE_BADGE[slot.mode]}
+              </span>
+            )}
+            <span className="block truncate px-0.5">{occupied ? slot.trackName : index + 1}</span>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+/** The hover-revealed editor for one sampler slot — mode, gain, sync, clear. Real widgets (`Button`/`Knob`) reused from the mixer rather than squeezed into the pad itself. */
+function SamplerSlotEditor({ index, slot }: { index: number; slot: SamplerSlot }) {
+  const modes: { mode: SamplerMode; label: string }[] = [
+    { mode: 'oneShot', label: '1×' },
+    { mode: 'loop', label: 'Loop' },
+    { mode: 'gated', label: 'Gate' },
+  ]
+  return (
+    <>
+      {/* Compact on purpose — the pad being hovered already shows the full
+          name, right next to this row; repeating it here left no room for
+          the controls at the owner's actual 1536px width. */}
+      <span className="shrink-0 text-2xs font-semibold text-grid-dim">
+        {slot.trackId ? `#${index + 1}` : `#${index + 1} — empty`}
+      </span>
+      {slot.trackId ? (
+        <>
+          <div className="flex gap-0.5">
+            {modes.map(({ mode, label }) => (
+              <Button
+                key={mode}
+                variant="toggle"
+                size="sm"
+                active={slot.mode === mode}
+                onClick={() => ctl.setSamplerSlotMode(index, mode)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <Knob
+            label="Gain"
+            size={22}
+            min={0}
+            max={1}
+            value={slot.gain}
+            tone="var(--color-accent)"
+            onChange={(v) => ctl.setSamplerGain(index, v)}
+            format={(v) => `${Math.round(v * 100)}`}
+          />
+          <Button
+            variant="toggle"
+            size="sm"
+            active={slot.syncEnabled}
+            tone="var(--color-live)"
+            onClick={() => ctl.setSamplerSyncEnabled(index, !slot.syncEnabled)}
+            aria-label={`Sync sampler slot ${index + 1} to master BPM`}
+            title={
+              slot.syncEnabled && !slot.bpm
+                ? "On, but this sample has no BPM tag to sync from"
+                : "Match this slot's playback rate to the master deck's BPM"
+            }
+          >
+            Sync
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => ctl.clearSamplerSlot(index)}>
+            Clear
+          </Button>
+        </>
+      ) : (
+        <span className="text-2xs text-grid-dim">Drag a track from the library onto this pad to load it.</span>
+      )}
     </>
   )
 }

@@ -49,7 +49,7 @@ const HINT_BASE = {
   },
   'deck.waveform': { text: 'Click anywhere on the waveform to jump the playhead there.' },
   'deck.padGrid': {
-    text: 'The 8 pads. What they do depends on the mode selected above: Hot Cue (set/jump, × or shift-click clears, drag to move, alt-click to rename), Loop (start/stop a loop of that length, hold SHIFT for a momentary Loop Roll), Beat Jump (jump forward, or back with SHIFT), or Sampler (not built yet).',
+    text: 'The 8 pads. What they do depends on the mode selected above: Hot Cue (set/jump, × or shift-click clears, drag to move, alt-click to rename), Loop (start/stop a loop of that length, hold SHIFT for a momentary Loop Roll), Beat Jump (jump forward, or back with SHIFT), or Sampler (drag a track from the library onto a pad to load it, press to trigger, hold SHIFT for the other 8 slots — hover a pad for its mode/gain/sync/clear controls).',
     action: 'hotcue',
   },
   'deck.padMode': {
@@ -71,6 +71,10 @@ const HINT_BASE = {
   'mixer.cueVolume': { text: 'Headphone cue level.', action: 'cueVolume' },
   'mixer.cueMix': { text: 'Blend between the cue mix and the main mix in your headphones.', action: 'cueMix' },
   'mixer.crossfader': { text: 'Blends the output between deck A and deck B.', action: 'crossfader' },
+  'mixer.samplerVolume': {
+    text: 'The sampler bank’s overall level — separate from each slot’s own gain. Goes straight to master, not through the crossfader.',
+  },
+  'mixer.samplerCue': { text: 'Send the sampler channel to the headphone cue mix.' },
 
   // — beat grid panel —
   'beatgrid.nudge': { text: 'Shift the whole grid earlier or later without changing its BPM.' },

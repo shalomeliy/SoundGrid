@@ -31,6 +31,14 @@ import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { isOrdinalLabel, moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import { AI_TOOL_CATALOG, validateToolCall } from '@/core/ai/toolCatalog'
+import { isSamplerMode, samplerSyncRate, SAMPLER_SLOT_COUNT, type SamplerMode } from '@/core/sampler'
+import {
+  exportSamplerBankToFile,
+  getSamplerBank,
+  importSamplerBankFromFile,
+  saveSamplerBank,
+  type StoredSamplerBank,
+} from '@/platform/sampler-idb/store'
 import { useStore } from '@/app/state/store'
 import type { AIMessage, AIToolCall } from '@/core/ports/ai'
 import type { BeatGrid, DeckId, PadMode, Track } from '@/core/types'
@@ -91,8 +99,14 @@ export async function initAudio() {
       const ch = state.mixer.channels[id]
       engine.decks[id].setVolume(ch.volume)
     })
+    engine.setSamplerVolume(state.sampler.channel.volume)
+    engine.setSamplerCueMonitor(state.sampler.channel.cueMonitor)
+    engine.sampler.onSlotEnded = (index) => {
+      useStore.getState().patchSamplerSlot(index, { playing: false })
+    }
     useStore.setState({ audioReady: true })
     syncScratchState()
+    void restoreSamplerBankMeta()
   }
 }
 
@@ -988,9 +1002,12 @@ function pressBeatJumpPad(deckId: DeckId, beats: number, backward: boolean) {
  * advance which pad presses are hold gestures and which are plain clicks.
  */
 export function pressPad(deckId: DeckId, index: number): () => void {
-  if (!engine.decks[deckId].hasTrack) return () => {}
-  const { decks, shiftHeld, setNotice } = useStore.getState()
+  const { decks, shiftHeld } = useStore.getState()
   const mode = decks[deckId].padMode
+  // Sampler is the one mode not gated on this deck holding a track — it
+  // reaches the global bank (`core/sampler.ts`), not this deck's own player.
+  if (mode === 'sampler') return pressSamplerPad(index + (shiftHeld ? 8 : 0))
+  if (!engine.decks[deckId].hasTrack) return () => {}
   const beats = LOOP_BEATS_STEPS[index] ?? 1
   switch (mode) {
     case 'hotcue':
@@ -1003,15 +1020,353 @@ export function pressPad(deckId: DeckId, index: number): () => void {
     case 'beatJump':
       pressBeatJumpPad(deckId, beats, shiftHeld)
       return () => {}
-    case 'sampler':
-      setNotice({
-        text: `Sampler isn't built yet — coming in v0.6.0. Pad ${index + 1} did nothing.`,
-        tone: 'warn',
-        source: 'padMode',
-      })
-      return () => {}
     default:
       return () => {}
+  }
+}
+
+// ————————————————————————————————————————————————————————————————
+// Sampler bank (v0.6.0) — one global 16-slot bank, reached from either
+// deck's pad grid in Sampler mode (`pressPad` above resolves the physical
+// pad + SHIFT into an absolute slot index and calls `pressSamplerPad`).
+// Loading is drag-and-drop from the library (`PadGrid.tsx`, same
+// `application/x-soundgrid-track` payload `Deck.tsx`'s own drop zone
+// reads) — recording a slot from the master bus is ROADMAP.md's other
+// v0.6.0 load path and is deliberately not built here; see HANDOFF.md.
+// ————————————————————————————————————————————————————————————————
+
+let persistBankTimer = 0
+/** Debounced — a gain knob drag fires many times a second, and a write per tick would hammer IndexedDB for no benefit over the value it settles on. */
+function schedulePersistSamplerBank() {
+  window.clearTimeout(persistBankTimer)
+  persistBankTimer = window.setTimeout(() => void persistSamplerBank(), 400)
+}
+
+async function persistSamplerBank(): Promise<void> {
+  const { sampler, setNotice } = useStore.getState()
+  const bank: StoredSamplerBank = sampler.slots.map((s) =>
+    s.contentHash
+      ? { contentHash: s.contentHash, trackName: s.trackName ?? '', bpm: s.bpm, mode: s.mode, gain: s.gain, syncEnabled: s.syncEnabled }
+      : null,
+  )
+  try {
+    await saveSamplerBank(bank)
+  } catch (err) {
+    console.error('sampler bank save failed', err)
+    setNotice({
+      text: `Sampler bank didn't save — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+  }
+}
+
+/** Boot-time restore, metadata only (v0.6.0) — sets every saved slot's name/mode/gain/sync/bpm immediately so the bank looks right before the library has even scanned. The actual audio for each slot is loaded separately by `resolveSamplerSlots`, once tracks exist to match against. */
+async function restoreSamplerBankMeta(): Promise<void> {
+  const bank = await getSamplerBank()
+  if (!bank.length) return
+  const { patchSamplerSlot } = useStore.getState()
+  bank.forEach((s, i) => {
+    if (!s) return
+    patchSamplerSlot(i, {
+      trackName: s.trackName,
+      contentHash: s.contentHash,
+      bpm: s.bpm,
+      mode: s.mode,
+      gain: s.gain,
+      syncEnabled: s.syncEnabled,
+    })
+    engine.sampler.setGain(i, s.gain)
+  })
+}
+
+/**
+ * Re-resolves every saved-but-not-yet-loaded slot (`contentHash` set,
+ * `trackId` still null) against the tracks currently on screen. Called after
+ * every library scan (`Library.tsx`), the same "post-scan enrichment pass"
+ * shape `applyGenreOverrides` already uses. A slot that stays unresolved
+ * after this is named in a notice, never left to look like an empty slot
+ * that was simply never used.
+ */
+export async function resolveSamplerSlots(): Promise<void> {
+  const { sampler, library, setNotice } = useStore.getState()
+  let unresolved = 0
+  for (let i = 0; i < sampler.slots.length; i++) {
+    const slot = sampler.slots[i]
+    if (slot.trackId || !slot.contentHash) continue
+    const track = library.tracks.find((t) => t.contentHash === slot.contentHash)
+    if (!track) {
+      unresolved++
+      continue
+    }
+    await loadSamplerSlotAudio(i, track, { keepSavedSettings: true })
+  }
+  if (unresolved > 0) {
+    setNotice({
+      text: `${unresolved} sampler slot${unresolved === 1 ? '' : 's'} from your saved bank couldn't be matched to a file in this library — they'll fill in once the right folder is scanned.`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+  }
+}
+
+/** Decode + load one slot's audio, shared by a fresh drag-drop load and a saved-bank resolve. `keepSavedSettings` is only true from `resolveSamplerSlots`: the saved mode/gain/sync/bpm are already on the slot from `restoreSamplerBankMeta` and must not be clobbered by the freshly re-scanned track's own tag values. */
+async function loadSamplerSlotAudio(
+  index: number,
+  track: Track,
+  opts: { keepSavedSettings: boolean } = { keepSavedSettings: false },
+): Promise<void> {
+  await initAudio()
+  const { patchSamplerSlot, setNotice, clearNotice } = useStore.getState()
+  clearNotice('sampler')
+  let buffer: AudioBuffer
+  let contentHash: string | undefined
+  try {
+    const data = await readTrackData(track)
+    // Hashed before decode — `decodeAudioData` neuters its input buffer per
+    // spec, same ordering `loadTrackToDeck` uses and for the same reason.
+    try {
+      contentHash = await hashBytes(data)
+    } catch (hashErr) {
+      console.error('sampler slot hash failed', hashErr)
+    }
+    buffer = await engine.decode(data)
+  } catch (err) {
+    console.error('sampler slot load failed', err)
+    setNotice({
+      text: `"${track.name}" didn't load into sampler slot ${index + 1} — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+    return
+  }
+  engine.sampler.loadSlot(index, buffer)
+  // A fresh `GainNode` defaults to 1.0, not this slot's own fader value —
+  // without this, a brand-new drag-and-drop load plays at full volume while
+  // the on-screen knob still reads its actual (often lower) value, until the
+  // owner happens to nudge it once. Re-applying the slot's current gain
+  // (whatever it already was — `clearSamplerSlot` deliberately preserves it
+  // across a reload) is what keeps the engine and the store in agreement.
+  engine.sampler.setGain(index, useStore.getState().sampler.slots[index].gain)
+  patchSamplerSlot(index, {
+    trackId: track.id,
+    trackName: track.title ?? track.name,
+    contentHash,
+    ...(opts.keepSavedSettings ? {} : { bpm: track.bpm ?? undefined }),
+    playing: false,
+  })
+  if (!opts.keepSavedSettings) schedulePersistSamplerBank()
+}
+
+/** Drag a library track onto a sampler pad — the only load path this version builds (see the section banner above). Replaces whatever was in the slot, same as dropping a track onto a deck. */
+export async function loadSamplerSlot(index: number, track: Track): Promise<void> {
+  await loadSamplerSlotAudio(index, track)
+}
+
+/** Empties a slot. The slot's own gain/mode/sync survive — a fader position on real gear doesn't reset when you eject the sample. */
+export function clearSamplerSlot(index: number) {
+  engine.sampler.unloadSlot(index)
+  useStore.getState().patchSamplerSlot(index, {
+    trackId: null,
+    trackName: null,
+    contentHash: undefined,
+    bpm: undefined,
+    playing: false,
+  })
+  schedulePersistSamplerBank()
+}
+
+export function setSamplerSlotMode(index: number, mode: SamplerMode) {
+  const { sampler, patchSamplerSlot, setNotice } = useStore.getState()
+  const slot = sampler.slots[index]
+  if (slot.mode === mode) return
+  // Leaving Loop while it's playing must stop it audibly and say so — the
+  // same rule `setPadMode` already applies when a deck leaves Loop mode
+  // with a loop running: a mode switch that keeps sounding behind a grid
+  // that no longer shows it is exactly the silent-skip this project forbids.
+  if (slot.mode === 'loop' && slot.playing) {
+    engine.sampler.stopVoice(index)
+    setNotice({
+      text: `Sampler slot ${index + 1} stopped — switched away from Loop.`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+    patchSamplerSlot(index, { mode, playing: false })
+  } else {
+    patchSamplerSlot(index, { mode })
+  }
+  schedulePersistSamplerBank()
+}
+
+export function setSamplerGain(index: number, v: number) {
+  engine.sampler.setGain(index, v)
+  useStore.getState().patchSamplerSlot(index, { gain: v })
+  schedulePersistSamplerBank()
+}
+
+/**
+ * Toggling Sync must reach whatever is already sounding, not just the next
+ * press — turning it off mid-playback and leaving the voice at its last
+ * synced rate would directly contradict `samplerSyncRate`'s own contract
+ * ("a slot that cannot compute a real ratio plays at its own natural
+ * speed"), and turning it on would otherwise only take effect on the next
+ * trigger.
+ */
+export function setSamplerSyncEnabled(index: number, on: boolean) {
+  const { sampler, decks, masterDeckId, patchSamplerSlot } = useStore.getState()
+  const slot = sampler.slots[index]
+  patchSamplerSlot(index, { syncEnabled: on })
+  if (slot.playing) {
+    const master = masterDeckId ? decks[masterDeckId] : null
+    const masterBpm = master?.bpm ? master.bpm * tempoToRate(master.tempo, cfg.tempoRange) : null
+    engine.sampler.setRate(index, samplerSyncRate(masterBpm, slot.bpm, on))
+    if (on && slot.mode === 'loop') ensureSyncLoop()
+  }
+  schedulePersistSamplerBank()
+}
+
+/**
+ * The choke-point for every sampler pad press, `index` already resolved to
+ * an absolute 0-15 slot by `pressPad`. Always returns a release closure —
+ * a no-op for One-shot/Loop, and Gated's actual stop — same shape as
+ * `pressPad`'s own contract for Loop Roll.
+ */
+function pressSamplerPad(index: number): () => void {
+  const { sampler, decks, masterDeckId, setNotice } = useStore.getState()
+  const slot = sampler.slots[index]
+  // `slot.trackId` and the engine actually holding a buffer for this index
+  // are set together, in `loadSamplerSlotAudio`, and nowhere else — but
+  // trusting that invariant here rather than checking it would let the pad
+  // light up "playing" while producing no sound if it were ever violated,
+  // exactly the visible-state-doesn't-match-reality failure this project's
+  // central rule forbids.
+  if (!slot.trackId || !engine.sampler.hasBuffer(index)) {
+    setNotice({
+      text: `Sampler slot ${index + 1} is empty — drag a track from the library onto it.`,
+      tone: 'info',
+      source: 'sampler',
+    })
+    return () => {}
+  }
+  const master = masterDeckId ? decks[masterDeckId] : null
+  const masterBpm = master?.bpm ? master.bpm * tempoToRate(master.tempo, cfg.tempoRange) : null
+  const rate = samplerSyncRate(masterBpm, slot.bpm, slot.syncEnabled)
+
+  switch (slot.mode) {
+    case 'oneShot':
+      engine.sampler.trigger(index, false, rate)
+      useStore.getState().patchSamplerSlot(index, { playing: true })
+      return () => {}
+    case 'loop':
+      if (slot.playing) {
+        engine.sampler.stopVoice(index)
+        useStore.getState().patchSamplerSlot(index, { playing: false })
+      } else {
+        engine.sampler.trigger(index, true, rate)
+        useStore.getState().patchSamplerSlot(index, { playing: true })
+        if (slot.syncEnabled) ensureSyncLoop()
+      }
+      return () => {}
+    case 'gated':
+      engine.sampler.trigger(index, false, rate)
+      useStore.getState().patchSamplerSlot(index, { playing: true })
+      return () => {
+        engine.sampler.stopVoice(index)
+        useStore.getState().patchSamplerSlot(index, { playing: false })
+      }
+    default:
+      return () => {}
+  }
+}
+
+export function setSamplerChannelVolume(v: number) {
+  engine.setSamplerVolume(v)
+  useStore.getState().patchSamplerChannel({ volume: v })
+}
+
+export function toggleSamplerCueMonitor() {
+  const on = !useStore.getState().sampler.channel.cueMonitor
+  engine.setSamplerCueMonitor(on)
+  useStore.getState().patchSamplerChannel({ cueMonitor: on })
+}
+
+/** Save-as (ROADMAP.md v0.6.0's "export bank"). `'cancelled'` (the owner closed the dialog) is silent on purpose — everything else, including "this browser can't do this", is a notice. */
+export async function exportSamplerBank(): Promise<void> {
+  const { sampler, setNotice } = useStore.getState()
+  const bank: StoredSamplerBank = sampler.slots.map((s) =>
+    s.contentHash
+      ? { contentHash: s.contentHash, trackName: s.trackName ?? '', bpm: s.bpm, mode: s.mode, gain: s.gain, syncEnabled: s.syncEnabled }
+      : null,
+  )
+  try {
+    const result = await exportSamplerBankToFile(bank)
+    if (result === 'ok') {
+      setNotice({ text: 'Sampler bank saved.', tone: 'info', source: 'sampler' })
+    }
+  } catch (err) {
+    console.error('sampler bank export failed', err)
+    setNotice({
+      text: `Sampler bank export failed — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+  }
+}
+
+/** Import (ROADMAP.md v0.6.0's "import bank") — replaces every slot's settings, then resolves what it can against the current library exactly like a fresh boot restore. */
+export async function importSamplerBank(): Promise<void> {
+  const { setNotice, patchSamplerSlot } = useStore.getState()
+  try {
+    const bank = await importSamplerBankFromFile()
+    if (bank === 'cancelled') return
+    // Clear every slot first — an imported bank with fewer than 16 saved
+    // entries must not leave the current bank's leftovers in the gaps.
+    for (let i = 0; i < SAMPLER_SLOT_COUNT; i++) clearSamplerSlot(i)
+    // A hand-edited or corrupted file can carry a `mode` string that isn't
+    // one of the three real ones — applying it as-is would make a pad that
+    // looks loaded (has a `contentHash`) silently do nothing on press
+    // (`pressSamplerPad`'s `switch` falls through its `default`), exactly
+    // the failure this project's central rule forbids. Bad entries are
+    // dropped, not guessed at, and counted rather than swallowed.
+    let invalid = 0
+    // Sanitized before it's saved, not just before it's applied — otherwise
+    // a bad entry survives round-trip through IndexedDB and comes back
+    // exactly as invalid on the next boot restore.
+    const sanitized: StoredSamplerBank = bank.map((s, i) => {
+      if (!s) return null
+      if (!isSamplerMode(s.mode) || typeof s.gain !== 'number' || !isFinite(s.gain)) {
+        invalid++
+        return null
+      }
+      const gain = Math.max(0, Math.min(1, s.gain))
+      patchSamplerSlot(i, {
+        trackName: s.trackName,
+        contentHash: s.contentHash,
+        bpm: s.bpm,
+        mode: s.mode,
+        gain,
+        syncEnabled: s.syncEnabled === true,
+      })
+      engine.sampler.setGain(i, gain)
+      return { ...s, gain, syncEnabled: s.syncEnabled === true }
+    })
+    await saveSamplerBank(sanitized)
+    await resolveSamplerSlots()
+    setNotice({
+      text:
+        invalid > 0
+          ? `Sampler bank imported — ${invalid} slot${invalid === 1 ? '' : 's'} in the file had invalid data and were left empty.`
+          : 'Sampler bank imported.',
+      tone: invalid > 0 ? 'warn' : 'info',
+      source: 'sampler',
+    })
+  } catch (err) {
+    console.error('sampler bank import failed', err)
+    setNotice({
+      text: `Sampler bank import failed — ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'sampler',
+    })
   }
 }
 
@@ -1204,6 +1559,28 @@ function ensureSyncLoop() {
     if (t - last < SYNC_LOOP_INTERVAL_SEC) return
     last = t
     runSyncCorrection()
+    updateSyncedSamplerLoops()
+  })
+}
+
+/**
+ * Sampler tempo follow (v0.6.0): a playing, sync-enabled Loop-mode slot's
+ * rate is recomputed against the master deck's *current* effective BPM
+ * (tag bpm × tempo fader) on the same tick `runSyncCorrection` already runs
+ * on — so nudging the master's tempo fader after a sampler loop started
+ * keeps it matched, the "stays in sync with a playing deck" bar ROADMAP.md
+ * sets for v0.6.0. No phase alignment: a one-shot sample has no beat grid to
+ * lock a downbeat against, only a tempo to match.
+ */
+function updateSyncedSamplerLoops() {
+  const { masterDeckId, decks, sampler } = useStore.getState()
+  if (!masterDeckId) return
+  const master = decks[masterDeckId]
+  const masterBpm = master.bpm ? master.bpm * tempoToRate(master.tempo, cfg.tempoRange) : null
+  if (!masterBpm) return
+  sampler.slots.forEach((slot, i) => {
+    if (slot.mode !== 'loop' || !slot.syncEnabled || !slot.playing || !slot.bpm) return
+    engine.sampler.setRate(i, samplerSyncRate(masterBpm, slot.bpm, true))
   })
 }
 
