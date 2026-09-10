@@ -425,6 +425,16 @@ export function Library() {
             return override ? { ...merged, genre: override } : merged
           }),
         })
+        // A saved sampler slot's track can be anywhere in a real library —
+        // waiting for the WHOLE analysis queue to finish (the call after
+        // `Promise.all` below) means a slot near the end of a large, real
+        // library stays visibly empty for as long as the rest of the scan
+        // takes, which reads exactly like "it didn't come back" even though
+        // it eventually would. Re-checking after every patch (the same
+        // "resolve the moment this pass gives it an identity" shape the hash
+        // override lookup above already uses) resolves it the instant ITS
+        // track gets hashed, not the library's last one.
+        if ([...patch.values()].some((p) => p.contentHash)) void ctl.resolveSamplerSlots()
       },
       { signal: scan },
     )

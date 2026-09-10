@@ -370,6 +370,17 @@ export async function queueLibraryAnalysis(
         const file = await track.handle.getFile()
         const data = await file.arrayBuffer()
         const contentHash = await hashBytes(data)
+        // Surfaced the moment the (comparatively cheap) hash is known, not
+        // bundled with the 'analyzed' patch below — decode+analyze on a
+        // cache miss is the expensive part, and anything keyed on
+        // `contentHash` alone (a saved sampler slot, a genre override, a hot
+        // cue) can resolve now instead of waiting behind it. Found by
+        // testing a real library-sized reload end-to-end: bundling the two
+        // meant a saved sampler slot near the end of a real library stayed
+        // "not yet resolved" for as long as the whole queue's decode work
+        // took, which reads exactly like "it never came back".
+        if (opts.signal?.cancelled) return
+        onUpdate(new Map([[track.id, { contentHash }]]), { done, total, failed })
         let analysis = await analysisCache.get(contentHash)
         if (!analysis) {
           const buffer = await engine.decode(data)

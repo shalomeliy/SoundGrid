@@ -338,11 +338,18 @@ const SAMPLER_MODE_BADGE: Record<SamplerMode, string> = { oneShot: '1×', loop: 
  * sync and clear all live there rather than crammed into a 40px pad, the
  * same reasoning `HotCuePads`' inline rename swap keeps controls in place
  * rather than opening a separate panel.
+ *
+ * `Alt`+click (owner's own request, same gesture as `HotCuePads`) opens a
+ * rename box in place of the pad's label — `ctl.renameSamplerSlot`. Guarded
+ * on `onPointerDown` too: triggering is pointer-down-based here (so Gated
+ * mode can release on pointer-up), and without the guard an Alt+click would
+ * both rename *and* fire the sample for the instant before the box opens.
  */
 function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean }) {
   const slots = useStore((s) => s.sampler.slots)
   const [hovered, setHovered] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
+  const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null)
   const base = shiftHeld ? 8 : 0
 
   // The editor row sits *above* the grid, not inside each pad, so the mouse
@@ -382,18 +389,48 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
         // degraded state is surfaced, not swallowed, but a per-trigger
         // notice on a real-time percussive control would just be noise.
         const syncStuck = slot.syncEnabled && !slot.bpm
+
+        if (renaming?.index === index) {
+          return (
+            <div key={i} className={padClass} style={{ background: 'var(--color-surface-2)', color: 'var(--color-grid-text)', boxShadow: 'inset 0 0 0 1px var(--color-accent)' }}>
+              <input
+                autoFocus
+                value={renaming.text}
+                aria-label={`Rename sampler slot ${index + 1}`}
+                onChange={(e) => setRenaming({ index, text: e.target.value })}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') {
+                    ctl.renameSamplerSlot(index, renaming.text)
+                    setRenaming(null)
+                  } else if (e.key === 'Escape') {
+                    setRenaming(null)
+                  }
+                }}
+                onBlur={() => setRenaming(null)}
+                className="block w-full truncate bg-transparent px-0.5 text-center outline-none"
+              />
+            </div>
+          )
+        }
+
         return (
           <button
             key={i}
             onMouseEnter={() => openEditor(index)}
             onMouseLeave={scheduleClose}
-            onPointerDown={() => {
+            onPointerDown={(e) => {
+              // Alt+click renames (below) — must not also trigger the pad.
+              if (e.altKey) return
               const release = ctl.pressPad(deckId, i)
               const up = () => {
                 release()
                 window.removeEventListener('pointerup', up)
               }
               window.addEventListener('pointerup', up)
+            }}
+            onClick={(e) => {
+              if (e.altKey && occupied) setRenaming({ index, text: slot.trackName ?? '' })
             }}
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes(TRACK_MIME)) {

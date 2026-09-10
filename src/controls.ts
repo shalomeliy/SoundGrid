@@ -1170,9 +1170,13 @@ async function loadSamplerSlotAudio(
   engine.sampler.setGain(index, useStore.getState().sampler.slots[index].gain)
   patchSamplerSlot(index, {
     trackId: track.id,
-    trackName: track.title ?? track.name,
     contentHash,
-    ...(opts.keepSavedSettings ? {} : { bpm: track.bpm ?? undefined }),
+    // A resolve-from-saved-bank must not clobber the name — `restoreSamplerBankMeta`
+    // already put the saved (possibly renamed) `trackName` on this slot, and
+    // overwriting it here with the track's own title would silently undo a
+    // rename on every reload. A genuinely fresh drag-and-drop load has no
+    // saved name to protect, so it takes the track's own title as before.
+    ...(opts.keepSavedSettings ? {} : { trackName: track.title ?? track.name, bpm: track.bpm ?? undefined }),
     playing: false,
   })
   if (!opts.keepSavedSettings) schedulePersistSamplerBank()
@@ -1181,6 +1185,23 @@ async function loadSamplerSlotAudio(
 /** Drag a library track onto a sampler pad — the only load path this version builds (see the section banner above). Replaces whatever was in the slot, same as dropping a track onto a deck. */
 export async function loadSamplerSlot(index: number, track: Track): Promise<void> {
   await loadSamplerSlotAudio(index, track)
+}
+
+/**
+ * Alt+click rename (`PadGrid.tsx`'s `SamplerPads`, same gesture
+ * `renameHotCue` already uses) — the owner's own request. Unlike a hot cue,
+ * a sample carries no position to re-append, so a blank save just falls
+ * back to the loaded track's own title rather than leaving the pad unlabeled.
+ */
+export function renameSamplerSlot(index: number, name: string) {
+  const { sampler, library, patchSamplerSlot } = useStore.getState()
+  const slot = sampler.slots[index]
+  if (!slot.trackId) return
+  const trimmed = name.trim()
+  const track = library.tracks.find((t) => t.id === slot.trackId)
+  const fallback = (track && (track.title ?? track.name)) || slot.trackName || `Slot ${index + 1}`
+  patchSamplerSlot(index, { trackName: trimmed || fallback })
+  schedulePersistSamplerBank()
 }
 
 /** Empties a slot. The slot's own gain/mode/sync survive — a fader position on real gear doesn't reset when you eject the sample. */
