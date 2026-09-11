@@ -14,6 +14,7 @@ import type { Capabilities } from '@/core/ports'
 import { detectCapabilities } from '@/platform/capabilities'
 import { emptySamplerSlot, SAMPLER_SLOT_COUNT, type SamplerSlot } from '@/core/sampler'
 import { FX_TIME_STEPS } from '@/core/fx'
+import type { SortDir, SortKey } from '@/core/library-sort'
 
 /** Who put a message on screen, so only they can take it down. */
 export type NoticeSource =
@@ -229,6 +230,9 @@ export interface AppState {
     bootDetail: string | null
     /** listed tracks whose file could not be read — counted, never swallowed */
     unreadable: number
+    /** which column the table is sorted by (v0.8.0) — null means scan order, today's default */
+    sortKey: SortKey | null
+    sortDir: SortDir
   }
 
   midi: {
@@ -341,6 +345,8 @@ export const useStore = create<AppState>((set) => ({
     boot: 'checking',
     bootDetail: null,
     unreadable: 0,
+    sortKey: null,
+    sortDir: 'asc',
   },
   midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },

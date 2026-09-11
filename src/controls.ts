@@ -34,6 +34,12 @@ import {
 import { crossfadeProgress, phaseAlignedEntrySec } from '@/core/transition'
 import { findTransitionCandidates, nextCandidateFrom } from '@/core/structure'
 import { setGenreOverrideByHash } from '@/platform/genre-overrides-idb/store'
+import {
+  setLastPlayed as persistLastPlayedByHash,
+  setTrackNote as persistTrackNoteByHash,
+} from '@/platform/track-meta-idb/store'
+import { matchesQuery } from '@/core/library-search'
+import { sortTracks } from '@/core/library-sort'
 import { getCues, putCues } from '@/platform/cues-idb/store'
 import { getExcellentPoints, markExcellent } from '@/platform/mix-ratings-idb/store'
 import { clock } from '@/platform/clock-audio'
@@ -255,6 +261,17 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     return
   }
   const durationSec = buffer.duration
+  // v0.8.0: stamped only once decode succeeded, not right after the hash —
+  // a track that hashes fine but fails to decode never actually played.
+  // Same "degrade, don't block or report" contract as the hash failure
+  // above: no `contentHash` means no key to stamp against, and a write
+  // failure here must not stop or warn about the load that already
+  // succeeded.
+  if (contentHash) {
+    void persistLastPlayedByHash(contentHash, Date.now()).catch((err) => {
+      console.error('last-played not saved', err)
+    })
+  }
   // A hash failure above leaves `contentHash` `undefined` — "not yet
   // identified", same as a track whose analysis hasn't reached it yet. Its
   // cue bank simply isn't found, the same shape as a first-ever load.
@@ -2508,15 +2525,18 @@ export function moveSelection(delta: number) {
 
 export function filteredTracks(): Track[] {
   const { library } = useStore.getState()
-  const q = library.query.trim().toLowerCase()
-  if (!q) return library.tracks
-  return library.tracks.filter(
-    (t) =>
-      t.path.toLowerCase().includes(q) ||
-      t.artist?.toLowerCase().includes(q) ||
-      t.title?.toLowerCase().includes(q) ||
-      t.genre?.toLowerCase().includes(q),
-  )
+  return library.tracks.filter((t) => matchesQuery(t, library.query))
+}
+
+/**
+ * `filteredTracks()` plus the column sort (v0.8.0) — kept separate rather
+ * than folded into it because `moveSelection` and Mix Assist's
+ * recommendation matching both want the filter alone, unsorted, and never
+ * cared about `library.sortKey` before this version existed.
+ */
+export function sortedFilteredTracks(): Track[] {
+  const { library } = useStore.getState()
+  return sortTracks(filteredTracks(), library.sortKey, library.sortDir)
 }
 
 /**
@@ -2563,6 +2583,39 @@ async function persistGenreOverride(trackId: string, genre: string): Promise<voi
     })
   }
   await setGenreOverrideByHash(hash, genre)
+}
+
+/**
+ * Manual note edit — same choke point/persistence shape as `setTrackGenre`
+ * immediately above (optimistic store update, hash-keyed persistence,
+ * failure surfaced through the notice banner rather than swallowed).
+ */
+export function setTrackNote(trackId: string, note: string) {
+  const { library, setLibrary, setNotice } = useStore.getState()
+  setLibrary({
+    tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, note } : t)),
+  })
+  void persistTrackNote(trackId, note).catch((err) => {
+    setNotice({
+      text: `Note change applied but not saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'library',
+    })
+  })
+}
+
+async function persistTrackNote(trackId: string, note: string): Promise<void> {
+  const track = useStore.getState().library.tracks.find((t) => t.id === trackId)
+  if (!track) return // rescanned/removed since the edit — nothing left to persist against
+  let hash = track.contentHash
+  if (!hash) {
+    hash = await hashFile(track.handle)
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({
+      tracks: library.tracks.map((t) => (t.id === trackId ? { ...t, contentHash: hash } : t)),
+    })
+  }
+  await persistTrackNoteByHash(hash, note)
 }
 
 // ————————————————————————————————————————————————————————————————
