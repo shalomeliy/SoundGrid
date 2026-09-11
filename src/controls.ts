@@ -2,6 +2,7 @@ import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
 import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
+import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
 import {
   BEATGRID_NUDGE_SEC,
   HOT_CUE_COLORS,
@@ -1592,6 +1593,44 @@ export function setCueVolume(v: number) {
 export function setCueMix(v: number) {
   engine.setCueMix(v)
   useStore.getState().patchMixer({ cueMix: v })
+}
+
+// ————————————————————————————————————————————————————————————————
+// Recording (v0.7.5) — tap `masterPostFx`, accumulate PCM, write WAV. This
+// first cut (PLAN.md step 4) is deliberately headless: no store, no UI, no
+// save dialog — just proof the tap survives a real start-to-stop cycle
+// before anything is built on top of it. `saveRecordedMaster`/UI wiring
+// land in later steps of the same version.
+// ————————————————————————————————————————————————————————————————
+
+let masterRecordingTap: RecorderTap | null = null
+/** One entry per delivered chunk, each `[left, right]` — kept as a list of chunks, not one growing array, so a mid-recording allocation failure loses only the newest chunk, not the whole take. */
+let masterRecordingChunks: Float32Array[][] = []
+let masterRecordingSampleRate = 0
+
+export async function startRecordMaster(): Promise<void> {
+  if (masterRecordingTap) return
+  await initAudio()
+  masterRecordingChunks = []
+  masterRecordingSampleRate = engine.ctx.sampleRate
+  const tap = await engine.createMasterTap()
+  tap.onChunk = (chunk) => {
+    masterRecordingChunks.push(chunk.channels)
+  }
+  masterRecordingTap = tap
+}
+
+/** Headless for now — logs what was captured instead of saving it. `saveRecordedMaster` (a later step) reads the same module-level buffer. */
+export async function stopRecordMaster(): Promise<void> {
+  const tap = masterRecordingTap
+  if (!tap) return
+  masterRecordingTap = null
+  await tap.stop()
+  const totalFrames = masterRecordingChunks.reduce((sum, chs) => sum + (chs[0]?.length ?? 0), 0)
+  const seconds = masterRecordingSampleRate ? totalFrames / masterRecordingSampleRate : 0
+  console.log(
+    `[recording] stopped — ${masterRecordingChunks.length} chunks, ${totalFrames} frames @ ${masterRecordingSampleRate}Hz (${seconds.toFixed(2)}s)`,
+  )
 }
 
 // ————————————————————————————————————————————————————————————————

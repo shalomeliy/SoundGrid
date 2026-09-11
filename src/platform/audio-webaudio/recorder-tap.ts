@@ -46,15 +46,20 @@ export class RecorderTap {
   /**
    * Asks the processor to hand over whatever it's holding, then tears the
    * connection down shortly after — long enough for one more render quantum
-   * to deliver that final chunk before `onChunk` stops firing.
+   * to deliver that final chunk before `onChunk` stops firing. Returns a
+   * promise so a caller that needs the complete recording (building a WAV,
+   * say) can `await` it instead of racing the trailing chunk.
    */
-  stop() {
-    if (this.stopped) return
+  stop(): Promise<void> {
+    if (this.stopped) return Promise.resolve()
     this.stopped = true
     this.node.port.postMessage({ type: 'flush' })
-    window.setTimeout(() => {
-      this.node.disconnect()
-      this.node.port.onmessage = null
-    }, 50)
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        this.node.disconnect()
+        this.node.port.onmessage = null
+        resolve()
+      }, 50)
+    })
   }
 }
