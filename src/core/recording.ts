@@ -79,6 +79,29 @@ export interface RecordingSegment {
   endFrame: number
 }
 
+/** One `.wav` name per segment, 1-indexed — shared by the actual files written and the cue sheet naming them, so the two can never disagree. */
+export function segmentFileNames(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => `track-${i + 1}.wav`)
+}
+
+function formatHms(frame: number, sampleRate: number): string {
+  const totalSec = Math.floor(frame / sampleRate)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return `${pad(h)}:${pad(m)}:${pad(s)}`
+}
+
+/** Human-readable cue sheet — plain text, not a binary/proprietary cue format, since the point is the owner can open it in anything. */
+export function buildCueSheet(segments: RecordingSegment[], sampleRate: number): string {
+  const names = segmentFileNames(segments.length)
+  const lines = segments.map(
+    (seg, i) => `Track ${i + 1}: ${formatHms(seg.startFrame, sampleRate)} - ${formatHms(seg.endFrame, sampleRate)}  (${names[i]})`,
+  )
+  return lines.join('\n') + '\n'
+}
+
 /**
  * Turns "mark track here" timestamps into frame ranges for
  * `saveSplitMasterRecording`. Boundaries are sorted (the owner can mark out

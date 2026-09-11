@@ -44,6 +44,17 @@ await page.evaluate(() => {
       close: async () => {},
     }),
   })
+  // This script also clicks "Mark track" below, which routes the later
+  // Save through the split-file path (showDirectoryPicker), not the
+  // single-file one above — both need mocking, or Save fails silently
+  // into the "couldn't be saved" branch instead of succeeding. The split
+  // path's own file/cue-sheet content is verified for real in
+  // verify-record-master-split.mjs; this script only needs it to not throw.
+  window.showDirectoryPicker = async () => ({
+    getFileHandle: async () => ({
+      createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+    }),
+  })
 })
 await page.waitForTimeout(500)
 
@@ -89,7 +100,7 @@ const saveButton = page.getByRole('button', { name: 'Save' })
 await saveButton.click()
 await page.waitForTimeout(300)
 
-const savedNotice = await page.locator('text=/Recording saved as/').first().isVisible().catch(() => false)
+const savedNotice = await page.locator('text=/Recording saved/').first().isVisible().catch(() => false)
 ok('saving shows a confirmation notice', savedNotice, '')
 const badgeGoneAfterSave = !(await page.locator('text=/Not saved/').first().isVisible().catch(() => false))
 ok('the "Not saved" Pill disappears once saved', badgeGoneAfterSave, '')

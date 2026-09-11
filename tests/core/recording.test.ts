@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildCueSheet,
   bytesPerSecond,
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   maxRecordingBytes,
   mergeChunks,
   SAMPLER_CAPTURE_MAX_SEC,
+  segmentFileNames,
   splitByTrackBoundaries,
 } from '@/core/recording'
 
@@ -90,5 +92,29 @@ describe('splitByTrackBoundaries', () => {
   it('drops a boundary at or past either edge instead of producing a zero-length segment', () => {
     const segs = splitByTrackBoundaries(5000, [0, 5, 6], sr)
     expect(segs).toEqual([{ startFrame: 0, endFrame: 5000 }])
+  })
+})
+
+describe('segmentFileNames', () => {
+  it('numbers files starting at 1', () => {
+    expect(segmentFileNames(3)).toEqual(['track-1.wav', 'track-2.wav', 'track-3.wav'])
+  })
+
+  it('returns an empty list for zero segments', () => {
+    expect(segmentFileNames(0)).toEqual([])
+  })
+})
+
+describe('buildCueSheet', () => {
+  it('formats each segment as HH:MM:SS with the matching file name', () => {
+    const sr = 1000
+    const segments = [
+      { startFrame: 0, endFrame: 65000 }, // 0:00:00 - 0:01:05
+      { startFrame: 65000, endFrame: 3665000 }, // 0:01:05 - 1:01:05
+    ]
+    const sheet = buildCueSheet(segments, sr)
+    expect(sheet).toBe(
+      'Track 1: 00:00:00 - 00:01:05  (track-1.wav)\n' + 'Track 2: 00:01:05 - 01:01:05  (track-2.wav)\n',
+    )
   })
 })

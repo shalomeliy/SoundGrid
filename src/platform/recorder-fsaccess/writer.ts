@@ -45,3 +45,45 @@ export async function saveMasterRecording(
   await writable.close()
   return 'ok'
 }
+
+interface DirectoryPickerOptions {
+  mode?: 'read' | 'readwrite'
+}
+
+function getDirectoryPicker(): ((o?: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandle>) | undefined {
+  return (window as unknown as { showDirectoryPicker?: (o?: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandle> })
+    .showDirectoryPicker
+}
+
+/**
+ * Split-by-track export (v0.7.5): a folder the owner picks, one WAV per
+ * segment plus a plain-text cue sheet naming them — `core/recording.ts`'s
+ * `segmentFileNames`/`buildCueSheet` are the single source of truth for
+ * those file names, so the sheet can never point at a name this didn't
+ * actually write.
+ */
+export async function saveSplitMasterRecording(
+  files: { name: string; bytes: Uint8Array }[],
+  cueSheetText: string,
+): Promise<'ok' | 'cancelled'> {
+  const picker = getDirectoryPicker()
+  if (typeof picker !== 'function') throw new Error('this browser has no folder save dialog')
+  let dir: FileSystemDirectoryHandle
+  try {
+    dir = await picker({ mode: 'readwrite' })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return 'cancelled'
+    throw err
+  }
+  for (const f of files) {
+    const handle = await dir.getFileHandle(f.name, { create: true })
+    const writable = await handle.createWritable()
+    await writable.write(f.bytes as unknown as BufferSource)
+    await writable.close()
+  }
+  const cueHandle = await dir.getFileHandle('cue-sheet.txt', { create: true })
+  const cueWritable = await cueHandle.createWritable()
+  await cueWritable.write(cueSheetText)
+  await cueWritable.close()
+  return 'ok'
+}

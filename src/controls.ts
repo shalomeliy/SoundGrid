@@ -3,9 +3,16 @@ import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
 import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
-import { estimateSecondsRemaining, MASTER_RECORDING_MAX_SEC, mergeChunks } from '@/core/recording'
+import {
+  buildCueSheet,
+  estimateSecondsRemaining,
+  MASTER_RECORDING_MAX_SEC,
+  mergeChunks,
+  segmentFileNames,
+  splitByTrackBoundaries,
+} from '@/core/recording'
 import { encodeWav } from '@/core/wav'
-import { saveMasterRecording } from '@/platform/recorder-fsaccess/writer'
+import { saveMasterRecording, saveSplitMasterRecording } from '@/platform/recorder-fsaccess/writer'
 import {
   BEATGRID_NUDGE_SEC,
   HOT_CUE_COLORS,
@@ -1861,15 +1868,24 @@ export function markRecordingTrackBoundary(): void {
 export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'> {
   if (masterRecordingChunks.length === 0) return 'empty'
   const channels = mergeChunks(masterRecordingChunks)
-  const bytes = encodeWav(channels, masterRecordingSampleRate)
-  const name = `soundgrid-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.wav`
+  const boundaries = useStore.getState().recording.trackBoundariesSec
   try {
-    const result = await saveMasterRecording(bytes, name)
+    const result =
+      boundaries.length === 0
+        ? await saveMasterRecording(
+            encodeWav(channels, masterRecordingSampleRate),
+            `soundgrid-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.wav`,
+          )
+        : await saveSplitRecording(channels, boundaries)
     if (result === 'ok') {
       masterRecordingChunks = []
       masterRecordingFrames = 0
       useStore.getState().patchRecording({ savedState: 'saved', bytesRecorded: 0, trackBoundariesSec: [] })
-      useStore.getState().setNotice({ text: `Recording saved as ${name}.`, tone: 'info', source: 'recording' })
+      useStore.getState().setNotice({
+        text: boundaries.length === 0 ? 'Recording saved.' : `Recording saved — split into ${boundaries.length + 1} tracks.`,
+        tone: 'info',
+        source: 'recording',
+      })
     }
     return result
   } catch (err) {
@@ -1881,6 +1897,22 @@ export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'
     })
     throw err
   }
+}
+
+/** Slices the merged channels at each track boundary and writes one WAV per segment plus a cue sheet, all named from the same `segmentFileNames` list. */
+async function saveSplitRecording(channels: Float32Array[], boundariesSec: number[]): Promise<'ok' | 'cancelled'> {
+  const totalFrames = channels[0]?.length ?? 0
+  const segments = splitByTrackBoundaries(totalFrames, boundariesSec, masterRecordingSampleRate)
+  const names = segmentFileNames(segments.length)
+  const files = segments.map((seg, i) => ({
+    name: names[i],
+    bytes: encodeWav(
+      channels.map((ch) => ch.subarray(seg.startFrame, seg.endFrame)),
+      masterRecordingSampleRate,
+    ),
+  }))
+  const cueSheetText = buildCueSheet(segments, masterRecordingSampleRate)
+  return saveSplitMasterRecording(files, cueSheetText)
 }
 
 /** Explicit discard — never called automatically. The owner's own "delete" action on an unsaved recording. */
