@@ -3,10 +3,12 @@ import { FxRack } from '@/platform/audio-webaudio/fx'
 import { SamplerEngine } from '@/platform/audio-webaudio/sampler'
 import { bootLatencyHint } from '@/platform/settings-idb/boot-latency'
 import { equalPowerMix } from '@/core/fx'
+import { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
 // Bundled and transpiled by Vite, handed to addModule as a URL. The processor
 // itself imports nothing: an AudioWorkletGlobalScope has no DOM, so a single
 // transitive DOM-touching import turns into an opaque addModule rejection.
 import scratchProcessorUrl from '@/platform/audio-webaudio/scratch-processor?worker&url'
+import recorderProcessorUrl from '@/platform/audio-webaudio/recorder-processor?worker&url'
 import type { DeckId } from '@/core/types'
 
 interface AudioContextWithSink extends AudioContext {
@@ -312,6 +314,61 @@ export class AudioEngine {
 
   async decode(data: ArrayBuffer): Promise<AudioBuffer> {
     return await this.ctx.decodeAudioData(data)
+  }
+
+  /**
+   * Loads the recorder-tap worklet, once — same `addModule` + throwaway-probe
+   * shape as `ensureScratchEngine`, so a worklet that fails to register (or
+   * loads but exposes nothing sane) is caught here, immediately, instead of
+   * surfacing later as a recording that silently captures nothing.
+   */
+  private recorderWorkletLoad: Promise<boolean> | null = null
+  private recorderWorkletReady = false
+  recorderError: string | null = null
+
+  async ensureRecorderEngine(): Promise<boolean> {
+    if (!this.recorderWorkletLoad) {
+      this.recorderWorkletLoad = (async () => {
+        if (typeof AudioWorkletNode === 'undefined') {
+          this.recorderError = 'this browser has no AudioWorklet'
+          return false
+        }
+        try {
+          await this.ctx.audioWorklet.addModule(recorderProcessorUrl)
+          const probe = new AudioWorkletNode(this.ctx, 'recorder-tap', {
+            numberOfInputs: 1,
+            numberOfOutputs: 0,
+          })
+          probe.disconnect()
+          this.recorderWorkletReady = true
+          return true
+        } catch (err) {
+          this.recorderError = err instanceof Error ? err.message : String(err)
+          return false
+        }
+      })()
+    }
+    return this.recorderWorkletLoad
+  }
+
+  get recorderAvailable() {
+    return this.recorderWorkletReady
+  }
+
+  /**
+   * One `RecorderTap` per call, tapping `masterPostFx` — the stable
+   * post-FX point `masterPostFx`'s own doc comment reserves for exactly
+   * this (v0.7.0). Two calls (a sampler-slot capture and a master
+   * recording) can run at once, each with its own node, its own chunk
+   * stream, no shared mutable state.
+   */
+  async createMasterTap(): Promise<RecorderTap> {
+    const ok = await this.ensureRecorderEngine()
+    if (!ok) throw new Error(this.recorderError ?? 'recorder engine unavailable')
+    // masterPostFx is always stereo — wireOutput()'s multichannel branch
+    // splits it into 2 channels either way, it only changes what happens
+    // downstream at the destination, not this node's own channel count.
+    return new RecorderTap(this.ctx, this.masterPostFx, 2)
   }
 }
 
