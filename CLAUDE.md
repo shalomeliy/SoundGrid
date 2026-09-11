@@ -104,7 +104,13 @@ SoundGrid's hard invariant, and it outranks convenience:
 - The audio engine is imperative and lives outside React. The store holds serializable
   state only.
 - **Read the user's files; never write to them.** `tags.ts` does byte-range reads only,
-  never decodes a whole track into memory, never writes back.
+  never decodes a whole track into memory, never writes back. This is about the user's
+  *own, existing* files — the library the app reads from. It does not forbid writing at
+  all: v0.7.5's recording (`platform/recorder-fsaccess/writer.ts`) writes PCM audio, but
+  always to a **new** file the owner names and picks in a save dialog they explicitly
+  opened, never to a path the app already knows about or a file that existed before the
+  recording started. If a feature ever needs to touch an *existing* user file, that is
+  the rule this bullet still blocks.
 - One deliberate outstanding warning: `transport-webmidi/manager.ts` writes to the store
   and calls `controls.ts` directly instead of emitting `ControlAction`s through the port.
   It is a `warn` so it stays visible — don't copy the pattern, and don't silence the rule.
