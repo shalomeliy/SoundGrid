@@ -8,6 +8,7 @@ import {
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   mergeChunks,
+  SAMPLER_CAPTURE_MAX_SEC,
   segmentFileNames,
   splitByTrackBoundaries,
 } from '@/core/recording'
@@ -1353,7 +1354,24 @@ export async function startSamplerCapture(index: number): Promise<void> {
   const sampleRate = engine.ctx.sampleRate
   const tap = await engine.createMasterTap()
   const chunks: Float32Array[][] = []
-  tap.onChunk = (chunk) => chunks.push(chunk.channels)
+  let frames = 0
+  tap.onChunk = (chunk) => {
+    chunks.push(chunk.channels)
+    frames += chunk.frameCount
+    // Same named-not-crashed cap as the master recording — a forgotten
+    // "Stop" must not quietly turn a pad into an unbounded in-memory
+    // buffer (found missing here, though present for master recording, in
+    // change-reviewer's pass on this version).
+    const bytesRecorded = frames * 2 * 2
+    if (estimateSecondsRemaining(bytesRecorded, SAMPLER_CAPTURE_MAX_SEC, sampleRate, 2) <= 0) {
+      void stopSamplerCapture(index)
+      useStore.getState().setNotice({
+        text: `Recording on sampler slot ${index + 1} stopped automatically after reaching the ${Math.round(SAMPLER_CAPTURE_MAX_SEC / 60)}-minute limit.`,
+        tone: 'warn',
+        source: 'sampler',
+      })
+    }
+  }
   samplerCaptures.set(index, { tap, chunks, sampleRate })
   useStore.getState().patchSampler({ armedSlot: index })
 }

@@ -30,7 +30,12 @@ export async function getRecordingBlob(id: string): Promise<Blob | undefined> {
 export async function deleteRecordingBlob(id: string): Promise<void> {
   try {
     await del(KEY_PREFIX + id)
-  } catch {
-    /* best-effort cleanup — an orphaned blob costs storage, not correctness */
+  } catch (err) {
+    // Best-effort cleanup — an orphaned blob costs storage, not correctness,
+    // so this doesn't surface a user-facing notice. But "best-effort" isn't
+    // "invisible": logged so a repeated failure is at least findable,
+    // per this project's "a catch that swallows has to answer: how does
+    // the user find out?" rule (change-reviewer flagged this as silent).
+    console.error(`sampler recording blob ${id} failed to delete`, err)
   }
 }

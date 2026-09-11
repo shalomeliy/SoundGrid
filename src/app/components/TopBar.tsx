@@ -185,19 +185,39 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
  */
 function RecordingBadge() {
   const recording = useStore((s) => s.recording)
-  // A tick counter, not a stored timestamp — `Date.now()` is read fresh at
-  // render time below, so there's no stale "now" to go negative the moment
-  // recording starts (found exactly that way, "-1:-1" instead of "0:00", in
-  // the browser-verification script). This effect only forces the re-render.
-  const [, forceTick] = useState(0)
+  const [elapsedSec, setElapsedSec] = useState(0)
+  // Guards against Save and Discard firing in the same window — Discard
+  // clears the in-memory buffer synchronously, but Save has already
+  // snapshotted it before its own `await`, so an in-flight Save can still
+  // land and report "saved" right after the user clicked Discard. Found in
+  // change-review, not from a live report.
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (recording.active !== 'master') return
-    const id = window.setInterval(() => forceTick((n) => n + 1), 500)
+    // This effect's whole job is synchronizing with an external clock —
+    // oxlint's set-state-in-effect warning is the generic "derive it during
+    // render instead" advice, but the earlier version that did exactly that
+    // (read Date.now() during render) is the impure-render pattern this
+    // replaced; there is no render-time value to derive this from instead.
+    if (recording.active !== 'master' || recording.startedAt == null) {
+      setElapsedSec(0)
+      return
+    }
+    // `Date.now()` is read here, inside the effect (synchronizing with the
+    // external wall clock — exactly what an effect is for), never during
+    // render. An earlier version called it at render time instead, which
+    // oxlint correctly flags as an impure render; this version also fixes
+    // the actual bug that version had — a `now` captured once at mount and
+    // never resynced, which read as *before* `startedAt` on the very first
+    // render ("-1:-1" instead of "0:00", found in the browser-verification
+    // script). Setting it immediately here, not just on the first interval
+    // tick 500ms later, is what closes that gap.
+    const startedAt = recording.startedAt
+    const update = () => setElapsedSec(Math.floor((Date.now() - startedAt) / 1000))
+    update()
+    const id = window.setInterval(update, 500)
     return () => window.clearInterval(id)
-  }, [recording.active])
-
-  const elapsedSec = recording.startedAt != null ? Math.floor((Date.now() - recording.startedAt) / 1000) : 0
+  }, [recording.active, recording.startedAt])
   const mm = Math.floor(elapsedSec / 60)
   const ss = (elapsedSec % 60).toString().padStart(2, '0')
   const mb = (recording.bytesRecorded / (1024 * 1024)).toFixed(1)
@@ -223,10 +243,22 @@ function RecordingBadge() {
     return (
       <>
         <Pill tone="warn" label={`Not saved — save or discard · ${mm}:${ss}`} />
-        <Button variant="ghost" size="sm" onClick={() => void ctl.saveRecordedMaster()}>
-          Save
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true)
+            try {
+              await ctl.saveRecordedMaster()
+            } finally {
+              setSaving(false)
+            }
+          }}
+        >
+          {saving ? 'Saving…' : 'Save'}
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => ctl.discardRecordedMaster()}>
+        <Button variant="ghost" size="sm" disabled={saving} onClick={() => ctl.discardRecordedMaster()}>
           Discard
         </Button>
       </>

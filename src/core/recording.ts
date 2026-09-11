@@ -15,14 +15,31 @@
  * name — see `estimateSecondsRemaining` and the spec's "never skip
  * silently" requirement — rather than crashing when the browser runs out.
  */
-export const MASTER_RECORDING_MAX_SEC = 3 * 60 * 60
+export let MASTER_RECORDING_MAX_SEC = 3 * 60 * 60
 
 /**
  * A sampler slot is a live-grabbed moment, not a second master recording —
  * capped far tighter so a forgotten "stop" doesn't quietly turn a pad into
  * a multi-gigabyte in-memory buffer.
  */
-export const SAMPLER_CAPTURE_MAX_SEC = 5 * 60
+export let SAMPLER_CAPTURE_MAX_SEC = 5 * 60
+
+/**
+ * Test-only seams (v0.7.5's own change-review found the real 3-hour/5-minute
+ * caps otherwise unverifiable except by waiting that long) — never called
+ * from application code, only from `scripts/verify-*.mjs`. ES module `let`
+ * exports are live bindings, so lowering these here is visible immediately
+ * to every already-imported reference (`controls.ts` included) without
+ * threading a parameter through every call site. No UI ever calls these —
+ * the "no calibration constant reaches Settings" rule is about a control
+ * surface, not about whether a value can vary at all.
+ */
+export function setMasterRecordingMaxSecForTest(sec: number): void {
+  MASTER_RECORDING_MAX_SEC = sec
+}
+export function setSamplerCaptureMaxSecForTest(sec: number): void {
+  SAMPLER_CAPTURE_MAX_SEC = sec
+}
 
 export function bytesPerSecond(sampleRate: number, channels: number, bitsPerSample = 16): number {
   return sampleRate * channels * (bitsPerSample / 8)
