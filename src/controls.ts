@@ -3,6 +3,9 @@ import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
 import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
+import { mergeChunks } from '@/core/recording'
+import { encodeWav } from '@/core/wav'
+import { saveMasterRecording } from '@/platform/recorder-fsaccess/writer'
 import {
   BEATGRID_NUDGE_SEC,
   HOT_CUE_COLORS,
@@ -1631,6 +1634,38 @@ export async function stopRecordMaster(): Promise<void> {
   console.log(
     `[recording] stopped — ${masterRecordingChunks.length} chunks, ${totalFrames} frames @ ${masterRecordingSampleRate}Hz (${seconds.toFixed(2)}s)`,
   )
+}
+
+/**
+ * Encodes whatever is in the module-level buffer and opens the save dialog.
+ * `'cancelled'` (the owner closed the dialog) leaves the buffer exactly as
+ * it was — per the spec, canceling must never silently discard a
+ * recording. Store/notice wiring lands in a later step; for now failures
+ * and cancellation are logged, not swallowed.
+ */
+export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'> {
+  if (masterRecordingChunks.length === 0) return 'empty'
+  const channels = mergeChunks(masterRecordingChunks)
+  const bytes = encodeWav(channels, masterRecordingSampleRate)
+  const name = `soundgrid-recording-${new Date().toISOString().replace(/[:.]/g, '-')}.wav`
+  try {
+    const result = await saveMasterRecording(bytes, name)
+    if (result === 'ok') {
+      masterRecordingChunks = []
+      console.log('[recording] saved', name)
+    } else {
+      console.log('[recording] save cancelled — recording kept in memory')
+    }
+    return result
+  } catch (err) {
+    console.error('[recording] save failed — recording kept in memory', err)
+    throw err
+  }
+}
+
+/** Explicit discard — never called automatically. The owner's own "delete" action on an unsaved recording. */
+export function discardRecordedMaster(): void {
+  masterRecordingChunks = []
 }
 
 // ————————————————————————————————————————————————————————————————

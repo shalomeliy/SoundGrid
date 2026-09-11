@@ -55,6 +55,25 @@ export function estimateSecondsRemaining(
   return Math.max(0, (max - bytesRecorded) / bps)
 }
 
+/**
+ * Concatenates the chunk list a `RecorderTap` delivers (each entry one
+ * `[left, right, ...]` chunk) into one contiguous buffer per channel, ready
+ * for `core/wav.ts`'s `encodeWav`. Kept separate from the tap itself so it
+ * stays pure and testable without an `AudioContext`.
+ */
+export function mergeChunks(chunks: Float32Array[][]): Float32Array[] {
+  const numChannels = chunks[0]?.length ?? 0
+  const totalFrames = chunks.reduce((sum, chs) => sum + (chs[0]?.length ?? 0), 0)
+  const merged = Array.from({ length: numChannels }, () => new Float32Array(totalFrames))
+  let offset = 0
+  for (const chs of chunks) {
+    const frames = chs[0]?.length ?? 0
+    for (let c = 0; c < numChannels; c++) merged[c].set(chs[c], offset)
+    offset += frames
+  }
+  return merged
+}
+
 export interface RecordingSegment {
   startFrame: number
   endFrame: number

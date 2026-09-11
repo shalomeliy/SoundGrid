@@ -4,6 +4,7 @@ import {
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   maxRecordingBytes,
+  mergeChunks,
   SAMPLER_CAPTURE_MAX_SEC,
   splitByTrackBoundaries,
 } from '@/core/recording'
@@ -36,6 +37,22 @@ describe('maxRecordingBytes / estimateSecondsRemaining', () => {
     const max = maxRecordingBytes(10, 44100, 2, 16)
     const sec = estimateSecondsRemaining(max * 2, 10, 44100, 2, 16)
     expect(sec).toBe(0)
+  })
+})
+
+describe('mergeChunks', () => {
+  it('concatenates chunks per channel, in order', () => {
+    const chunks = [
+      [new Float32Array([1, 2]), new Float32Array([10, 20])],
+      [new Float32Array([3, 4, 5]), new Float32Array([30, 40, 50])],
+    ]
+    const merged = mergeChunks(chunks)
+    expect(Array.from(merged[0])).toEqual([1, 2, 3, 4, 5])
+    expect(Array.from(merged[1])).toEqual([10, 20, 30, 40, 50])
+  })
+
+  it('returns empty channels for an empty chunk list', () => {
+    expect(mergeChunks([])).toEqual([])
   })
 })
 
