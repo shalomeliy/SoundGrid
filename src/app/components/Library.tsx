@@ -23,7 +23,13 @@ import { useStore } from '@/app/state/store'
 import type { KeyMode } from '@/core/settings'
 import type { Track } from '@/core/types'
 import type { SortDir, SortKey } from '@/core/library-sort'
+import { useVirtualRows } from '@/app/hooks/useVirtualRows'
 import { Button, HintIcon } from '@/app/components/controls'
+
+/** Matches the `h-9` row height below — fixed regardless of `libraryTextScale`, which only scales font-size (see the comment on the table itself). */
+const ROW_HEIGHT = 36
+/** Header `<Th>` count — keep in step with the `<thead>` row below; only used to span the two virtualization padding rows. */
+const COLUMN_COUNT = 8
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
@@ -485,6 +491,11 @@ export function Library() {
   const preMixList = ctl.sortedFilteredTracks()
   const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
   const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length)
+  // v0.8.0: windowed rendering so a large library doesn't cost a DOM node
+  // per track. Called unconditionally (not inside the empty-state branch
+  // below) — `list.length` is 0 in every empty state anyway, which
+  // `visibleRange` already treats as "nothing to render".
+  const { containerRef, start, end, padTop, padBottom } = useVirtualRows(list.length, ROW_HEIGHT)
 
   // null once tracks are on screen — that is the only state with no sentence
   const boot = bootCopy(library.boot, library.folderName, library.bootDetail ?? undefined)
@@ -693,7 +704,7 @@ export function Library() {
           }
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div ref={containerRef} className="min-h-0 flex-1 overflow-auto">
           {/*
             Sized against Serato on the same 14" panel: it fits ~31px rows with
             ~16px type, i.e. denser *and* far more legible than a tall row full
@@ -781,7 +792,18 @@ export function Library() {
               </tr>
             </thead>
             <tbody>
-              {list.map((t) => (
+              {/*
+                Windowed (v0.8.0): a plain `<tr style={{height}}>` on each
+                side instead of `position:absolute` rows, so the table stays
+                a real `<table>` (sticky header, column widths) rather than
+                needing its own manually-positioned layout.
+              */}
+              {padTop > 0 && (
+                <tr aria-hidden="true" style={{ height: padTop }}>
+                  <td colSpan={COLUMN_COUNT} />
+                </tr>
+              )}
+              {list.slice(start, end).map((t) => (
                 <Row
                   key={t.id}
                   track={t}
@@ -791,6 +813,11 @@ export function Library() {
                   onSelect={() => setLibrary({ selectedId: t.id })}
                 />
               ))}
+              {padBottom > 0 && (
+                <tr aria-hidden="true" style={{ height: padBottom }}>
+                  <td colSpan={COLUMN_COUNT} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
