@@ -40,6 +40,20 @@ export interface Track {
   analysisState?: 'queued' | 'analyzing' | 'analyzed' | 'failed'
   /** Set only when `analysisState` is `'failed'` — a short, named reason, shown in the row icon's tooltip. */
   analysisError?: string
+  /**
+   * Free-text note the owner typed on this row (v0.8.0) — same shape as
+   * `genre`: not written by the scan itself, filled in at merge time from
+   * `platform/track-meta-idb/store.ts`, keyed by `contentHash` (not `id`)
+   * so it survives a rescan of an unmoved file.
+   */
+  note?: string
+  /**
+   * `Date.now()` the moment this track was last loaded to a deck (v0.8.0),
+   * stamped from `controls.ts`'s `loadTrackToDeck` once `contentHash` is
+   * known. Same merge shape as `note` — undefined means "never loaded since
+   * this became trackable", not "loaded at time zero".
+   */
+  lastPlayedAt?: number
 }
 
 export interface HotCue {
