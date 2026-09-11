@@ -124,6 +124,8 @@ export interface AppState {
   sampler: {
     slots: SamplerSlot[]
     channel: { volume: number; cueMonitor: boolean }
+    /** which slot is currently recording from the master bus (v0.7.5), or `null` — `PadGrid.tsx`'s cue for the "Record"/"Recording…" state on a slot's own editor row. */
+    armedSlot: number | null
   }
 
   /** Two global FX racks (v0.7.0) — index 0 pairs with deck A, 1 with deck B when channel-routed. See `platform/audio-webaudio/engine.ts`'s `setFxRouting`. */
@@ -270,6 +272,7 @@ export interface AppState {
   patchAi: (patch: Partial<AiState>) => void
   patchSamplerSlot: (index: number, patch: Partial<SamplerSlot>) => void
   patchSamplerChannel: (patch: Partial<AppState['sampler']['channel']>) => void
+  patchSampler: (patch: Partial<Pick<AppState['sampler'], 'armedSlot'>>) => void
   patchFx: (rack: 0 | 1, patch: Partial<FxState>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
@@ -304,6 +307,7 @@ export const useStore = create<AppState>((set) => ({
   sampler: {
     slots: Array.from({ length: SAMPLER_SLOT_COUNT }, emptySamplerSlot),
     channel: { volume: 0.85, cueMonitor: false },
+    armedSlot: null,
   },
   fx: [emptyFx(), emptyFx()],
   library: {
@@ -358,6 +362,7 @@ export const useStore = create<AppState>((set) => ({
     })),
   patchSamplerChannel: (patch) =>
     set((s) => ({ sampler: { ...s.sampler, channel: { ...s.sampler.channel, ...patch } } })),
+  patchSampler: (patch) => set((s) => ({ sampler: { ...s.sampler, ...patch } })),
   patchFx: (rack, patch) =>
     set((s) => ({
       fx: rack === 0 ? [{ ...s.fx[0], ...patch }, s.fx[1]] : [s.fx[0], { ...s.fx[1], ...patch }],

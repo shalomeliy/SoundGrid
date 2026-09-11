@@ -19,7 +19,9 @@ const FILE_TYPES = [
 ]
 
 export interface StoredSamplerSlot {
-  contentHash: string
+  /** exactly one of `contentHash`/`recordingId` is set for a real slot — library-linked vs. live-recorded (v0.7.5). */
+  contentHash: string | undefined
+  recordingId: string | undefined
   trackName: string
   bpm: number | undefined
   mode: SamplerMode

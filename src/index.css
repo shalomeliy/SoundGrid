@@ -112,6 +112,33 @@ body {
   }
 }
 
+/*
+ * A sampler slot recording from the master bus (v0.7.5) needs a token
+ * nothing else on this screen already means — `--color-live` is FX On +
+ * Sync, a solid `--color-accent` fill is "playing now"; reusing either would
+ * make a DJ glancing at the pad grid mid-set unable to tell "armed to
+ * record" from "already playing", which is exactly the ambiguity the
+ * design review flagged (losing a live take vs. firing a wrong sample).
+ * `--color-danger` is free on this screen (used only for the Mix Assist
+ * cancel button and MIDI-denied pills, nowhere near the pad grid), and red
+ * for "recording" needs no legend. The pulse below is decorative only — the
+ * "REC" text label always renders regardless, so the state is never color-
+ * or-motion-only; the global reduced-motion rule above already collapses
+ * this animation to a near-static frame.
+ */
+@keyframes rec-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 2px var(--color-danger);
+  }
+  50% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+.rec-pulse {
+  animation: rec-pulse 1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

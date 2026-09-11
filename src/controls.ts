@@ -35,7 +35,18 @@ import { settings } from '@/platform/settings-idb/store'
 import { DEFAULTS, FIELD_BY_KEY, secPerRev, type Settings } from '@/core/settings'
 import { isOrdinalLabel, moveHotCue as moveHotCuePure, pickHotCueSlot, shouldTriggerMixEntry } from '@/core/hotcues'
 import { AI_TOOL_CATALOG, validateToolCall } from '@/core/ai/toolCatalog'
-import { isSamplerMode, samplerSyncRate, SAMPLER_SLOT_COUNT, type SamplerMode } from '@/core/sampler'
+import {
+  isSamplerMode,
+  isSamplerSlotOccupied,
+  samplerSyncRate,
+  SAMPLER_SLOT_COUNT,
+  type SamplerMode,
+} from '@/core/sampler'
+import {
+  deleteRecordingBlob,
+  getRecordingBlob,
+  saveRecordingBlob,
+} from '@/platform/sampler-recordings-idb/store'
 import {
   exportSamplerBankToFile,
   getSamplerBank,
@@ -112,6 +123,14 @@ export async function initAudio() {
     useStore.setState({ audioReady: true })
     syncScratchState()
     void restoreSamplerBankMeta()
+    // A recorded slot (v0.7.5) has no library file to wait for — unlike a
+    // contentHash-linked slot, it doesn't need `Library.tsx`'s scan to
+    // resolve. Firing this here too, silently, means a recording restores
+    // on boot even before any scan runs (or when there's no saved library
+    // folder at all) — `resolveSamplerSlots` itself is a no-op for anything
+    // still unresolved, same `silent: true` shape `Library.tsx`'s own early
+    // calls already use.
+    void resolveSamplerSlots({ silent: true })
     void restoreFxBank()
   }
 }
@@ -1070,8 +1089,16 @@ function schedulePersistSamplerBank() {
 async function persistSamplerBank(): Promise<void> {
   const { sampler, setNotice } = useStore.getState()
   const bank: StoredSamplerBank = sampler.slots.map((s) =>
-    s.contentHash
-      ? { contentHash: s.contentHash, trackName: s.trackName ?? '', bpm: s.bpm, mode: s.mode, gain: s.gain, syncEnabled: s.syncEnabled }
+    s.contentHash || s.recordingId
+      ? {
+          contentHash: s.contentHash,
+          recordingId: s.recordingId,
+          trackName: s.trackName ?? '',
+          bpm: s.bpm,
+          mode: s.mode,
+          gain: s.gain,
+          syncEnabled: s.syncEnabled,
+        }
       : null,
   )
   try {
@@ -1109,6 +1136,7 @@ export function restoreSamplerBankMeta(): Promise<void> {
         patchSamplerSlot(i, {
           trackName: s.trackName,
           contentHash: s.contentHash,
+          recordingId: s.recordingId,
           bpm: s.bpm,
           mode: s.mode,
           gain: s.gain,
@@ -1142,15 +1170,24 @@ export function restoreSamplerBankMeta(): Promise<void> {
  * `silent: false`, once every track that could get an identity has one.
  */
 export async function resolveSamplerSlots(opts: { silent?: boolean } = {}): Promise<void> {
-  // Metadata (`contentHash` per slot) has to be in the store before this can
-  // match anything — see `restoreSamplerBankMeta`'s doc comment. A no-op
-  // once it has already run, from here or from `initAudio()`.
+  // Metadata (`contentHash`/`recordingId` per slot) has to be in the store
+  // before this can match anything — see `restoreSamplerBankMeta`'s doc
+  // comment. A no-op once it has already run, from here or from `initAudio()`.
   await restoreSamplerBankMeta()
   const { sampler, library, setNotice } = useStore.getState()
   let unresolved = 0
+  let recordingFailed = 0
   for (let i = 0; i < sampler.slots.length; i++) {
     const slot = sampler.slots[i]
-    if (slot.trackId || !slot.contentHash) continue
+    if (slot.trackId || engine.sampler.hasBuffer(i)) continue
+    // A recorded slot (v0.7.5) resolves from its own stored blob, not from
+    // the library scan this function otherwise exists for — it has no
+    // `contentHash` to match against, and doesn't need one.
+    if (slot.recordingId) {
+      if (!(await loadSamplerSlotRecording(i, slot.recordingId))) recordingFailed++
+      continue
+    }
+    if (!slot.contentHash) continue
     const track = library.tracks.find((t) => t.contentHash === slot.contentHash)
     if (!track) {
       unresolved++
@@ -1158,12 +1195,42 @@ export async function resolveSamplerSlots(opts: { silent?: boolean } = {}): Prom
     }
     await loadSamplerSlotAudio(i, track, { keepSavedSettings: true })
   }
-  if (unresolved > 0 && !opts.silent) {
-    setNotice({
-      text: `${unresolved} sampler slot${unresolved === 1 ? '' : 's'} from your saved bank couldn't be matched to a file in this library — they'll fill in once the right folder is scanned.`,
-      tone: 'warn',
-      source: 'sampler',
-    })
+  if (!opts.silent && (unresolved > 0 || recordingFailed > 0)) {
+    const parts: string[] = []
+    if (unresolved > 0) {
+      parts.push(
+        `${unresolved} sampler slot${unresolved === 1 ? '' : 's'} from your saved bank couldn't be matched to a file in this library — they'll fill in once the right folder is scanned.`,
+      )
+    }
+    if (recordingFailed > 0) {
+      parts.push(
+        `${recordingFailed} sampler recording${recordingFailed === 1 ? '' : 's'} couldn't be loaded — the saved audio is missing or unreadable.`,
+      )
+    }
+    setNotice({ text: parts.join(' '), tone: 'warn', source: 'sampler' })
+  }
+}
+
+/**
+ * Resolves a live-recorded slot (v0.7.5) from its stored WAV blob —
+ * independent of library scanning, unlike `loadSamplerSlotAudio`'s
+ * `contentHash`-matched path. Returns `false` rather than throwing on a
+ * missing/corrupt blob so the caller can count and name the failure,
+ * per this project's central rule.
+ */
+async function loadSamplerSlotRecording(index: number, recordingId: string): Promise<boolean> {
+  await initAudio()
+  const blob = await getRecordingBlob(recordingId)
+  if (!blob) return false
+  try {
+    const data = await blob.arrayBuffer()
+    const buffer = await engine.decode(data)
+    engine.sampler.loadSlot(index, buffer)
+    engine.sampler.setGain(index, useStore.getState().sampler.slots[index].gain)
+    return true
+  } catch (err) {
+    console.error('sampler recording decode failed', err)
+    return false
   }
 }
 
@@ -1176,6 +1243,11 @@ async function loadSamplerSlotAudio(
   await initAudio()
   const { patchSamplerSlot, setNotice, clearNotice } = useStore.getState()
   clearNotice('sampler')
+  // Dropping a library track onto a slot that held a live recording (v0.7.5)
+  // replaces it — the old blob is now unreachable from any slot, so it's
+  // deleted rather than left as an orphan in IndexedDB.
+  const previousRecordingId = useStore.getState().sampler.slots[index].recordingId
+  if (previousRecordingId) void deleteRecordingBlob(previousRecordingId)
   let buffer: AudioBuffer
   let contentHash: string | undefined
   try {
@@ -1208,6 +1280,7 @@ async function loadSamplerSlotAudio(
   patchSamplerSlot(index, {
     trackId: track.id,
     contentHash,
+    recordingId: undefined,
     // A resolve-from-saved-bank must not clobber the name — `restoreSamplerBankMeta`
     // already put the saved (possibly renamed) `trackName` on this slot, and
     // overwriting it here with the track's own title would silently undo a
@@ -1233,7 +1306,7 @@ export async function loadSamplerSlot(index: number, track: Track): Promise<void
 export function renameSamplerSlot(index: number, name: string) {
   const { sampler, library, patchSamplerSlot } = useStore.getState()
   const slot = sampler.slots[index]
-  if (!slot.trackId) return
+  if (!isSamplerSlotOccupied(slot)) return
   const trimmed = name.trim()
   const track = library.tracks.find((t) => t.id === slot.trackId)
   const fallback = (track && (track.title ?? track.name)) || slot.trackName || `Slot ${index + 1}`
@@ -1241,17 +1314,98 @@ export function renameSamplerSlot(index: number, name: string) {
   schedulePersistSamplerBank()
 }
 
-/** Empties a slot. The slot's own gain/mode/sync survive — a fader position on real gear doesn't reset when you eject the sample. */
+/** Empties a slot. The slot's own gain/mode/sync survive — a fader position on real gear doesn't reset when you eject the sample. A recorded slot's blob is deleted from IndexedDB too (v0.7.5) — otherwise it just sits there forever, an orphan nothing ever points to again. */
 export function clearSamplerSlot(index: number) {
   engine.sampler.unloadSlot(index)
+  const slot = useStore.getState().sampler.slots[index]
+  if (slot.recordingId) void deleteRecordingBlob(slot.recordingId)
   useStore.getState().patchSamplerSlot(index, {
     trackId: null,
     trackName: null,
     contentHash: undefined,
+    recordingId: undefined,
     bpm: undefined,
     playing: false,
   })
   schedulePersistSamplerBank()
+}
+
+/**
+ * Live-record a free slot from the master bus (v0.7.5) — a second load path
+ * alongside drag-and-drop, sharing the same `masterPostFx` tap the master
+ * recording uses. Keyed by slot index so several slots (and a master
+ * recording) can capture at once, each with its own tap and no shared state.
+ */
+const samplerCaptures = new Map<number, { tap: RecorderTap; chunks: Float32Array[][]; sampleRate: number }>()
+
+/** No-op on an occupied slot or one already capturing — the spec's "never overwrite, empty slots only" rule, enforced here rather than trusted to the UI that calls it. */
+export async function startSamplerCapture(index: number): Promise<void> {
+  const slot = useStore.getState().sampler.slots[index]
+  if (isSamplerSlotOccupied(slot) || samplerCaptures.has(index)) return
+  await initAudio()
+  const sampleRate = engine.ctx.sampleRate
+  const tap = await engine.createMasterTap()
+  const chunks: Float32Array[][] = []
+  tap.onChunk = (chunk) => chunks.push(chunk.channels)
+  samplerCaptures.set(index, { tap, chunks, sampleRate })
+  useStore.getState().patchSampler({ armedSlot: index })
+}
+
+/**
+ * Stops the capture, loads it into the engine immediately (playable within
+ * the same set, per spec), and persists the bytes so it survives a reload —
+ * `sampler-idb/store.ts`'s existing bank only ever stored a `contentHash`,
+ * which a live recording doesn't have.
+ */
+export async function stopSamplerCapture(index: number): Promise<void> {
+  const capture = samplerCaptures.get(index)
+  if (!capture) return
+  samplerCaptures.delete(index)
+  useStore.getState().patchSampler({ armedSlot: null })
+  await capture.tap.stop()
+
+  const totalFrames = capture.chunks.reduce((sum, chs) => sum + (chs[0]?.length ?? 0), 0)
+  if (totalFrames === 0) return // nothing captured — leave the slot empty, not a zero-length "recording"
+
+  const channels = mergeChunks(capture.chunks)
+  const buffer = engine.sampler.buildBuffer(channels, capture.sampleRate)
+  engine.sampler.loadSlot(index, buffer)
+  engine.sampler.setGain(index, useStore.getState().sampler.slots[index].gain)
+
+  const recordingId = crypto.randomUUID()
+  const wavBytes = encodeWav(channels, capture.sampleRate)
+  try {
+    // Same generic-vs-SharedArrayBuffer strictness gap as
+    // `recorder-fsaccess/writer.ts` — `core/wav.ts` always backs this with a
+    // plain `ArrayBuffer`, so the cast is safe.
+    await saveRecordingBlob(recordingId, new Blob([wavBytes as unknown as BlobPart], { type: 'audio/wav' }))
+  } catch (err) {
+    // The recording still plays for the rest of this session (already
+    // loaded into the engine above) — only persistence failed, so this
+    // degrades visibly rather than losing the take outright.
+    console.error('sampler recording save failed', err)
+    useStore.getState().setNotice({
+      text: `Recording on sampler slot ${index + 1} will disappear on reload — it couldn't be saved (${err instanceof Error ? err.message : String(err)}).`,
+      tone: 'warn',
+      source: 'sampler',
+    })
+  }
+
+  const existingRecordings = useStore.getState().sampler.slots.filter((s) => s.recordingId).length
+  useStore.getState().patchSamplerSlot(index, {
+    trackId: null,
+    contentHash: undefined,
+    recordingId,
+    trackName: `Recording ${existingRecordings + 1}`,
+    bpm: undefined,
+    playing: false,
+  })
+  // Not the debounced scheduler used elsewhere for rapid UI drags (gain,
+  // mode) — a fresh recording is a rare, deliberate, high-value event, and
+  // the audio blob above is already durably saved. Persisting the bank
+  // metadata immediately, not 400ms later, is what keeps "which slot points
+  // to this blob" from being lost if the tab closes right after stopping.
+  await persistSamplerBank()
 }
 
 export function setSamplerSlotMode(index: number, mode: SamplerMode) {
@@ -1312,13 +1466,14 @@ export function setSamplerSyncEnabled(index: number, on: boolean) {
 function pressSamplerPad(index: number): () => void {
   const { sampler, decks, masterDeckId, setNotice } = useStore.getState()
   const slot = sampler.slots[index]
-  // `slot.trackId` and the engine actually holding a buffer for this index
-  // are set together, in `loadSamplerSlotAudio`, and nowhere else — but
+  // Occupancy (`trackId` OR `recordingId`, v0.7.5) and the engine actually
+  // holding a buffer for this index are set together, in
+  // `loadSamplerSlotAudio`/`stopSamplerCapture`, and nowhere else — but
   // trusting that invariant here rather than checking it would let the pad
   // light up "playing" while producing no sound if it were ever violated,
   // exactly the visible-state-doesn't-match-reality failure this project's
   // central rule forbids.
-  if (!slot.trackId || !engine.sampler.hasBuffer(index)) {
+  if (!isSamplerSlotOccupied(slot) || !engine.sampler.hasBuffer(index)) {
     setNotice({
       text: `Sampler slot ${index + 1} is empty — drag a track from the library onto it.`,
       tone: 'info',
@@ -1472,15 +1627,36 @@ export function restoreFxBank(): Promise<void> {
 /** Save-as (ROADMAP.md v0.6.0's "export bank"). `'cancelled'` (the owner closed the dialog) is silent on purpose — everything else, including "this browser can't do this", is a notice. */
 export async function exportSamplerBank(): Promise<void> {
   const { sampler, setNotice } = useStore.getState()
+  // A recorded slot's actual audio (v0.7.5) lives in this browser's
+  // IndexedDB, not in a portable file — including a bare `recordingId` in
+  // the export would silently produce a slot no other machine (or a wiped
+  // IndexedDB on this one) could ever resolve. Left out and counted,
+  // rather than exported as a reference to nothing.
+  const recordedCount = sampler.slots.filter((s) => s.recordingId).length
   const bank: StoredSamplerBank = sampler.slots.map((s) =>
     s.contentHash
-      ? { contentHash: s.contentHash, trackName: s.trackName ?? '', bpm: s.bpm, mode: s.mode, gain: s.gain, syncEnabled: s.syncEnabled }
+      ? {
+          contentHash: s.contentHash,
+          recordingId: undefined,
+          trackName: s.trackName ?? '',
+          bpm: s.bpm,
+          mode: s.mode,
+          gain: s.gain,
+          syncEnabled: s.syncEnabled,
+        }
       : null,
   )
   try {
     const result = await exportSamplerBankToFile(bank)
     if (result === 'ok') {
-      setNotice({ text: 'Sampler bank saved.', tone: 'info', source: 'sampler' })
+      setNotice({
+        text:
+          recordedCount > 0
+            ? `Sampler bank saved — ${recordedCount} recorded slot${recordedCount === 1 ? '' : 's'} weren't included (recordings don't travel in this file).`
+            : 'Sampler bank saved.',
+        tone: recordedCount > 0 ? 'warn' : 'info',
+        source: 'sampler',
+      })
     }
   } catch (err) {
     console.error('sampler bank export failed', err)
@@ -1521,6 +1697,7 @@ export async function importSamplerBank(): Promise<void> {
       patchSamplerSlot(i, {
         trackName: s.trackName,
         contentHash: s.contentHash,
+        recordingId: s.recordingId,
         bpm: s.bpm,
         mode: s.mode,
         gain,

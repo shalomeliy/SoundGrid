@@ -3,7 +3,7 @@ import * as ctl from '@/controls'
 import { HOT_CUE_COLORS } from '@/core/constants'
 import { LOOP_BEATS_STEPS } from '@/core/padmodes'
 import { customTextOf } from '@/core/hotcues'
-import type { SamplerMode, SamplerSlot } from '@/core/sampler'
+import { isSamplerSlotOccupied, type SamplerMode, type SamplerSlot } from '@/core/sampler'
 import { Button, HintIcon, Knob, Pill } from '@/app/components/controls'
 import { useStore } from '@/app/state/store'
 import type { DeckId, HotCue, PadMode } from '@/core/types'
@@ -347,6 +347,7 @@ const SAMPLER_MODE_BADGE: Record<SamplerMode, string> = { oneShot: '1×', loop: 
  */
 function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean }) {
   const slots = useStore((s) => s.sampler.slots)
+  const armedSlot = useStore((s) => s.sampler.armedSlot)
   const [hovered, setHovered] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<number | null>(null)
   const [renaming, setRenaming] = useState<{ index: number; text: string } | null>(null)
@@ -390,7 +391,8 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
       {Array.from({ length: 8 }, (_, i) => {
         const index = base + i
         const slot = slots[index]
-        const occupied = slot.trackId != null
+        const occupied = isSamplerSlotOccupied(slot)
+        const isRecording = armedSlot === index
         // On, but nothing to lock to — shown on the pad itself rather than
         // a notice on every press, per this project's central rule: a
         // degraded state is surfaced, not swallowed, but a per-trigger
@@ -451,35 +453,46 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
               if (!e.dataTransfer.types.includes(TRACK_MIME)) return
               e.preventDefault()
               setDragOver(null)
+              // A slot mid-recording (v0.7.5) has no track loaded yet by this
+              // check's own definition — dropping onto it here would race
+              // `stopSamplerCapture`'s own `loadSlot` call.
+              if (index === armedSlot) return
               const id = e.dataTransfer.getData(TRACK_MIME)
               const track = useStore.getState().library.tracks.find((t) => t.id === id)
               if (track) void ctl.loadSamplerSlot(index, track)
             }}
             aria-label={
-              occupied
-                ? `Sampler slot ${index + 1}: ${slot.trackName}, ${slot.mode} mode`
-                : `Sampler slot ${index + 1} — empty, drag a track here`
+              isRecording
+                ? `Sampler slot ${index + 1} — recording from the master bus`
+                : occupied
+                  ? `Sampler slot ${index + 1}: ${slot.trackName}, ${slot.mode} mode`
+                  : `Sampler slot ${index + 1} — empty, drag a track here`
             }
-            className={padClass}
+            className={isRecording ? `${padClass} rec-pulse` : padClass}
             style={
-              dragOver === index
-                ? { background: 'var(--color-surface-3)', boxShadow: `inset 0 0 0 2px var(--color-accent)` }
-                : slot.playing
-                  ? { background: 'var(--color-accent)', color: '#000' }
-                  : occupied
-                    ? {
-                        background: 'var(--color-surface-2)',
-                        color: 'var(--color-grid-text)',
-                        boxShadow: `inset 0 0 0 1px ${syncStuck ? 'var(--color-warn)' : 'var(--color-hairline-strong)'}`,
-                      }
-                    : {
-                        background: 'var(--color-surface-1)',
-                        color: 'var(--color-grid-dim)',
-                        boxShadow: 'inset 0 0 0 1px var(--color-hairline)',
-                      }
+              isRecording
+                ? { background: 'var(--color-surface-2)', color: 'var(--color-danger)' }
+                : dragOver === index
+                  ? { background: 'var(--color-surface-3)', boxShadow: `inset 0 0 0 2px var(--color-accent)` }
+                  : slot.playing
+                    ? { background: 'var(--color-accent)', color: '#000' }
+                    : occupied
+                      ? {
+                          background: 'var(--color-surface-2)',
+                          color: 'var(--color-grid-text)',
+                          boxShadow: `inset 0 0 0 1px ${syncStuck ? 'var(--color-warn)' : 'var(--color-hairline-strong)'}`,
+                        }
+                      : {
+                          background: 'var(--color-surface-1)',
+                          color: 'var(--color-grid-dim)',
+                          boxShadow: 'inset 0 0 0 1px var(--color-hairline)',
+                        }
             }
           >
-            {occupied && (
+            {isRecording && (
+              <span className="absolute left-1 top-1 text-[9px] font-bold leading-none">REC</span>
+            )}
+            {!isRecording && occupied && (
               <span className="absolute left-1 top-1 text-[9px] font-bold leading-none opacity-70">
                 {SAMPLER_MODE_BADGE[slot.mode]}
               </span>
@@ -494,6 +507,9 @@ function SamplerPads({ deckId, shiftHeld }: { deckId: DeckId; shiftHeld: boolean
 
 /** The hover-revealed editor for one sampler slot — mode, gain, sync, clear. Real widgets (`Button`/`Knob`) reused from the mixer rather than squeezed into the pad itself. */
 function SamplerSlotEditor({ index, slot }: { index: number; slot: SamplerSlot }) {
+  const armedSlot = useStore((s) => s.sampler.armedSlot)
+  const isRecording = armedSlot === index
+  const occupied = isSamplerSlotOccupied(slot)
   const modes: { mode: SamplerMode; label: string }[] = [
     { mode: 'oneShot', label: '1×' },
     { mode: 'loop', label: 'Loop' },
@@ -505,9 +521,9 @@ function SamplerSlotEditor({ index, slot }: { index: number; slot: SamplerSlot }
           name, right next to this row; repeating it here left no room for
           the controls at the owner's actual 1536px width. */}
       <span className="shrink-0 text-2xs font-semibold text-grid-dim">
-        {slot.trackId ? `#${index + 1}` : `#${index + 1} — empty`}
+        {occupied ? `#${index + 1}` : `#${index + 1} — empty`}
       </span>
-      {slot.trackId ? (
+      {occupied ? (
         <>
           <div className="flex gap-0.5">
             {modes.map(({ mode, label }) => (
@@ -551,8 +567,25 @@ function SamplerSlotEditor({ index, slot }: { index: number; slot: SamplerSlot }
             Clear
           </Button>
         </>
+      ) : isRecording ? (
+        <>
+          <span className="text-2xs font-semibold text-danger">Recording…</span>
+          <Button variant="toggle" size="sm" active tone="var(--color-danger)" onClick={() => void ctl.stopSamplerCapture(index)}>
+            Stop
+          </Button>
+        </>
       ) : (
-        <span className="text-2xs text-grid-dim">Drag a track from the library onto this pad to load it.</span>
+        <>
+          <span className="text-2xs text-grid-dim">Drag a track here, or record from the master.</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={armedSlot != null}
+            onClick={() => void ctl.startSamplerCapture(index)}
+          >
+            Record
+          </Button>
+        </>
       )}
     </>
   )

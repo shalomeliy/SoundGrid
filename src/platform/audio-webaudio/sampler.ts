@@ -40,6 +40,24 @@ export class SamplerEngine {
     })
   }
 
+  /**
+   * Turns already-merged channel data (`core/recording.ts`'s `mergeChunks`
+   * output) into a playable `AudioBuffer` — the live-recording counterpart
+   * to `loadSlot`'s decoded-file path (v0.7.5). No decode step needed: the
+   * samples are already float PCM straight off the master tap.
+   */
+  buildBuffer(channels: Float32Array[], sampleRate: number): AudioBuffer {
+    const frames = channels[0]?.length ?? 0
+    const buffer = this.ctx.createBuffer(channels.length, frames, sampleRate)
+    // Same ArrayBufferLike-vs-ArrayBuffer strictness gap as
+    // `recorder-fsaccess/writer.ts` — these come from `mergeChunks`, always
+    // backed by a plain `ArrayBuffer`, so the cast is safe.
+    for (let c = 0; c < channels.length; c++) {
+      buffer.copyToChannel(channels[c] as unknown as Float32Array<ArrayBuffer>, c)
+    }
+    return buffer
+  }
+
   loadSlot(index: number, buffer: AudioBuffer) {
     this.stopVoice(index)
     this.voices[index].buffer = buffer

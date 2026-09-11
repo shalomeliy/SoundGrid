@@ -28,6 +28,8 @@ export interface SamplerSlot {
   trackName: string | null
   /** content hash (the same v0.4.0 identity `genre-overrides-idb`/`cues-idb` key on) — what a saved bank restores a slot by, never a scan-relative path */
   contentHash: string | undefined
+  /** set instead of `contentHash` when this slot's audio came from a live recording (v0.7.5), not a library file — mutually exclusive with `contentHash` for an occupied slot. Keys the raw bytes in `platform/sampler-recordings-idb/store.ts`. */
+  recordingId: string | undefined
   /** the loaded sample's own tempo, snapshotted at load time from the track's tag/analysis — undefined means unknown, never guessed */
   bpm: number | undefined
   mode: SamplerMode
@@ -39,11 +41,23 @@ export interface SamplerSlot {
   playing: boolean
 }
 
+/**
+ * A slot holds audio either from a library track (`trackId`) or a live
+ * recording (`recordingId`, v0.7.5) — never neither while occupied. Every
+ * "is this pad occupied" check in the UI and `controls.ts` goes through
+ * this, not a bare `slot.trackId != null`, so a recorded slot (which has no
+ * `trackId` — there is no library `Track` behind it) reads as occupied too.
+ */
+export function isSamplerSlotOccupied(slot: SamplerSlot): boolean {
+  return slot.trackId != null || slot.recordingId != null
+}
+
 export function emptySamplerSlot(): SamplerSlot {
   return {
     trackId: null,
     trackName: null,
     contentHash: undefined,
+    recordingId: undefined,
     bpm: undefined,
     mode: 'oneShot',
     gain: 0.85,
