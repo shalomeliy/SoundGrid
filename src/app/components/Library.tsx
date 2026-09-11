@@ -22,6 +22,7 @@ import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import type { KeyMode } from '@/core/settings'
 import type { Track } from '@/core/types'
+import type { SortDir, SortKey } from '@/core/library-sort'
 import { Button, HintIcon } from '@/app/components/controls'
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
@@ -71,6 +72,23 @@ export function Library() {
   // Which key notation to show. DJs are split between musical and Camelot and
   // nobody wants to relearn theirs, so it's a preference that sticks.
   const { keyMode, libraryTextScale } = useSettings()
+  /**
+   * Three clicks cycle a column: asc -> desc -> off (back to scan order).
+   * Clicking a *different* column always starts it fresh at asc, rather
+   * than carrying over whatever direction the previous column was on.
+   */
+  function handleSort(key: SortKey) {
+    if (library.sortKey !== key) {
+      setLibrary({ sortKey: key, sortDir: 'asc' })
+    } else if (library.sortDir === 'asc') {
+      setLibrary({ sortDir: 'desc' })
+    } else {
+      setLibrary({ sortKey: null, sortDir: 'asc' })
+    }
+  }
+  const activeSort: { key: SortKey; dir: SortDir } | null = library.sortKey
+    ? { key: library.sortKey, dir: library.sortDir }
+    : null
   const skippedTotal = Object.values(library.skipped).reduce((a, b) => a + b, 0)
   const unrecognizedGenreTotal = Object.values(library.unrecognizedGenre).reduce(
     (a, b) => a + b,
@@ -464,7 +482,7 @@ export function Library() {
   // Kept separate from `list` so the empty state below can tell "mixOnly
   // filtered everything out" apart from "the folder genuinely has nothing" —
   // the two used to render the identical "no audio files" message.
-  const preMixList = ctl.filteredTracks()
+  const preMixList = ctl.sortedFilteredTracks()
   const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
   const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length)
 
@@ -702,14 +720,41 @@ export function Library() {
                     not go to Artist, it collected in the Type column as a dead
                     band between Artist and MP3. Fixed layout is what makes the
                     number mean what it says. */}
-                <Th className="w-[25%] pl-3 text-left">Title</Th>
-                <Th className="w-[27%] text-left">Artist</Th>
+                <Th className="w-[25%] pl-3 text-left" sortKey="title" activeSort={activeSort} onSort={handleSort}>
+                  Title
+                </Th>
+                <Th className="w-[27%] text-left" sortKey="artist" activeSort={activeSort} onSort={handleSort}>
+                  Artist
+                </Th>
                 {/* Reclaimed from Type (8%→4%) and Time (10%→7%) — Title, Artist,
                     BPM, Key and Load are load-bearing and stay untouched. */}
                 <Th className="w-[7%] text-left">Genre</Th>
                 <Th className="w-[4%] text-left">Type</Th>
-                <Th className="w-[10%] text-right tnum">BPM</Th>
+                <Th className="w-[10%] text-right tnum" sortKey="bpm" activeSort={activeSort} onSort={handleSort}>
+                  BPM
+                </Th>
                 <Th className="w-[10%] text-right">
+                  {/*
+                    Two separate controls sharing one header on purpose: the
+                    label toggles *display* (musical/Camelot spelling,
+                    unchanged since before this version), the arrow toggles
+                    *order* (v0.8.0) — folding sort into the same click would
+                    make one gesture do two unrelated things.
+                  */}
+                  <button
+                    onClick={() => handleSort('key')}
+                    title="Sort by key (Camelot wheel order)"
+                    className="rounded-[var(--radius-xs)] px-0.5 py-0.5 transition-colors hover:bg-surface-2 hover:text-grid-text"
+                    aria-sort={
+                      activeSort?.key === 'key' ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+                    }
+                  >
+                    {activeSort?.key === 'key' && (
+                      <span aria-hidden="true" className="text-2xs">
+                        {activeSort.dir === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
+                  </button>
                   <button
                     onClick={() => {
                       void settings.set('keyMode', keyMode === 'musical' ? 'camelot' : 'musical')
@@ -724,7 +769,14 @@ export function Library() {
                     {keyMode === 'musical' ? 'Key' : 'Camelot'}
                   </button>
                 </Th>
-                <Th className="w-[7%] text-right tnum">Time</Th>
+                <Th
+                  className="w-[7%] text-right tnum"
+                  sortKey="durationSec"
+                  activeSort={activeSort}
+                  onSort={handleSort}
+                >
+                  Time
+                </Th>
                 <Th className="w-[10%] pr-3 text-right">Load</Th>
               </tr>
             </thead>
@@ -747,8 +799,48 @@ export function Library() {
   )
 }
 
-function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`label py-1.5 font-semibold ${className}`}>{children}</th>
+/**
+ * A plain header cell, or a sortable one when `sortKey`+`onSort` are given
+ * (v0.8.0) — the same clickable-button shape the Key/Camelot header already
+ * used for its mode toggle, extended to actual ordering. Three clicks per
+ * column: asc -> desc -> off, `aria-sort` carries the state for assistive
+ * tech rather than relying on the arrow glyph alone.
+ */
+function Th({
+  children,
+  className = '',
+  sortKey,
+  activeSort,
+  onSort,
+}: {
+  children: React.ReactNode
+  className?: string
+  sortKey?: SortKey
+  activeSort?: { key: SortKey; dir: SortDir } | null
+  onSort?: (key: SortKey) => void
+}) {
+  if (!sortKey || !onSort) {
+    return <th className={`label py-1.5 font-semibold ${className}`}>{children}</th>
+  }
+  const active = activeSort?.key === sortKey
+  return (
+    <th
+      className={`label py-1.5 font-semibold ${className}`}
+      aria-sort={active ? (activeSort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        onClick={() => onSort(sortKey)}
+        className="-mx-0.5 inline-flex items-center gap-0.5 rounded-[var(--radius-xs)] px-0.5 transition-colors hover:bg-surface-2 hover:text-grid-text"
+      >
+        {children}
+        {active && (
+          <span aria-hidden="true" className="text-2xs">
+            {activeSort.dir === 'asc' ? '▲' : '▼'}
+          </span>
+        )}
+      </button>
+    </th>
+  )
 }
 
 /**
