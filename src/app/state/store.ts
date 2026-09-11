@@ -27,6 +27,7 @@ export type NoticeSource =
   | 'ai'
   | 'sampler'
   | 'fx'
+  | 'recording'
 
 /**
  * v0.5.5's natural-language control bar — see `controls.ts`'s AI section
@@ -130,6 +131,21 @@ export interface AppState {
 
   /** Two global FX racks (v0.7.0) — index 0 pairs with deck A, 1 with deck B when channel-routed. See `platform/audio-webaudio/engine.ts`'s `setFxRouting`. */
   fx: [FxState, FxState]
+
+  /**
+   * Master recording status only (v0.7.5) — the PCM itself lives in
+   * `controls.ts`'s own module state, never here (this store holds
+   * serializable state only). `savedState: 'unsaved'` has no timeout: the
+   * spec is explicit that canceling the save dialog must never silently
+   * drop a recording, so this stays true until the owner saves or discards.
+   */
+  recording: {
+    active: 'master' | null
+    startedAt: number | null
+    bytesRecorded: number
+    savedState: 'idle' | 'unsaved' | 'saved'
+    trackBoundariesSec: number[]
+  }
 
   /**
    * Which deck SYNC's phase-align locks the other deck to (v0.3.0). `null`
@@ -273,6 +289,7 @@ export interface AppState {
   patchSamplerSlot: (index: number, patch: Partial<SamplerSlot>) => void
   patchSamplerChannel: (patch: Partial<AppState['sampler']['channel']>) => void
   patchSampler: (patch: Partial<Pick<AppState['sampler'], 'armedSlot'>>) => void
+  patchRecording: (patch: Partial<AppState['recording']>) => void
   patchFx: (rack: 0 | 1, patch: Partial<FxState>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
@@ -310,6 +327,7 @@ export const useStore = create<AppState>((set) => ({
     armedSlot: null,
   },
   fx: [emptyFx(), emptyFx()],
+  recording: { active: null, startedAt: null, bytesRecorded: 0, savedState: 'idle', trackBoundariesSec: [] },
   library: {
     folderName: null,
     tracks: [],
@@ -363,6 +381,7 @@ export const useStore = create<AppState>((set) => ({
   patchSamplerChannel: (patch) =>
     set((s) => ({ sampler: { ...s.sampler, channel: { ...s.sampler.channel, ...patch } } })),
   patchSampler: (patch) => set((s) => ({ sampler: { ...s.sampler, ...patch } })),
+  patchRecording: (patch) => set((s) => ({ recording: { ...s.recording, ...patch } })),
   patchFx: (rack, patch) =>
     set((s) => ({
       fx: rack === 0 ? [{ ...s.fx[0], ...patch }, s.fx[1]] : [s.fx[0], { ...s.fx[1], ...patch }],

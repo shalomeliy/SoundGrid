@@ -113,6 +113,12 @@ const HINT_BASE = {
   'topbar.ai': {
     text: 'Type a command in plain language, e.g. "loop 8 beats on deck A". Always asks before doing anything. Off by default.',
   },
+  'topbar.recordMaster': {
+    text: 'Records everything coming out of the master mix (both decks, FX included) to a WAV file. Mouse only for now.',
+  },
+  'topbar.recordMasterMark': {
+    text: 'Marks where the next track starts, so the saved recording splits into one file per track instead of one long file.',
+  },
 
   // — library —
   'library.folder': { text: 'Pick the folder SoundGrid scans for tracks.' },

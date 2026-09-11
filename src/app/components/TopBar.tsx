@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { engine } from '@/platform/audio-webaudio/engine'
+import * as ctl from '@/controls'
 import { initAudio, toggleAiControl, toggleQuantize } from '@/controls'
 import { midi } from '@/platform/transport-webmidi/manager'
 import { settings } from '@/platform/settings-idb/store'
@@ -129,6 +130,7 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       )}
 
       <div className="ml-auto flex items-center gap-3">
+        {audioReady && <RecordingBadge />}
         <MidiBadge />
         {midiState.lastMessage && (
           <span className="tnum hidden max-w-[14rem] truncate text-2xs text-grid-dim sm:inline">
@@ -169,6 +171,75 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
         </span>
       </div>
     </header>
+  )
+}
+
+/**
+ * Master recording status + controls (v0.7.5). Three states, mutually
+ * exclusive: idle (just a "Record" button), actively recording (a live
+ * time/size Pill + a track-boundary marker + Stop), or unsaved (a `warn`
+ * Pill with NO timeout — the spec's explicit "canceling the save dialog
+ * must never silently discard a recording" — plus Save/Discard). Mouse
+ * only for this version, same as the sampler's own recording (v0.7.5) and
+ * the FX controls (v0.7.0) before any FLX4 binding existed for them.
+ */
+function RecordingBadge() {
+  const recording = useStore((s) => s.recording)
+  // A tick counter, not a stored timestamp — `Date.now()` is read fresh at
+  // render time below, so there's no stale "now" to go negative the moment
+  // recording starts (found exactly that way, "-1:-1" instead of "0:00", in
+  // the browser-verification script). This effect only forces the re-render.
+  const [, forceTick] = useState(0)
+
+  useEffect(() => {
+    if (recording.active !== 'master') return
+    const id = window.setInterval(() => forceTick((n) => n + 1), 500)
+    return () => window.clearInterval(id)
+  }, [recording.active])
+
+  const elapsedSec = recording.startedAt != null ? Math.floor((Date.now() - recording.startedAt) / 1000) : 0
+  const mm = Math.floor(elapsedSec / 60)
+  const ss = (elapsedSec % 60).toString().padStart(2, '0')
+  const mb = (recording.bytesRecorded / (1024 * 1024)).toFixed(1)
+
+  if (recording.active === 'master') {
+    return (
+      <>
+        <Pill tone="live" label={`Rec master · ${mm}:${ss} · ${mb}MB`} />
+        <span className="relative inline-flex">
+          <Button variant="ghost" size="sm" onClick={() => ctl.markRecordingTrackBoundary()}>
+            Mark track
+          </Button>
+          <HintIcon id="topbar.recordMasterMark" className="absolute -right-1.5 -top-1.5" />
+        </span>
+        <Button variant="toggle" size="sm" active tone="var(--color-danger)" onClick={() => void ctl.stopRecordMaster()}>
+          Stop
+        </Button>
+      </>
+    )
+  }
+
+  if (recording.savedState === 'unsaved') {
+    return (
+      <>
+        <Pill tone="warn" label={`Not saved — save or discard · ${mm}:${ss}`} />
+        <Button variant="ghost" size="sm" onClick={() => void ctl.saveRecordedMaster()}>
+          Save
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => ctl.discardRecordedMaster()}>
+          Discard
+        </Button>
+      </>
+    )
+  }
+
+  return (
+    <span className="relative inline-flex">
+      <Button variant="ghost" size="sm" onClick={() => void ctl.startRecordMaster()}>
+        Record master
+      </Button>
+      <HintIcon id="topbar.recordMaster" className="absolute -right-1.5 -top-1.5" />
+    </span>
   )
 }
 

@@ -3,7 +3,7 @@ import { analysisCache } from '@/platform/analyze-cache-idb/store'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { engine } from '@/platform/audio-webaudio/engine'
 import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
-import { mergeChunks } from '@/core/recording'
+import { estimateSecondsRemaining, MASTER_RECORDING_MAX_SEC, mergeChunks } from '@/core/recording'
 import { encodeWav } from '@/core/wav'
 import { saveMasterRecording } from '@/platform/recorder-fsaccess/writer'
 import {
@@ -1787,20 +1787,43 @@ let masterRecordingTap: RecorderTap | null = null
 /** One entry per delivered chunk, each `[left, right]` — kept as a list of chunks, not one growing array, so a mid-recording allocation failure loses only the newest chunk, not the whole take. */
 let masterRecordingChunks: Float32Array[][] = []
 let masterRecordingSampleRate = 0
+let masterRecordingFrames = 0
 
 export async function startRecordMaster(): Promise<void> {
   if (masterRecordingTap) return
   await initAudio()
   masterRecordingChunks = []
+  masterRecordingFrames = 0
   masterRecordingSampleRate = engine.ctx.sampleRate
   const tap = await engine.createMasterTap()
   tap.onChunk = (chunk) => {
     masterRecordingChunks.push(chunk.channels)
+    masterRecordingFrames += chunk.frameCount
+    const bytesRecorded = masterRecordingFrames * 2 * 2 // stereo, 16-bit — matches what encodeWav will actually write
+    useStore.getState().patchRecording({ bytesRecorded })
+    // The cap is named, not a crash: hitting it stops the recording exactly
+    // like a manual stop, with everything captured so far still there to
+    // save. Never guessed at — `core/recording.ts`'s constant is the one
+    // source of truth for "how long is too long".
+    if (estimateSecondsRemaining(bytesRecorded, MASTER_RECORDING_MAX_SEC, masterRecordingSampleRate, 2) <= 0) {
+      void stopRecordMaster()
+      useStore.getState().setNotice({
+        text: `Recording stopped automatically after reaching the ${Math.round(MASTER_RECORDING_MAX_SEC / 60)}-minute limit — everything up to that point is still here to save.`,
+        tone: 'warn',
+        source: 'recording',
+      })
+    }
   }
   masterRecordingTap = tap
+  useStore.getState().patchRecording({
+    active: 'master',
+    startedAt: Date.now(),
+    bytesRecorded: 0,
+    savedState: 'idle',
+    trackBoundariesSec: [],
+  })
 }
 
-/** Headless for now — logs what was captured instead of saving it. `saveRecordedMaster` (a later step) reads the same module-level buffer. */
 export async function stopRecordMaster(): Promise<void> {
   const tap = masterRecordingTap
   if (!tap) return
@@ -1811,14 +1834,29 @@ export async function stopRecordMaster(): Promise<void> {
   console.log(
     `[recording] stopped — ${masterRecordingChunks.length} chunks, ${totalFrames} frames @ ${masterRecordingSampleRate}Hz (${seconds.toFixed(2)}s)`,
   )
+  useStore.getState().patchRecording({ active: null, savedState: totalFrames > 0 ? 'unsaved' : 'idle' })
+}
+
+/**
+ * Marks a track boundary at the current recording position (v0.7.5's own
+ * dedicated control — not the per-deck hot cues, which are per-track and
+ * don't span a whole set). Uses the exact frame count captured so far, not
+ * wall-clock time, so it lines up exactly with `splitByTrackBoundaries`
+ * regardless of any scheduling jitter between "now" and the last chunk.
+ */
+export function markRecordingTrackBoundary(): void {
+  if (useStore.getState().recording.active !== 'master') return
+  const sec = masterRecordingSampleRate ? masterRecordingFrames / masterRecordingSampleRate : 0
+  useStore.getState().patchRecording({
+    trackBoundariesSec: [...useStore.getState().recording.trackBoundariesSec, sec],
+  })
 }
 
 /**
  * Encodes whatever is in the module-level buffer and opens the save dialog.
  * `'cancelled'` (the owner closed the dialog) leaves the buffer exactly as
  * it was — per the spec, canceling must never silently discard a
- * recording. Store/notice wiring lands in a later step; for now failures
- * and cancellation are logged, not swallowed.
+ * recording.
  */
 export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'> {
   if (masterRecordingChunks.length === 0) return 'empty'
@@ -1829,13 +1867,18 @@ export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'
     const result = await saveMasterRecording(bytes, name)
     if (result === 'ok') {
       masterRecordingChunks = []
-      console.log('[recording] saved', name)
-    } else {
-      console.log('[recording] save cancelled — recording kept in memory')
+      masterRecordingFrames = 0
+      useStore.getState().patchRecording({ savedState: 'saved', bytesRecorded: 0, trackBoundariesSec: [] })
+      useStore.getState().setNotice({ text: `Recording saved as ${name}.`, tone: 'info', source: 'recording' })
     }
     return result
   } catch (err) {
     console.error('[recording] save failed — recording kept in memory', err)
+    useStore.getState().setNotice({
+      text: `Recording couldn't be saved — it's still here, try again. (${err instanceof Error ? err.message : String(err)})`,
+      tone: 'warn',
+      source: 'recording',
+    })
     throw err
   }
 }
@@ -1843,6 +1886,8 @@ export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'
 /** Explicit discard — never called automatically. The owner's own "delete" action on an unsaved recording. */
 export function discardRecordedMaster(): void {
   masterRecordingChunks = []
+  masterRecordingFrames = 0
+  useStore.getState().patchRecording({ savedState: 'idle', bytesRecorded: 0, trackBoundariesSec: [] })
 }
 
 // ————————————————————————————————————————————————————————————————
