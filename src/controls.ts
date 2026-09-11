@@ -268,7 +268,15 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   // failure here must not stop or warn about the load that already
   // succeeded.
   if (contentHash) {
-    void persistLastPlayedByHash(contentHash, Date.now()).catch((err) => {
+    // Optimistic, same as setTrackGenre/setTrackNote — the Library table's
+    // "Last played" column reflects this load immediately rather than only
+    // after the next rescan re-merges it from track-meta-idb.
+    const stampedAt = Date.now()
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({
+      tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, lastPlayedAt: stampedAt } : t)),
+    })
+    void persistLastPlayedByHash(contentHash, stampedAt).catch((err) => {
       console.error('last-played not saved', err)
     })
   }

@@ -3,6 +3,7 @@ import * as ctl from '@/controls'
 import { GENRES } from '@/core/genres'
 import { getGenreOverrides, getGenreOverridesByHash } from '@/platform/genre-overrides-idb/store'
 import { migrateGenreOverridesToHash } from '@/platform/genre-overrides-idb/migrate'
+import { getTrackMetaByHash } from '@/platform/track-meta-idb/store'
 import {
   ensureReadPermission,
   fileSystemAccessSupported,
@@ -29,7 +30,7 @@ import { Button, HintIcon } from '@/app/components/controls'
 /** Matches the `h-9` row height below — fixed regardless of `libraryTextScale`, which only scales font-size (see the comment on the table itself). */
 const ROW_HEIGHT = 36
 /** Header `<Th>` count — keep in step with the `<thead>` row below; only used to span the two virtualization padding rows. */
-const COLUMN_COUNT = 8
+const COLUMN_COUNT = 10
 
 const DECK_COLOR = { A: 'var(--color-deck-a)', B: 'var(--color-deck-b)' } as const
 
@@ -69,6 +70,19 @@ function fmtTime(sec?: number) {
   const m = Math.floor(sec / 60)
   const s = Math.floor(sec % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+/** Coarse relative time for the "Played" column (v0.8.0) — "3h ago", not a timestamp nobody wants to parse mid-set. `undefined` (never loaded since this became trackable) reads as "–", same convention as every other unset cell in this table. */
+function fmtRelative(ts?: number): string {
+  if (!ts) return '–'
+  const deltaSec = Math.max(0, (Date.now() - ts) / 1000)
+  if (deltaSec < 60) return 'just now'
+  const min = Math.floor(deltaSec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.floor(hr / 24)
+  return `${day}d ago`
 }
 
 export function Library() {
@@ -448,6 +462,13 @@ export function Library() {
     // after a scan), so its override only surfaces here, the moment this
     // pass gives it an identity to look up by.
     const hashOverrides = await getGenreOverridesByHash()
+    // Same reasoning as `hashOverrides` above, for note/lastPlayedAt
+    // (v0.8.0): track-meta-idb is hash-only from the start (no legacy
+    // path-keyed predecessor the way genre has), so this merge — the
+    // moment a track first gets an identity — is the *only* place a note
+    // or a play stamp survives a rescan. There is no earlier, path-keyed
+    // pass for it to also run in.
+    const trackMetaByHash = await getTrackMetaByHash()
     // Progress isn't read here — the header's "N queued"/"K failed" badges
     // (below) derive straight from `library.tracks[].analysisState`, the
     // same way the skipped/unrecognized-genre counts already do, so there is
@@ -464,7 +485,13 @@ export function Library() {
             const merged = { ...t, ...p, bpm: t.bpm ?? p.bpm, durationSec: t.durationSec ?? p.durationSec }
             const hash = p.contentHash ?? t.contentHash
             const override = hash ? hashOverrides.get(hash) : undefined
-            return override ? { ...merged, genre: override } : merged
+            const meta = hash ? trackMetaByHash.get(hash) : undefined
+            return {
+              ...merged,
+              ...(override ? { genre: override } : {}),
+              ...(meta?.note != null ? { note: meta.note } : {}),
+              ...(meta?.lastPlayedAt != null ? { lastPlayedAt: meta.lastPlayedAt } : {}),
+            }
           }),
         })
         // A saved sampler slot's track can be anywhere in a real library —
@@ -731,20 +758,22 @@ export function Library() {
                     not go to Artist, it collected in the Type column as a dead
                     band between Artist and MP3. Fixed layout is what makes the
                     number mean what it says. */}
-                <Th className="w-[25%] pl-3 text-left" sortKey="title" activeSort={activeSort} onSort={handleSort}>
+                <Th className="w-[20%] pl-3 text-left" sortKey="title" activeSort={activeSort} onSort={handleSort}>
                   Title
                 </Th>
-                <Th className="w-[27%] text-left" sortKey="artist" activeSort={activeSort} onSort={handleSort}>
+                <Th className="w-[21%] text-left" sortKey="artist" activeSort={activeSort} onSort={handleSort}>
                   Artist
                 </Th>
                 {/* Reclaimed from Type (8%→4%) and Time (10%→7%) — Title, Artist,
-                    BPM, Key and Load are load-bearing and stay untouched. */}
-                <Th className="w-[7%] text-left">Genre</Th>
-                <Th className="w-[4%] text-left">Type</Th>
-                <Th className="w-[10%] text-right tnum" sortKey="bpm" activeSort={activeSort} onSort={handleSort}>
+                    BPM, Key and Load are load-bearing and stay untouched.
+                    v0.8.0 reclaimed 5% more (Title/Artist/BPM/Key/Time each
+                    shrank a bit further) to make room for Note + Last played. */}
+                <Th className="w-[5%] text-left">Genre</Th>
+                <Th className="w-[3%] text-left">Type</Th>
+                <Th className="w-[8%] text-right tnum" sortKey="bpm" activeSort={activeSort} onSort={handleSort}>
                   BPM
                 </Th>
-                <Th className="w-[10%] text-right">
+                <Th className="w-[8%] text-right">
                   {/*
                     Two separate controls sharing one header on purpose: the
                     label toggles *display* (musical/Camelot spelling,
@@ -781,14 +810,25 @@ export function Library() {
                   </button>
                 </Th>
                 <Th
-                  className="w-[7%] text-right tnum"
+                  className="w-[6%] text-right tnum"
                   sortKey="durationSec"
                   activeSort={activeSort}
                   onSort={handleSort}
                 >
                   Time
                 </Th>
-                <Th className="w-[10%] pr-3 text-right">Load</Th>
+                <Th className="w-[12%] text-left" sortKey="note" activeSort={activeSort} onSort={handleSort}>
+                  Note
+                </Th>
+                <Th
+                  className="w-[9%] text-right tnum"
+                  sortKey="lastPlayedAt"
+                  activeSort={activeSort}
+                  onSort={handleSort}
+                >
+                  Played
+                </Th>
+                <Th className="w-[8%] pr-3 text-right">Load</Th>
               </tr>
             </thead>
             <tbody>
@@ -1070,6 +1110,14 @@ function Row({
         )}
       </td>
       <td className="tnum py-1.5 pr-2 text-right text-grid-muted">{fmtTime(track.durationSec)}</td>
+      <td
+        className="max-w-0 py-1.5 pr-2"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <NoteInput track={track} />
+      </td>
+      <td className="tnum py-1.5 pr-2 text-right text-2xs text-grid-dim">{fmtRelative(track.lastPlayedAt)}</td>
       <td className="whitespace-nowrap py-1.5 pl-2 pr-3 text-right">
         <LoadBtn deck="A" track={track} />
         <LoadBtn deck="B" track={track} />
@@ -1092,6 +1140,31 @@ function LoadBtn({ deck, track }: { deck: 'A' | 'B'; track: Track }) {
     >
       {deck}
     </button>
+  )
+}
+
+/**
+ * Free-text note cell (v0.8.0). Uncontrolled — saved on blur, not
+ * `onChange`, which would fire `setTrackNote` (and its IndexedDB write)
+ * on every keystroke. `key={track.note ?? ''}` remounts the input (fresh
+ * `defaultValue`) whenever the stored note changes from outside this
+ * input — a rescan resolving the hash-keyed store, or this same blur
+ * handler's own optimistic update — without needing an effect to
+ * re-sync local state.
+ */
+function NoteInput({ track }: { track: Track }) {
+  return (
+    <input
+      key={track.note ?? ''}
+      defaultValue={track.note ?? ''}
+      onBlur={(e) => {
+        const value = e.target.value
+        if (value !== (track.note ?? '')) ctl.setTrackNote(track.id, value)
+      }}
+      placeholder="–"
+      title={track.note}
+      className="w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 px-1 text-2xs text-grid-muted outline-none transition-colors placeholder:text-grid-dim hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+    />
   )
 }
 
