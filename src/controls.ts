@@ -263,10 +263,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   const durationSec = buffer.duration
   // v0.8.0: stamped only once decode succeeded, not right after the hash —
   // a track that hashes fine but fails to decode never actually played.
-  // Same "degrade, don't block or report" contract as the hash failure
-  // above: no `contentHash` means no key to stamp against, and a write
-  // failure here must not stop or warn about the load that already
-  // succeeded.
+  // No `contentHash` means no key to stamp against, so that part degrades
+  // silently (same as the hash failure above) — but a write failure below
+  // is surfaced via the notice banner, same as setTrackGenre/setTrackNote's
+  // own async-persist failures: found by independent review that the
+  // first version of this only logged to console, which nobody using the
+  // app ever sees, and is exactly the silent-skip CLAUDE.md forbids.
   if (contentHash) {
     // Optimistic, same as setTrackGenre/setTrackNote — the Library table's
     // "Last played" column reflects this load immediately rather than only
@@ -277,7 +279,11 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, lastPlayedAt: stampedAt } : t)),
     })
     void persistLastPlayedByHash(contentHash, stampedAt).catch((err) => {
-      console.error('last-played not saved', err)
+      setNotice({
+        text: `"${track.name}" loaded, but its "last played" time wasn't saved: ${err instanceof Error ? err.message : String(err)}`,
+        tone: 'warn',
+        source: 'library',
+      })
     })
   }
   // A hash failure above leaves `contentHash` `undefined` — "not yet
@@ -2524,7 +2530,12 @@ export function selectedTrack(): Track | undefined {
 
 export function moveSelection(delta: number) {
   const { library, setLibrary } = useStore.getState()
-  const list = filteredTracks()
+  // sortedFilteredTracks(), not filteredTracks() — v0.8.0 lets the visible
+  // table be sorted by any column; walking the unsorted list here would
+  // move the highlight to whatever's next in scan order, not the row
+  // actually above/below it on screen. Found by independent review, not
+  // caught while building the sort feature itself.
+  const list = sortedFilteredTracks()
   if (list.length === 0) return
   const idx = list.findIndex((t) => t.id === library.selectedId)
   const nextIdx = idx < 0 ? 0 : Math.max(0, Math.min(list.length - 1, idx + delta))
