@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import * as ctl from '@/controls'
 import { matchesQuery } from '@/core/library-search'
 import { useStore } from '@/app/state/store'
 import { Button } from '@/app/components/controls'
 import type { CrateRecord } from '@/platform/crates-idb/store'
+
+/** Same drag payload `Library.tsx`'s rows already set and `Deck.tsx`/`PadGrid.tsx` already consume — a crate is a third drop target, not a new kind of drag. */
+const TRACK_MIME = 'application/x-soundgrid-track'
 
 /**
  * The crate rail (v0.8.1) — a flat list of named track groupings, collapsed
@@ -11,10 +15,6 @@ import type { CrateRecord } from '@/platform/crates-idb/store'
  * chrome; the rail spends width instead). No tree: a flat list is what the
  * feature spec settled on after the owner's real library — a few hundred
  * tracks in six genre folders — turned out not to need nesting.
- *
- * Drag-and-drop onto a crate row is added in the next step; this version
- * covers list/create/rename/delete/refresh only, so each piece is verified
- * on its own rather than landing as one large, harder-to-check diff.
  */
 export function CratesRail() {
   const crates = useStore((s) => s.crates)
@@ -89,8 +89,40 @@ function CrateRow({
       return current.length !== before.length || current.some((h) => !before.includes(h!))
     })()
 
+  const [dragOver, setDragOver] = useState(false)
+
+  function onDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes(TRACK_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = crate.kind === 'manual' ? 'copy' : 'none'
+    setDragOver(true)
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(false)
+    if (crate.kind !== 'manual') {
+      useStore.getState().setNotice({
+        text: `"${crate.name}" is a smart crate — its tracks come from its saved search, not from dragging one in. Refresh it instead.`,
+        tone: 'warn',
+        source: 'library',
+      })
+      return
+    }
+    const id = e.dataTransfer.getData(TRACK_MIME)
+    const track = useStore.getState().library.tracks.find((t) => t.id === id)
+    if (track) ctl.addTrackToCrate(crate.id, track)
+  }
+
   return (
-    <div className="group rounded-[var(--radius-sm)] px-2 py-1 text-xs hover:bg-surface-2">
+    <div
+      onDragOver={onDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={onDrop}
+      className={`group rounded-[var(--radius-sm)] px-2 py-1 text-xs hover:bg-surface-2 ${
+        dragOver ? 'outline-2 outline-[var(--color-accent)] -outline-offset-2' : ''
+      }`}
+    >
       <div className="flex items-center gap-1">
         <span className="min-w-0 flex-1 truncate" title={crate.name}>
           {crate.kind === 'smart' ? '★ ' : ''}

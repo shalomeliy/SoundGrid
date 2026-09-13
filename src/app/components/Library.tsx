@@ -694,9 +694,19 @@ export function Library() {
         </span>
       </div>
 
-      {library.scanning && list.length === 0 ? (
-        <EmptyState title="Scanning your folder…" body={library.scanMsg} pulse />
-      ) : boot ? (
+      <div className="flex min-h-0 flex-1">
+        {/*
+          A crate is metadata independent of what the table happens to be
+          showing right now — it must not disappear just because the current
+          filter (or a still-loading library) makes `list` empty, which is
+          exactly when a crate's own "not found"/"stale" badges are most
+          worth seeing. So this sits beside the whole state machine below,
+          not inside its one "tracks are on screen" branch.
+        */}
+        <CratesRail />
+        {library.scanning && list.length === 0 ? (
+          <EmptyState title="Scanning your folder…" body={library.scanMsg} pulse />
+        ) : boot ? (
         /*
           One sentence per startup situation (v0.2.6). The panel is never
           allowed to be empty and silent: `bootCopy` returns copy for every
@@ -732,8 +742,6 @@ export function Library() {
           }
         />
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <CratesRail />
         <div ref={containerRef} className="min-h-0 flex-1 overflow-auto">
           {/*
             Sized against Serato on the same 14" panel: it fits ~31px rows with
@@ -864,8 +872,8 @@ export function Library() {
             </tbody>
           </table>
         </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   )
 }
