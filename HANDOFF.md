@@ -77,7 +77,6 @@
   ב‑`tests/core/recording.test.ts`.
 - **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו יושב ב‑
   IndexedDB המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה סלוטים לא נכללו.
-- **`verify-pad-modes.mjs`/`verify-settings.mjs`/`verify-library-boot.mjs` התיישנו** מול גרסאות מאוחרות — לא תוקן, לא קשור לדיף אחרון.
 
 ---
 

@@ -4,10 +4,17 @@
  *   node scripts/verify-pad-modes.mjs
  *
  * No real FLX4 hardware or MIDI in this environment — this proves the UI
- * and `controls.ts` side of Pad Modes (mode switching, Loop/Beat Jump/
- * Sampler-stub behavior, the global SHIFT layer) inside a real browser with
- * a real decoded track. The MIDI mapping itself (`flx4.ts`'s note guesses)
- * can only be verified against the real controller — that's on Shalom.
+ * and `controls.ts` side of Pad Modes (mode switching, Loop/Beat Jump, the
+ * global SHIFT layer) inside a real browser with a real decoded track. The
+ * MIDI mapping itself (`flx4.ts`'s note guesses) can only be verified
+ * against the real controller — that's on Shalom.
+ *
+ * v0.8.6: dropped the "Sampler mode is a visible stub" scenario — it tested
+ * v0.5.0's placeholder pad ("not built yet"), which v0.6.0's real Sampler
+ * replaced; that stale locator crashed this whole script instead of just
+ * failing one check. Sampler pad behavior has its own dedicated coverage:
+ * verify-sampler-record.mjs/verify-sampler-reload-e2e.mjs/
+ * verify-sampler-rename.mjs/verify-sampler-restore.mjs.
  *
  * Same harness as `verify-cues.mjs`: `showDirectoryPicker`/`indexedDB` are
  * faked with a tiny synthetic WAV standing in for a real track; everything
@@ -133,7 +140,6 @@ const loadFirstTrackToDeckA = async (page) => {
 }
 
 const deckA = (page) => page.locator('section').nth(0)
-const noticeText = (page) => page.locator('text=Sampler isn\'t built yet').first()
 
 // 1. Hot Cue is the default mode and behaves exactly as before v0.5.0.
 await scenario('default mode is Hot Cue, unchanged behavior', async (page, errors) => {
@@ -199,17 +205,7 @@ await scenario('Beat Jump: forward, and backward with SHIFT', async (page, error
   ok('no console errors', errors.length === 0, errors[0])
 })
 
-// 4. Sampler mode is a visible, honest stub.
-await scenario('Sampler mode is a visible stub, not a silent no-op', async (page, errors) => {
-  await loadFirstTrackToDeckA(page)
-  await deckA(page).getByRole('button', { name: 'Pad mode: Smpl' }).click()
-  await deckA(page).getByRole('button', { name: 'Sampler pad 1 — not built yet' }).click()
-  await page.waitForTimeout(150)
-  ok('pressing a sampler pad shows the "not built yet" notice', (await noticeText(page).count()) > 0)
-  ok('no console errors', errors.length === 0, errors[0])
-})
-
-// 5. Deck B's mode is independent of deck A's.
+// 4. Deck B's mode is independent of deck A's.
 await scenario('pad mode is per-deck, not global', async (page, errors) => {
   await loadFirstTrackToDeckA(page)
   await deckA(page).getByRole('button', { name: 'Pad mode: Loop' }).click()
@@ -220,7 +216,7 @@ await scenario('pad mode is per-deck, not global', async (page, errors) => {
   ok('no console errors', errors.length === 0, errors[0])
 })
 
-// 6. Loop Roll (SHIFT+hold on a Loop pad): loops while held, catches up past the entry point on release.
+// 5. Loop Roll (SHIFT+hold on a Loop pad): loops while held, catches up past the entry point on release.
 await scenario('Loop Roll: catches up on release, never gets stuck', async (page, errors) => {
   await loadFirstTrackToDeckA(page)
   await deckA(page).getByRole('button', { name: 'Pad mode: Loop' }).click()

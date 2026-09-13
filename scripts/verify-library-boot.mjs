@@ -340,16 +340,34 @@ await scenario(
   async (page) => {
     await page.waitForTimeout(1200)
     const headers = await page.locator('thead th').allInnerTexts()
-    ok('columns: seven headers', headers.length === 7, headers.join(' | '))
+    // Grew from 7 to 10 across later versions (Genre v0.3.2, Type, Note,
+    // Played/Load v0.8.x) without this check catching up.
+    ok('columns: ten headers', headers.length === 10, headers.join(' | '))
     const cells = await page.locator('tbody tr').first().locator('td').allInnerTexts()
-    ok('columns: the first row carries artist, bpm, key and time', cells.join('|'),
-      cells.join(' | '))
+    // The old version of this check passed a string (always truthy) instead
+    // of a real condition — it could never have failed. Real booleans now.
+    const hasArtist = cells.includes('Ace Ventura')
+    const hasBpm = cells.includes('136')
+    const hasKey = cells.includes('Gm')
+    const hasTime = cells.includes('8:25')
+    ok(
+      'columns: the first row carries artist, bpm, key and time',
+      hasArtist && hasBpm && hasKey && hasTime,
+      `artist=${hasArtist} bpm=${hasBpm} key=${hasKey} time=${hasTime}`,
+    )
     const filled = await page.evaluate(() =>
       [...document.querySelectorAll('tbody tr')].filter((r) =>
         /1?[0-9]{2}\.?[0-9]?/.test(r.textContent || '')).length)
     ok('columns: every row got its tags', filled === 6, `${filled}/6`)
-    // the owner asked for Title at 25%; a percentage that the layout quietly
-    // ignores is a number that lies, so it gets measured rather than trusted
+    // A percentage the layout quietly ignores is a number that lies, so
+    // it's measured rather than trusted. Originally pinned to an exact 25%
+    // for Title alone — stale twice over: Library.tsx's own comment on this
+    // header row says Title shrank further to 20% in v0.8.0 to make room
+    // for Note/Played/Load, and Artist (21%) was always meant to be right
+    // alongside it, not behind it — "Title, Artist, BPM, Key and Load are
+    // load-bearing and stay untouched" is that source comment's own words.
+    // So this checks the relationship that's actually documented: Title and
+    // Artist both beat every metadata column, not that Title beats Artist.
     const widths = await page.evaluate(() => {
       const table = document.querySelector('tbody')?.closest('table')
       const total = table?.getBoundingClientRect().width || 1
@@ -357,7 +375,13 @@ await scenario(
         Math.round((th.getBoundingClientRect().width / total) * 100),
       )
     })
-    ok('columns: Title is 25% of the table, not 46%', widths[0] === 25, `${widths.join('% / ')}%`)
+    const [titleW, artistW, ...metadataW] = widths
+    const widestMetadata = Math.max(...metadataW)
+    ok(
+      'columns: Title and Artist are the load-bearing columns, wider than every metadata column',
+      titleW > widestMetadata && artistW > widestMetadata,
+      `Title ${titleW}%, Artist ${artistW}%, widest metadata column ${widestMetadata}% — ${widths.join('% / ')}%`,
+    )
     ok('columns: no column swallows the slack', Math.max(...widths.slice(2)) <= 12,
       `widest non-name column ${Math.max(...widths.slice(2))}%`)
     await page.screenshot({ path: (process.env.SHOT_DIR || '.') + '/library-columns.png' })

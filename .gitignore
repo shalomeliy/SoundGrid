@@ -30,3 +30,6 @@ dist-ssr
 # Claude Code — ephemeral per-agent worktrees (isolation:"worktree" subagents)
 .claude/worktrees/
 graphify-out/
+
+# scripts/verify-*.mjs write these to the repo root when SHOT_DIR isn't set
+/*.png
