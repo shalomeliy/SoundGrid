@@ -7,8 +7,15 @@ import { settings } from '@/platform/settings-idb/store'
 import { useStore } from '@/app/state/store'
 import { Button, HintIcon, Pill, type PillTone } from '@/app/components/controls'
 
-export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function TopBar({
+  onOpenSettings,
+  onOpenHistory,
+}: {
+  onOpenSettings: () => void
+  onOpenHistory: () => void
+}) {
   const audioReady = useStore((s) => s.audioReady)
+  const historyCount = useStore((s) => s.history.length)
   const quantize = useStore((s) => s.quantize)
   const output = useStore((s) => s.output)
   const midiState = useStore((s) => s.midi)
@@ -163,6 +170,14 @@ export function TopBar({ onOpenSettings }: { onOpenSettings: () => void }) {
           </Button>
           <HintIcon id="topbar.ai" className="absolute -right-1.5 -top-1.5" />
         </span>
+        {/* v0.8.3: only shown once there's something to show — same principle
+            as `anyPlaying && ...` in Library.tsx, no permanently-dead button
+            before the first track loads this session. */}
+        {historyCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={onOpenHistory}>
+            History ({historyCount})
+          </Button>
+        )}
         <span className="relative inline-flex">
           <Button variant="ghost" size="sm" onClick={onOpenSettings}>
             Settings

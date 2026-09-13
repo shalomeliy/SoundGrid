@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.1`+`v0.8.2` נסגרו (13/09). פירוט: [`docs/handoff/v0.8.1.md`](docs/handoff/v0.8.1.md), [`docs/handoff/v0.8.2.md`](docs/handoff/v0.8.2.md). |
-| **branch** | `claude/relaxed-lovelace-duoc4e`, ancestor של `main` (`git merge-base --is-ancestor 9a3345f origin/main`) — **לא** "ישירות ל‑`main`" כפי שנכתב כאן ב‑09/09; לתקף מול שלום. |
-| **גרסה נוכחית** | `v0.8.2` (`package.json`) — נסגרה. |
+| **בעבודה** | אין כרגע — `v0.8.3` נסגרה (13/09), סוגרת את "ניהול ספרייה" (v0.8.0-v0.8.3). פירוט: [`docs/handoff/v0.8.3.md`](docs/handoff/v0.8.3.md). |
+| **branch** | `claude/eloquent-pascal-3mabcx`, מכיל את `main` (`git merge-base --is-ancestor e598851 origin/main`). |
+| **גרסה נוכחית** | `v0.8.3` (`package.json`) — נסגרה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | `v0.8.3` — היסטוריית סט + ייצוא (עדיפות נמוכה), `ROADMAP.md`. |
+| **הבא בתור** | `v0.8.4` — פרטיות/תנאי שימוש כנים + תיקון נגישות אמיתי, `ROADMAP.md`. |
 
 ---
 

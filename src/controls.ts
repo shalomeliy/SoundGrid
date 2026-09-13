@@ -14,6 +14,8 @@ import {
 } from '@/core/recording'
 import { encodeWav } from '@/core/wav'
 import { saveMasterRecording, saveSplitMasterRecording } from '@/platform/recorder-fsaccess/writer'
+import { formatSetHistory } from '@/core/set-history'
+import { saveSetHistoryText } from '@/platform/history-export-fsaccess/writer'
 import {
   BEATGRID_NUDGE_SEC,
   HOT_CUE_COLORS,
@@ -279,9 +281,20 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     // "Last played" column reflects this load immediately rather than only
     // after the next rescan re-merges it from track-meta-idb.
     const stampedAt = Date.now()
-    const { library, setLibrary } = useStore.getState()
+    const { library, setLibrary, appendHistoryEntry } = useStore.getState()
     setLibrary({
       tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, lastPlayedAt: stampedAt } : t)),
+    })
+    // v0.8.3: every successful load — including a quick re-check load —
+    // becomes a history entry. Deliberately not deduplicated (Shalom's own
+    // decision, 13/09): the list shows everything that was actually loaded,
+    // in full, and any trimming before sharing is his own judgment call.
+    appendHistoryEntry({
+      deckId,
+      contentHash,
+      name: track.title ?? track.name,
+      artist: track.artist ?? null,
+      loadedAtMs: stampedAt,
     })
     void persistLastPlayedByHash(contentHash, stampedAt).catch((err) => {
       setNotice({
@@ -1948,6 +1961,34 @@ export async function saveRecordedMaster(): Promise<'ok' | 'cancelled' | 'empty'
       text: `Recording couldn't be saved — it's still here, try again. (${err instanceof Error ? err.message : String(err)})`,
       tone: 'warn',
       source: 'recording',
+    })
+    throw err
+  }
+}
+
+/**
+ * Builds the shareable setlist text (v0.8.3) from every track loaded this
+ * session and opens the save dialog — same `try`/`catch`/`setNotice` shape
+ * as `saveRecordedMaster`. `'empty'` (nothing loaded yet) is checked before
+ * the dialog even opens, so canceling and "nothing to export" stay visibly
+ * different outcomes.
+ */
+export async function exportSetHistory(): Promise<'ok' | 'cancelled' | 'empty'> {
+  const entries = useStore.getState().history
+  if (entries.length === 0) return 'empty'
+  const text = formatSetHistory(entries, new Date())
+  try {
+    const result = await saveSetHistoryText(text, `soundgrid-setlist-${new Date().toISOString().slice(0, 10)}.txt`)
+    if (result === 'ok') {
+      useStore.getState().setNotice({ text: 'Setlist saved.', tone: 'info', source: 'history' })
+    }
+    return result
+  } catch (err) {
+    console.error('[history] export failed', err)
+    useStore.getState().setNotice({
+      text: `Setlist couldn't be saved — try again. (${err instanceof Error ? err.message : String(err)})`,
+      tone: 'warn',
+      source: 'history',
     })
     throw err
   }

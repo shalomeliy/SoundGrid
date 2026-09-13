@@ -4,6 +4,7 @@ import { Deck } from '@/app/components/Deck'
 import { Library } from '@/app/components/Library'
 import { Mixer } from '@/app/components/Mixer'
 import { SettingsScreen } from '@/app/components/Settings'
+import { SetHistoryScreen } from '@/app/components/SetHistory'
 import { TopBar } from '@/app/components/TopBar'
 import { TransitionRatingPrompt } from '@/app/components/TransitionRatingPrompt'
 import * as ctl from '@/controls'
@@ -16,6 +17,7 @@ import type { DeckId } from '@/core/types'
 export default function App() {
   useRenderLoop()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const notice = useStore((s) => s.notice)
   const setNotice = useStore((s) => s.setNotice)
   /**
@@ -179,7 +181,7 @@ export default function App() {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <TopBar onOpenSettings={() => setSettingsOpen(true)} />
+      <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
       {/* Anything the app refused or quietly substituted says so here. It sits
           under the top bar rather than in a corner toast because a refusal the
           user misses is the same as no refusal at all. */}
@@ -209,6 +211,7 @@ export default function App() {
         <Library />
       </div>
       {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
+      {historyOpen && <SetHistoryScreen onClose={() => setHistoryOpen(false)} />}
     </div>
   )
 }
