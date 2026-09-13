@@ -1,213 +1,178 @@
-# PLAN — v0.8.1: Crates
+# PLAN — v0.8.2: פס "מתנגן עכשיו"
 
-מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר מול שלום, 12/09). המסמך
-הזה הוא ה"איך" — קובץ-אחרי-קובץ — ולא חוזר על שום החלטת מוצר מה‑spec.
+מבוסס על `workshop-output/FEATURE_SPEC.md` (מאושר מול שלום, 13/09). לא פותח
+מחדש שום החלטת מוצר — כל מה שלמטה הוא "איך", לא "מה".
 
-## 1. הארכיטקטורה הקיימת והזרימה הרלוונטית
+## 1. ארכיטקטורה נוכחית ותזרים נתונים רלוונטי
 
-**גרירה, כבר קיימת:** `Library.tsx:996-1019` — כל `<tr draggable>` שם
-`dataTransfer.setData('application/x-soundgrid-track', track.id)`
-ב‑`onDragStart`. שני צרכנים קיימים: `Deck.tsx:113-122` (`onDragOver` בודק
-`e.dataTransfer.types.includes(TRACK_MIME)`, `onDrop` קורא `getData`,
-מוצא את הטראק ב‑`useStore.getState().library.tracks`, קורא
-`ctl.loadTrackToDeck`) ו‑`PadGrid.tsx` (אותו דפוס, יעד ספציפי יותר בתוך
-`Deck.tsx` — `closest('[data-drop-zone="sampler"]')` קובע מי מהשניים
-מטפל בכל drop). crate יהיה יעד שלישי, עצמאי, לא בתוך `Deck.tsx`.
-
-**hash-על-פי-דרישה, כבר קיים, לא לולאת patch:** `controls.ts:2579-2605`
-(`setTrackGenre`/`persistGenreOverride`) ו‑`2612-2638`
-(`setTrackNote`/`persistTrackNote`) הן שתי הדוגמאות הקיימות ל"פעולת
-משתמש על טראק שאולי אין לו `contentHash` עדיין": עדכון אופטימי מיידי של
-הסטור, ואז קריאה אסינכרונית (`void ...catch(...)`) שבודקת `track.contentHash`,
-ואם חסר — `hashFile(track.handle)` על‑אתר, פאץ' לסטור, ואז persist
-לפי ה‑hash. כישלון מוצג ב‑`setNotice({tone:'warn', source:'library'})`.
-`addTrackToCrate` הולכת בדיוק באותה תבנית — לא לולאת patch נפרדת (תיקון
-ל‑spec אחרי קריאת הקוד, ר' `FEATURE_SPEC.md`).
-
-**חנות תואמת:** `platform/track-meta-idb/store.ts` — `idb-keyval` מפתח
-אחד, `Record<contentHash, T>`, getter שלא זורק (Map ריקה בכישלון),
-setter שכן זורק, merge (לא replace) על מה שכבר קיים. `crates-idb/store.ts`
-הולכת באותה תבנית בדיוק.
-
-**סינון, כבר קיים:** `core/library-search.ts`'s `matchesQuery(track,
-rawQuery): boolean` — פונקציה טהורה, טווח BPM + טקסט חופשי. crate חכם
-שומר `rawQuery` כמו שהוא ומריץ את אותה פונקציה ללא שינוי.
-
-**עיצוב-נאב תואם:** `Settings.tsx:23-30,51-65` — `GROUPS` כמערך
-`{id,label}`, `useState` לנבחר, `bg-surface-3` לנבחר / `hover:bg-surface-2`
-לא-נבחר, `rounded-[var(--radius-sm)] px-2.5 py-1 text-xs`. הרכיב החדש
-משתמש באותם טוקנים, לא ממציא צבעים.
-
-**באדג' "לא-שקט", כבר קיים:** `Library.tsx:633-692` — `bg-surface-2
-px-1.5 py-0.5 text-2xs font-semibold text-warn` + `title` tooltip, לכל
-אחד מ‑skipped/unreadable/unrecognized-genre/queued/analysis-failed.
-staleness של crate חכם ותג "לא נמצא" על חבר-crate משתמשים באותה תבנית.
-
-**אין דיאלוג אישור קיים בכלל באפליקציה** (נבדק: אין `confirm(`, אין
-`ConfirmDialog`). מחיקת crate היא הפעולה ההרסנית הראשונה שדורשת אחת —
-הבחירה: `window.confirm()` הדפדפני, לא רכיב מודאל חדש. פעולה חד-פעמית,
-לא שווה תשתית UI חדשה בשביל כפתור אחד.
+- `src/app/components/Library.tsx` — קומפוננטת `Library()` (שורה 89) מחזיקה
+  selector צר של פרימיטיבים מ‑`decks.A`/`decks.B` (`useShallow`, שורות
+  133-140: `aP, aB, aT, aId, aK, bP, bB, bT, bId, bK`) המוזן ל‑
+  `mixRecommendations` (שורה 151) ומייצר `recs: Map<trackId, MixMatch>`
+  (נצרך בשורה 886: `recs.get(t.id)`).
+- כל שורה מרונדרת ע"י `Row` (הגדרה שורה 999, לא `TrackRow` — תיקון שם
+  ביחס לתקצירי הסקירה), מקבל `track`, `selected`, `match`, `keyMode`,
+  `onSelect`, `removableFromCrateId` (שורות 882-890 — נקודת הקריאה
+  היחידה).
+- תא הכותרת של השורה (שורות 1059-1095) כבר בונה אשכול `<span
+  className="flex items-center gap-1.5">` עם `AnalysisIcon` (שורה 969,
+  מוגדר) ואז נקודת ההתאמה של Mix Assist (שורות 1067-1091, `DECK_COLOR`
+  שורה 36), אז שם הטראק החתוך (שורה 1092), אז `chipLabel` אופציונלי
+  (שורה 1093).
+- `LoadBtn` (שורה 1181) הוא התקדים העיצובי המדויק לפילול: `color-mix(in
+  srgb, ${tone}, transparent 82%)` לרקע + `tone` לטקסט, `tone` = משתנה
+  ה‑CSS של הדק.
+- `Track.contentHash?: string` (`src/core/types.ts:38`), `DeckState.track:
+  Track | null` (`src/core/types.ts:105`) — שניהם קיימים, בלי שינוי טיפוס
+  נדרש.
+- אומת ישירות ב‑`controls.ts:236-333` (`loadTrackToDeck`): `hashBytes`
+  (שורה 247) תמיד מסתיים — הצלחה או כישלון תפוס — *לפני* ש‑`patchDeck`
+  קובע `decks[id].track` לראשונה (שורות 330-331). אין חלון "טעון בלי
+  hash" לטפל בו.
 
 ## 2. הפרוסה הדקה מקצה-לקצה
 
-יצירת crate ידני → גרירת טראק אליו מהטבלה → הצגתו ברשימה עם ספירת חברים
-→ מחיקתו (עם אישור). זה מוכיח: החנות, ה‑controls action, יעד ה‑drop,
-וה‑UI — בלי לגעת עדיין ב‑crate חכם. crate חכם (שמירת שאילתה + רענון) הוא
-השלב השני, נבנה על אותה חנות.
+Selector קיים (2 primitives נוספים) → שני props חדשים ל‑`<Row>` → השוואת
+`===` בתוך `Row` → רינדור פילול טקסט אחד או שניים בתוך תא הכותרת הקיים.
+שום קובץ מחוץ ל‑`Library.tsx` לא משתנה.
 
-## 3. קבצים — מה משתנה ולמה
+## 3. קבצים לשינוי (קובץ יחיד)
 
-### חדש: `src/platform/crates-idb/store.ts`
+**`src/app/components/Library.tsx`** — כל השינוי כאן:
 
-```ts
-export interface CrateRecord {
-  id: string
-  name: string
-  kind: 'manual' | 'smart'
-  members?: string[]      // contentHash[], ידני בלבד, בלי כפילויות
-  query?: string           // חכם בלבד — אותה מחרוזת שהחיפוש כבר מבין
-  materialized?: string[]  // contentHash[], חכם בלבד — תמונת-מצב מהרענון האחרון
-  refreshedAt?: number     // חכם בלבד — חותמת הרענון האחרון, לחישוב staleness (ר' סעיף 5)
-}
-```
+1. **שורות 133-140** — הרחבת ה‑`useShallow` tuple בשני ערכים בסוף:
+   ```ts
+   const [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, aHash, bHash] = useStore(
+     useShallow((s) => [
+       s.decks.A.playing, s.decks.A.bpm, s.decks.A.tempo, s.decks.A.track?.id ?? null,
+       s.decks.A.track?.camelot ?? null,
+       s.decks.B.playing, s.decks.B.bpm, s.decks.B.tempo, s.decks.B.track?.id ?? null,
+       s.decks.B.track?.camelot ?? null,
+       s.decks.A.track?.contentHash ?? null,
+       s.decks.B.track?.contentHash ?? null,
+     ]),
+   )
+   ```
+   **אזהרה מפורשת מהסקירה הארכיטקטונית, לשמור עליה תוך כדי העריכה:** אסור
+   להוסיף `positionSec`/`peaks`/כל שדה שמתעדכן בקצב frame לתוך אותו tuple
+   — זה מה ש‑`useShallow` על מערך פרימיטיבים שומר מפני רינדור-מחדש של כל
+   הטבלה 60 פעם בשנייה, וזו בדיוק הסיבה ש‑`positionSec` לא נמצא שם כבר
+   היום.
+2. **שורות 882-890** (קריאה ל‑`<Row>`) — שני props חדשים:
+   ```tsx
+   <Row
+     key={t.id}
+     track={t}
+     selected={t.id === library.selectedId}
+     match={recs.get(t.id)}
+     keyMode={keyMode}
+     onSelect={() => setLibrary({ selectedId: t.id })}
+     removableFromCrateId={removableFromCrateId}
+     loadedOnA={aHash != null && aHash === t.contentHash}
+     loadedOnB={bHash != null && bHash === t.contentHash}
+   />
+   ```
+   שני בוליאנים, לא hash גולמי — `Row` לא צריך לדעת את ה‑hash של אף דק,
+   רק אם *השורה שלו* טעונה על A ו/או B. `aHash != null` שומר על ההתנהגות
+   הנכונה כש‑hash נכשל (`undefined`/`null` בשני הצדדים לא ייחשב "שווה").
+3. **חתימת `Row`** (שורה 999-1013) — שני props בוליאניים חדשים:
+   `loadedOnA: boolean` , `loadedOnB: boolean`.
+4. **תוך `Row`, בתוך תא הכותרת** (בין נקודת ה‑Mix-Assist, שורה 1091,
+   לטקסט החתוך, שורה 1092) — פילול אחד לכל דק טעון:
+   ```tsx
+   {(loadedOnA || loadedOnB) && (
+     <span className="flex shrink-0 items-center gap-0.5">
+       {loadedOnA && (
+         <span
+           aria-label="Loaded on deck A"
+           className="grid h-4 w-4 place-items-center rounded-[var(--radius-xs)] text-[10px] font-bold leading-none"
+           style={{ background: 'color-mix(in srgb, var(--color-deck-a), transparent 82%)', color: 'var(--color-deck-a)' }}
+         >
+           A
+         </span>
+       )}
+       {loadedOnB && (
+         <span
+           aria-label="Loaded on deck B"
+           className="grid h-4 w-4 place-items-center rounded-[var(--radius-xs)] text-[10px] font-bold leading-none"
+           style={{ background: 'color-mix(in srgb, var(--color-deck-b), transparent 82%)', color: 'var(--color-deck-b)' }}
+         >
+           B
+         </span>
+       )}
+     </span>
+   )}
+   ```
+   **בדוק בפועל (13/09): שום קובץ ב‑`src/app/components/` לא מכיל בפועל
+   טקסט עברי גלוי למשתמש** — `grep -rl '[א-ת]{2,}' src` מוצא עברית רק
+   בתוך הערות קוד/קובצי migrate פנימיים, לא במחרוזת UI אחת. ההחלטה
+   "שפת הממשק: טקסט בעברית" שסגורה ב‑`HANDOFF.md` (02/09) מעולם לא בוצעה
+   בפועל בקוד — כל ה‑UI הקיים, כולל `Library.tsx` עצמו, באנגלית. לתרגם
+   את כל האפליקציה הוא לא בתחום v0.8.2 (שינוי לא-קשור לפיצ'ר, אסור לפי
+   `CLAUDE.md`) — הפילול החדש נשאר **באנגלית**, תואם ל‑100% מהמוסכמה
+   הקיימת בקובץ הזה בדיוק (`aria-label="Load to deck A"` שורה 1189,
+   `aria-label="Remove from this crate"` שורה 1167). הפער בין ההחלטה
+   הכתובה לקוד בפועל מדווח לשלום בנפרד — לא מוסתר, לא מתוקן כאן.
 
-`getCrates(): Promise<Map<string, CrateRecord>>` — לא זורק לעולם (Map
-ריקה בכישלון). `saveCrate(record): Promise<void>` — זורק בכישלון,
-מתמזג על מה שכבר קיים (כמו `set(KEY, {...stored, [id]: record})`).
-`deleteCrateRecord(id): Promise<void>` — זורק בכישלון, מוחק מפתח יחיד
-מתוך האובייקט המאוחסן. שלוש פונקציות, לא יותר — כל הלוגיקה העסקית
-(איך בונים `CrateRecord` חדש, מיזוג members) יושבת ב‑`controls.ts`, לא
-כאן, כמו שכל שאר החנויות עושות.
+**שום קובץ אחר לא נוגעים בו** — לא `store.ts`, לא `controls.ts`, לא
+`core/types.ts` (השדות שצריך כבר קיימים), לא שכבת `platform/`.
 
-### חדש: `src/app/components/CratesRail.tsx`
+## 4. שינויי טיפוס / API והתנהגות כשל
 
-רכיב UI טהור: מציג את `useStore().crates` (רשימה שטוחה), כפתור "+ New
-crate" (prompt-style שם, כמו שאין דיאלוג קיים באפליקציה — `window.prompt`
-לשם, עקבי עם הבחירה ב‑`window.confirm` למחיקה), drop target לכל שורת
-crate ידני (`onDragOver`/`onDrop` על `application/x-soundgrid-track`,
-בדיוק כמו `Deck.tsx:113-122`), כפתור מחיקה (עם `window.confirm`), וכפתור
-רענון + באדג' staleness לכל crate חכם. אין state עסקי כאן — הכל נקרא
-מה‑store וכל פעולה קוראת ל‑`ctl.*`.
-
-### עריכה: `src/app/components/Library.tsx`
-
-- ייבוא `CratesRail`.
-- שורות 531-734 (בערך): עוטפים את ה‑`<div ref={containerRef}>` הקיים
-  ב‑`<div className="flex min-h-0 flex-1">` חדש, עם `<CratesRail />`
-  כאח ראשון (רכס בצד, לא שורה שנייה למעלה — התקציב האנכי כבר כמעט
-  מנוצל). שינוי מבני קטן, אין נגיעה בפנים ה‑`<table>` עצמו.
-- הוספת "not found" marker: כל שורת חבר-crate בתוך `CratesRail` בודקת
-  אם ה‑`contentHash` שלה קיים ב‑`library.tracks` הנוכחי; אם לא — מסומנת.
-  זו בדיקה בתוך `CratesRail`, לא שינוי ל‑`Library.tsx` עצמו.
-
-### עריכה: `src/app/state/store.ts`
-
-הוספת `crates: Map<string, CrateRecord>` לסטור (סריאלייזבילי — Map של
-אובייקטים פשוטים, כמו `library.tracks`), נטען פעם אחת ב‑boot (איפה
-שהספרייה עצמה נטענת) מ‑`getCrates()`.
-
-### עריכה: `src/controls.ts`
-
-שבע פונקציות חדשות, כולן עוקבות אחרי התבנית של `setTrackGenre`/
-`setTrackNote` (עדכון אופטימי של הסטור, ואז persist אסינכרוני עם
-`setNotice` בכישלון):
-
-- `createCrate(name: string)` — מוסיף `CrateRecord` חדש (`kind:'manual'`,
-  `members: []`) עם `id` חדש (`crypto.randomUUID()`).
-- `renameCrate(id: string, name: string)`.
-- `deleteCrate(id: string)` — **הקריאה נעשית רק אחרי `window.confirm`
-  ב‑UI** (ב‑`CratesRail.tsx`, לא כאן — `controls.ts` היא הצוואר-בקבוק
-  לפעולה, לא למנגנון האישור).
-- `addTrackToCrate(crateId: string, track: Track)` — אם `track.contentHash`
-  קיים, מוסיף אותו ל‑`members`; אם לא, עוקבת אחרי `persistGenreOverride`'s
-  תבנית בדיוק: `hashFile` על-אתר, פאץ' `contentHash` לטראק בסטור, ואז
-  מוסיפה את ה‑hash. Idempotent — `members` הוא סט מבחינה לוגית (בדיקת
-  `includes` לפני push), גרירה כפולה היא no-op גלוי (אין שינוי בממשק,
-  ולא כפילות בחנות).
-- `removeTrackFromCrate(crateId: string, hash: string)`.
-- `createSmartCrate(name: string, query: string)` — `kind:'smart'`,
-  `query`, `materialized: []` (ריק עד רענון ראשון — לא ממלא אוטומטית
-  ביצירה, עקבי עם "רק בלחיצה").
-- `refreshSmartCrate(crateId: string)` — קורא ל‑`matchesQuery` על
-  `library.tracks` הנוכחי עם ה‑`query` השמור, כותב את התוצאה (רשימת
-  `contentHash`) ל‑`materialized`, ומעדכן חותמת-זמן `refreshedAt` (כדי
-  ש‑`CratesRail` תדע אם stale — ר' סעיף 5).
-
-### אין שינוי ב‑`core/`
-
-אין `CrateRecord`/`FilterRule` חדש שם — הנתונים משרתים חנות אחת ורכיב
-UI אחד, בדיוק כמו ל‑genre overrides. `matchesQuery` נשארת כמו שהיא.
-
-## 4. שינויי API/טיפוסים והתנהגות כישלון
-
-- `CrateRecord` (חדש, ב‑`platform/crates-idb/store.ts` — לא `core/types.ts`,
-  ר' סעיף 3).
-- כל שבע הפעולות ב‑`controls.ts` הן `void`-מוחזרות (לא `Promise` שהקורא
-  מחכה לו) — עדכון הסטור מיידי, persist ברקע. כישלון persist בכל אחת
-  מהן → `setNotice({tone:'warn', source:'library', text: '...applied
-  but not saved: <error>'})`, אותה מחרוזת-דפוס כמו genre/note.
-- `deleteCrateRecord`/`saveCrate` (ב‑store.ts) זורקות; `getCrates` לא
-  זורקת לעולם — אותו חוזה בדיוק כמו `track-meta-idb`.
+- **אין שינוי טיפוס.** `loadedOnA`/`loadedOnB` הם `boolean` רגילים,
+  מחושבים ב‑`Library()`, לא נשמרים בשום מקום.
+- **כשל:** אין קריאת רשת/דיסק חדשה כאן — אין נתיב כשל חדש. hash חסר
+  (`undefined`) פשוט לא מייצר התאמה (`!= null` guard למעלה).
 
 ## 5. מודל מצב UI ותלויות נתונים
 
-- `library.tracks` (קיים) — המקור היחיד לאמת על אילו hash-ים "קיימים";
-  `CratesRail` משווה מול זה כדי לסמן "לא נמצא".
-- `crates: Map<string, CrateRecord>` (חדש בסטור) — נטען ב‑boot, מתעדכן
-  אופטימית מכל פעולת `controls.ts`.
-- **Staleness של crate חכם:** `refreshedAt` (בתוך `CrateRecord`, סעיף 3)
-  מול `library.tracks`'s עדכון אחרון (יש כבר `scanMsg`/מונה שינויים
-  מרומז דרך `library.tracks.length` + `analysisState` — הכי פשוט: אם
-  `library.tracks` השתנה (reference חדש) אחרי `refreshedAt`, ה‑badge
-  מוצג). זה חישוב נגזר ב‑`CratesRail` בזמן רינדור, לא state נשמר בנפרד.
-- אין state חדש ב‑`core/` ואין data flow חדש מעבר לסטור הקיים.
+שלושה מצבים אפשריים לכל שורה, נגזרים ישירות מה‑2 בוליאנים: אין סימון /
+"A" בלבד / "B" בלבד / "A"+"B" יחד (4 קומבינציות, לא 3 — תיקון). תלוי אך
+ורק ב‑`decks.A.track?.contentHash`, `decks.B.track?.contentHash`,
+ו‑`track.contentHash` של השורה עצמה — שלושתם כבר קיימים ב‑state, בלי
+תלות חדשה.
 
-## 6. בדיקות בשכבה הזולה ביותר שיש בה משמעות
+## 6. בדיקות בשכבה הזולה ביותר שיש לה משמעות
 
-- **אין `core/` חדש → אין `tests/core/` חדש.** `matchesQuery` כבר
-  מכוסה (אם יש לה בדיקה קיימת; אם אין — לא נפתח כאן, מחוץ לתכולה).
-- **חנות (`crates-idb/store.ts`):** אין תקדים לבדיקת יחידה על חנויות
-  idb-keyval דומות (`track-meta-idb`/`genre-overrides-idb` — אין להן
-  קובץ בדיקה ב‑`tests/`) — לא נפתח תקדים חדש כאן; מאומת ידנית דרך
-  `javascript_tool` (קריאת מפתח ה‑idb-keyval אחרי קריאה ישירה ל‑
-  `ctl.createCrate`/`ctl.addTrackToCrate`, בלי גרירה אמיתית).
-- **גרירה עצמה:** לא ניתנת לסימולציה משמעותית ב‑`javascript_tool`
-  (אין `DataTransfer` אמיתי בסביבה הזאת) — מאומתת רק ע"י שלום בכרום
-  האמיתי שלו, בסוף היחידה, עם הוראות בעברית.
-- **`npm run check`** אחרי כל קובץ שנוגע ב‑`core/`/`platform/`
-  (dependency-cruiser רגיש לזה) — כאן בעיקר `platform/crates-idb/`
-  מול הכללים הקיימים, לא אמור להכשיל כלום (אותה צורה כמו stores קיימים).
+- **אין `core/` חדש ואין פונקציה טהורה עצמאית** — ההשוואה היא `===` בודד
+  בתוך JSX, לא לוגיקה שמצדיקה חילוץ לפונקציה נבדקת (בניגוד ל‑`recommend`/
+  `library-search`, ששניהם אלגוריתם רב-תנאי). חילוץ פונקציה כאן רק כדי
+  "שתהיה בדיקה" הוא בדיוק סוג ה‑over-engineering ש‑`CLAUDE.md` אוסר
+  ("שלוש שורות דומות עדיפות על הפשטה מוקדמת").
+- **`npm run check`** (tsc+oxlint+depcruise+vitest) חייב להישאר ירוק —
+  זה מוודא שההרחבה ל‑`Row` לא שוברת טיפוסים ושה‑`depcruise` לא תופס
+  יבוא חדש שחוצה שכבה (לא אמור לקרות, אין יבוא חדש).
+- **`javascript_tool`** אחרי המימוש: לטעון טראק לדק A/B ישירות דרך
+  `ctl.loadTrackToDeck` (בלי גרירה/MIDI — לא ניתן לסימולציה כאן), לבדוק
+  ב‑DOM שהפילול המתאים מופיע בשורה הנכונה; לטעון טראק שני לאותו דק ולוודא
+  שהפילול עבר לשורה החדשה ונעלם מהישנה; לטעון את אותו טראק לשני הדקים
+  ולוודא ששני הפילולים מופיעים יחד.
 
-## 7. סיכונים, נסיגה, ולא-בתכולה מכוונת
+## 7. סיכונים, נסיגה, לא-בתכולה מכוונת
 
-- **סיכון:** `addTrackToCrate`'s hash-על-פי-דרישה מוסיף עוד קורא שלישי
-  ל‑`hashFile` על אותו טראק (אחרי genre, note) — אם שלושתם רצים על אותו
-  טראק כמעט-בו-זמנית (גרירה + עריכת הערה מהירה), כל אחד עלול לחשב hash
-  בנפרד לפני שהראשון סיים לפאץ' את הסטור. השפעה בפועל: עבודה כפולה
-  (hashFile רץ פעמיים-שלוש), לא איבוד נתונים — כל קריאה כותבת לאותו
-  `contentHash` הסופי. לא נפתר כאן (אותו סיכון קיים כבר בין genre/note,
-  לא נולד עם crates) — מתועד כחוב קיים, לא כחדש.
-- **נסיגה:** כל שינוי מאחורי `crates: Map` חדש בסטור ורכיב `CratesRail`
-  עצמאי — הסרת שני אלה (ועריכת ה‑wrapper ב‑`Library.tsx` חזרה) מחזירה
-  את האפליקציה למצב v0.8.0 המדויק, בלי מיגרציה הפוכה (החנות ב‑IndexedDB
-  פשוט מפסיקה להיקרא, לא נמחקת).
-- **לא בתכולה (חוזר מה‑spec, לא נפתח כאן):** עץ/היררכיה, מנוע כללים
-  רב-שדות, מיון ידני בתוך crate, הוספה למקלדת/תפריט, ייצוא/שיתוף.
+- **סיכון יחיד אמיתי:** מישהו (עתידי, כולל אני עצמי בהמשך) מוסיף שדה
+  נוסף ל‑selector tuple בלי לשים לב שהוא frame-rate (`positionSec` הכי
+  סביר) — נכתב כאזהרה מפורשת בקוד ליד ה‑tuple עצמו (הערה חדשה), לא רק
+  כאן ב‑PLAN.
+- **נסיגה:** שינוי בקובץ יחיד, שני בלוקים — `git revert` של הקומיט מספיק,
+  אין מיגרציית נתונים להחזיר (אין נתונים חדשים בכלל).
+- **לא בתכולה** (חוזר מה‑Spec, לא מוחלט כאן מחדש): בלי הודעת "מתנגן אבל
+  מסונן", בלי הבחנת play/פאוזה, בלי מסך היסטוריה — v0.8.3.
 
-## 8. סדר ביצוע, עם אימות אחרי כל צעד משמעותי
+## 8. סדר ביצוע מסודר + אימות אחרי כל שלב
 
-1. `platform/crates-idb/store.ts` (טיפוס + 3 פונקציות) → `npm run check`.
-2. שבע הפעולות ב‑`controls.ts` + `crates` בסטור + טעינה ב‑boot →
-   `npm run check`, ואימות ב‑`javascript_tool`: קריאה ל‑`ctl.createCrate`
-   ישירות מהקונסולה, בדיקה שה‑idb-keyval מתעדכן.
-3. `CratesRail.tsx` (רשימה + יצירה + מחיקה, **בלי** drop target עדיין) →
-   מוצג ב‑`Library.tsx`. אימות: הרכיב מופיע, יצירה/מחיקה עובדות ב‑UI.
-4. drop target (`onDragOver`/`onDrop` על `CratesRail`'s שורות) →
-   `npm run check`. אימות: **שלום** בכרום האמיתי שלו — גרירת טראק
-   לתוך crate, ספירת חברים עולה.
-5. crate חכם: `createSmartCrate`/`refreshSmartCrate` + UI (כפתור רענון,
-   באדג' stale) → אימות: יצירת crate חכם משאילתה קיימת, רענון, בדיקת
-   badge אחרי הוספת טראק חדש לספרייה.
-6. "לא נמצא" marker + חסימת drop על crate חכם עם הודעה → אימות ידני.
-7. `npm run check` מלא, סקירת `change-reviewer`, `HANDOFF.md`+`ROADMAP.md`
-   מסומנים ✅, הוראות בדיקה בעברית לשלום, commit + push.
+1. ~~קרוא מוסכמת `aria-label`/עברית~~ — **בוצע כבר בשלב התכנון** (ר' סעיף 3
+   סעיף-משנה 4 למעלה): אין שכבת i18n, כל הקובץ באנגלית, הפילול החדש
+   הולך באנגלית.
+2. **עריכה 1:** הרחבת ה‑`useShallow` tuple (שורות 133-140) + הערה קצרה
+   ליד ה‑tuple על איסור frame-rate fields. אימות: `npm run check` ירוק,
+   `git diff` מראה רק שינוי בשתי שורות + הערה.
+3. **עריכה 2:** `loadedOnA`/`loadedOnB` בקריאה ל‑`<Row>` + בחתימת `Row` +
+   הרינדור בתוך תא הכותרת. אימות: `npm run check` ירוק.
+4. **אימות בדפדפן (`javascript_tool`):** שלושת התרחישים בסעיף 6 —
+   טעינה בודדת, החלפה, שני דקים אותו טראק. תיעוד תוצאה (עובר/לא) לפני
+   commit.
+5. **commit:** `v0.8.2: פס "מתנגן עכשיו" — אות A/B ליד שם הטראק בספרייה`.
+6. **`change-reviewer`** על הדיף.
+7. **הוראות בדיקה בעברית לשלום** + `HANDOFF.md`/`ROADMAP.md` עדכון +
+   `context_check.py`.

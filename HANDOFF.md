@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.1` — Crates. קוד+חנות+UI+גרירה מוכנים, מאומתים ב‑Playwright נגד Chromium אמיתי (לא גרירת עכבר אמיתית — לא ניתנת לסימולציה כאן). **ממתין לאישור שלום בכרום שלו** לפני שהגרסה נסגרת. |
-| **branch** | הוראת שלום (09/09): `main` ישירות (`git status` מראה). |
-| **גרסה נוכחית** | `v0.8.1` (`package.json`) — בעבודה, לא נסגרה. |
-| **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור לדיף. |
-| **הבא בתור** | אחרי אישור v0.8.1: `v0.8.2` — "מתנגן עכשיו". ר' `ROADMAP.md`. |
+| **בעבודה** | אין כרגע — `v0.8.1`+`v0.8.2` נסגרו (13/09). פירוט: [`docs/handoff/v0.8.1.md`](docs/handoff/v0.8.1.md), [`docs/handoff/v0.8.2.md`](docs/handoff/v0.8.2.md). |
+| **branch** | `claude/relaxed-lovelace-duoc4e`, ancestor של `main` (`git merge-base --is-ancestor 9a3345f origin/main`) — **לא** "ישירות ל‑`main`" כפי שנכתב כאן ב‑09/09; לתקף מול שלום. |
+| **גרסה נוכחית** | `v0.8.2` (`package.json`) — נסגרה. |
+| **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
+| **הבא בתור** | `v0.8.3` — היסטוריית סט + ייצוא (עדיפות נמוכה), `ROADMAP.md`. |
 
 ---
 
