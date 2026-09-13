@@ -68,3 +68,94 @@ describe('readTags — WAV chunk walk', () => {
     expect(tags.title).toBe('Plain')
   })
 })
+
+/**
+ * v0.8.6: hardened `readOgg` to walk real Ogg page framing to page 1 (the
+ * comment header) instead of scanning raw bytes for the `\x03vorbis`/
+ * `OpusTags` signature — a blind scan could land on an accidental signature
+ * match inside a later page's compressed audio payload before ever
+ * reaching the real header. No real OGG file exists in this environment
+ * (HANDOFF.md), so this is entirely synthetic: a hand-built two-page
+ * container (identification header + comment header), enough to prove the
+ * page walk and the false-positive fix — not a substitute for testing
+ * against a real Vorbis/Opus encoder's output.
+ */
+function oggPage(
+  payload: number[],
+  { bos = false, seq = 0 }: { bos?: boolean; seq?: number } = {},
+): number[] {
+  // One segment per page here — every payload in these tests is well under
+  // 255 bytes, so the multi-segment/continuation rules don't come into it.
+  const header = [
+    ...[...'OggS'].map((c) => c.charCodeAt(0)),
+    0, // stream structure version
+    bos ? 0x02 : 0, // header type flag — 0x02 = beginning of stream
+    ...new Array(8).fill(0), // granule position (unused by readOggPage)
+    ...new Array(4).fill(0), // bitstream serial number (unused)
+    ...u32le(seq),
+    ...new Array(4).fill(0), // checksum (unchecked by readOggPage)
+    1, // page_segments
+    payload.length, // the one segment's length
+  ]
+  return [...header, ...payload]
+}
+
+function pushStr(out: number[], s: string) {
+  const bytes = [...s].map((c) => c.charCodeAt(0))
+  out.push(...u32le(bytes.length), ...bytes)
+}
+
+/** Vorbis comment header payload: packet type + "vorbis", vendor string, field count, then each "KEY=value". */
+function vorbisCommentHeaderPayload(fields: string[]): number[] {
+  const out = [0x03, ...[...'vorbis'].map((c) => c.charCodeAt(0))]
+  pushStr(out, 'SoundGridTest')
+  out.push(...u32le(fields.length))
+  for (const f of fields) pushStr(out, f)
+  return out
+}
+
+function oggFile(identPayload: number[], commentPayload: number[]): File {
+  const bytes = [...oggPage(identPayload, { bos: true, seq: 0 }), ...oggPage(commentPayload, { seq: 1 })]
+  return new File([new Uint8Array(bytes)], 'test.ogg', { type: 'audio/ogg' })
+}
+
+describe('readTags — OGG page walk', () => {
+  it('reads tags from a real two-page Vorbis comment header', async () => {
+    const ident = [1, 2, 3, 4] // content irrelevant — readOggPage never looks inside page 0
+    const comment = vorbisCommentHeaderPayload(['TITLE=Real Header', 'ARTIST=Test Artist', 'BPM=128'])
+    const tags = await readTags(oggFile(ident, comment))
+    expect(tags.title).toBe('Real Header')
+    expect(tags.artist).toBe('Test Artist')
+    expect(tags.bpm).toBe(128)
+  })
+
+  it('does not false-positive on a signature that happens to sit in page 0 (the bug a blind byte scan had)', async () => {
+    // The identification header (page 0) is opaque to this reader by design
+    // — but by pure chance it contains the exact byte sequence a blind scan
+    // was looking for, with a bogus title right after it. A page-walking
+    // reader must never even look inside page 0's payload for this.
+    const ident = [
+      1, 2, 0x03, ...[...'vorbis'].map((c) => c.charCodeAt(0)), ...vorbisCommentHeaderPayload(['TITLE=Should Not Be Read']), 9,
+    ]
+    const comment = vorbisCommentHeaderPayload(['TITLE=Real Header'])
+    const tags = await readTags(oggFile(ident, comment))
+    expect(tags.title).toBe('Real Header')
+  })
+
+  it('reads tags from an Opus comment header the same way', async () => {
+    const ident = [1, 2, 3, 4]
+    const comment = [...[...'OpusTags'].map((c) => c.charCodeAt(0))]
+    pushStr(comment, 'SoundGridTest')
+    comment.push(...u32le(1))
+    pushStr(comment, 'ARTIST=Opus Artist')
+    const tags = await readTags(oggFile(ident, comment))
+    expect(tags.artist).toBe('Opus Artist')
+  })
+
+  it('degrades to no tags rather than guessing when page framing is malformed', async () => {
+    const notOgg = new File([new Uint8Array([0x4f, 0x67, 0x67, 0x53, 0, 0, 0, 0])], 'broken.ogg')
+    const tags = await readTags(notOgg)
+    expect(tags.title).toBeUndefined()
+    expect(tags.artist).toBeUndefined()
+  })
+})
