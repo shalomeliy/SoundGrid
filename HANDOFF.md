@@ -32,7 +32,6 @@
   אין OGG בספרייה של המשתמש, אז לא נבדק על אמת.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
 - אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
-- אין persistence ל‑tempo בין טעינות (v0.16) — cue points/hot cues כן נשמרים מ‑v0.4.0.
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑

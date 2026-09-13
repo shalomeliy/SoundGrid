@@ -48,6 +48,7 @@ import {
 import { matchesQuery } from '@/core/library-search'
 import { sortTracks } from '@/core/library-sort'
 import { getCues, putCues } from '@/platform/cues-idb/store'
+import { getTempo, putTempo } from '@/platform/tempo-idb/store'
 import { getExcellentPoints, markExcellent } from '@/platform/mix-ratings-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
@@ -318,6 +319,11 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     c.kind == null && !isOrdinalLabel(c) ? { ...c, kind: 'mixEntry' as const } : c,
   )
   const cuePointSec = storedCues?.cuePointSec ?? 0
+  // v0.8.6: `null` (never saved for this track, or hash unknown) means the
+  // deck keeps whatever tempo it already had — same "leave it alone" default
+  // the physical pitch fader would give, not a reset to 0. Only a value this
+  // exact track was saved at previously overrides the current fader.
+  const storedTempo = contentHash ? await getTempo(contentHash) : null
   // v0.5.4: same "not yet identified, not an error" treatment as `storedCues`.
   const excellentMixPoints = contentHash ? await getExcellentPoints(contentHash) : []
   // "First cue point" (Settings › Feel › On track load) means this saved CUE
@@ -339,6 +345,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   if (outgoingId && outgoingId !== track.id) markRecentlyRemoved(outgoingId)
 
   engine.decks[deckId].load(buffer)
+  // Applied straight to the engine, not through `setTempo` — that function's
+  // extra work (cancelling an active transition, rescheduling this same
+  // persist, refreshing FX beat-sync time) is for a genuine fader touch, not
+  // for re-applying a value that was already this track's saved tempo a
+  // moment ago.
+  if (storedTempo != null) engine.decks[deckId].setTempo(storedTempo)
   if (startSec > 0) engine.decks[deckId].seek(startSec)
   patchDeck(deckId, {
     track: { ...track, contentHash, bpm: track.bpm ?? undefined, durationSec },
@@ -352,6 +364,7 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     syncActive: false,
     peaks: null,
     bands: null,
+    ...(storedTempo != null ? { tempo: storedTempo } : {}),
     hotCues,
     cuePointSec,
     excellentMixPoints,
@@ -805,6 +818,30 @@ export function setTempo(deckId: DeckId, tempo: number) {
   engine.decks[deckId].setTempo(t)
   useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
   if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
+  schedulePersistTempo(deckId)
+}
+
+const persistTempoTimers: Record<DeckId, number> = { A: 0, B: 0 }
+/** Debounced like `schedulePersistSamplerBank` — a fader drag calls `setTempo` many times a second, and a write per tick would hammer IndexedDB for no benefit over the value it settles on. */
+function schedulePersistTempo(deckId: DeckId) {
+  window.clearTimeout(persistTempoTimers[deckId])
+  persistTempoTimers[deckId] = window.setTimeout(() => void persistTempoForDeck(deckId), 400)
+}
+
+async function persistTempoForDeck(deckId: DeckId): Promise<void> {
+  const { decks, setNotice } = useStore.getState()
+  const deck = decks[deckId]
+  const hash = deck.track?.contentHash
+  if (!hash) return // not yet identified (fresh scan, or hashing failed) — nothing to key the write on
+  try {
+    await putTempo(hash, deck.tempo)
+  } catch (err) {
+    setNotice({
+      text: `Tempo for "${deck.track?.title ?? deck.track?.name}" wasn't saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'load',
+    })
+  }
 }
 
 /**
