@@ -4,6 +4,7 @@ import type {
   ChannelState,
   DeckId,
   DeckState,
+  HistoryEntry,
   MidiDeviceInfo,
   MidiStatus,
   MixerState,
@@ -30,6 +31,7 @@ export type NoticeSource =
   | 'sampler'
   | 'fx'
   | 'recording'
+  | 'history'
 
 /**
  * v0.5.5's natural-language control bar — see `controls.ts`'s AI section
@@ -148,6 +150,14 @@ export interface AppState {
     savedState: 'idle' | 'unsaved' | 'saved'
     trackBoundariesSec: number[]
   }
+
+  /**
+   * Every track loaded to a deck this page session, in load order (v0.8.3).
+   * In-memory only — cleared on reload, same as `recording`/`activeTransition`
+   * (Shalom's explicit decision, 13/09: the set history is scoped to the
+   * live session, not persisted).
+   */
+  history: HistoryEntry[]
 
   /**
    * Which deck SYNC's phase-align locks the other deck to (v0.3.0). `null`
@@ -311,6 +321,7 @@ export interface AppState {
   patchSamplerChannel: (patch: Partial<AppState['sampler']['channel']>) => void
   patchSampler: (patch: Partial<Pick<AppState['sampler'], 'armedSlot'>>) => void
   patchRecording: (patch: Partial<AppState['recording']>) => void
+  appendHistoryEntry: (entry: HistoryEntry) => void
   patchFx: (rack: 0 | 1, patch: Partial<FxState>) => void
   set: <K extends keyof AppState>(key: K, value: AppState[K]) => void
   setLibrary: (patch: Partial<AppState['library']>) => void
@@ -349,6 +360,7 @@ export const useStore = create<AppState>((set) => ({
   },
   fx: [emptyFx(), emptyFx()],
   recording: { active: null, startedAt: null, bytesRecorded: 0, savedState: 'idle', trackBoundariesSec: [] },
+  history: [],
   library: {
     folderName: null,
     tracks: [],
@@ -407,6 +419,7 @@ export const useStore = create<AppState>((set) => ({
     set((s) => ({ sampler: { ...s.sampler, channel: { ...s.sampler.channel, ...patch } } })),
   patchSampler: (patch) => set((s) => ({ sampler: { ...s.sampler, ...patch } })),
   patchRecording: (patch) => set((s) => ({ recording: { ...s.recording, ...patch } })),
+  appendHistoryEntry: (entry) => set((s) => ({ history: [...s.history, entry] })),
   patchFx: (rack, patch) =>
     set((s) => ({
       fx: rack === 0 ? [{ ...s.fx[0], ...patch }, s.fx[1]] : [s.fx[0], { ...s.fx[1], ...patch }],

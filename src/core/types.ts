@@ -56,6 +56,21 @@ export interface Track {
   lastPlayedAt?: number
 }
 
+/**
+ * One track loaded to a deck during the current page session (v0.8.3) — a
+ * snapshot at load time, not a live reference by `contentHash`/`id`, so a
+ * track later removed from the library (rescan, file moved) doesn't blank
+ * out its own history row.
+ */
+export interface HistoryEntry {
+  deckId: DeckId
+  contentHash: string
+  /** `track.title ?? track.name` at load time — same fallback `Library.tsx` already uses for display. */
+  name: string
+  artist: string | null
+  loadedAtMs: number
+}
+
 export interface HotCue {
   index: number
   positionSec: number
