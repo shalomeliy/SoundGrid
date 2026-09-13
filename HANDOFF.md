@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.3` — קוד+בדיקות+`scripts/verify-set-history.mjs` (30/30, Chromium אמיתי) הושלמו (13/09), ממתין ל‑`change-reviewer` לפני סגירה. `workshop-output/FEATURE_SPEC.md`+`PLAN.md`. |
+| **בעבודה** | אין כרגע — `v0.8.3` נסגרה (13/09), סוגרת את "ניהול ספרייה" (v0.8.0-v0.8.3). פירוט: [`docs/handoff/v0.8.3.md`](docs/handoff/v0.8.3.md). |
 | **branch** | `claude/eloquent-pascal-3mabcx`, מכיל את `main` (`git merge-base --is-ancestor e598851 origin/main`). |
-| **גרסה נוכחית** | `v0.8.3` (`package.json`) — בעבודה, לא נסגרה עדיין. |
+| **גרסה נוכחית** | `v0.8.3` (`package.json`) — נסגרה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | לסגור את `v0.8.3` (אחרי review) → `v0.8.4` (פרטיות/נגישות), `ROADMAP.md`. |
+| **הבא בתור** | `v0.8.4` — פרטיות/תנאי שימוש כנים + תיקון נגישות אמיתי, `ROADMAP.md`. |
 
 ---
 
