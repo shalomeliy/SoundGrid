@@ -161,6 +161,12 @@ function CrateRow({
       aria-pressed={selected}
       onClick={onSelect}
       onKeyDown={(e) => {
+        // keydown bubbles: without this guard, Tab-ing to the nested rename/
+        // delete/refresh <button>s and pressing Enter/Space would hit THIS
+        // handler (via bubbling) before the button's own click, cancelling
+        // the button's activation and toggling row selection instead —
+        // found by change-reviewer on the first version of this handler.
+        if (e.target !== e.currentTarget) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onSelect()
