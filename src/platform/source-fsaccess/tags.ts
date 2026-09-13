@@ -582,12 +582,19 @@ async function readOgg(file: File, tags: TrackTags) {
  * from an `ID3 ` chunk, which DJ software writes *after* the audio payload —
  * hence seeking chunk by chunk instead of reading a window off the front.
  */
+// Every chunk costs at least an 8-byte header, so this bounds the walk to
+// roughly a 4KB run of headers even on a pathological file — nowhere close
+// to real WAV/AIFF files (a handful of top-level chunks), but high enough
+// that a legitimate ID3 chunk sitting past the 64th chunk (the old cap —
+// hit on a real file, v0.8.3 debt) is never missed again.
+const MAX_CHUNKS = 4096
+
 async function readChunked(file: File, tags: TrackTags, littleEndian: boolean) {
   const u32 = littleEndian ? u32le : u32be
   let byteRate = 0
   let p = 12
 
-  for (let i = 0; i < 64 && p + 8 <= file.size; i++) {
+  for (let i = 0; i < MAX_CHUNKS && p + 8 <= file.size; i++) {
     const head = await slice(file, p, 8)
     if (head.length < 8) return
     const id = ascii(head, 0, 4)
@@ -614,8 +621,12 @@ async function readChunked(file: File, tags: TrackTags, littleEndian: boolean) {
       await readId3(file, body, tags)
     }
 
-    if (size <= 0) return
-    p = body + size + (size & 1)
+    // A zero-size chunk (padding some writers emit) used to abort the whole
+    // walk here, which could strand a real ID3 chunk written after it
+    // unread. Step past just the header and keep going; only a *negative*
+    // size — impossible from an unsigned read — would mean truly corrupt
+    // data worth stopping for, and u32/u32be never produce one.
+    p = size > 0 ? body + size + (size & 1) : body
   }
 }
 
