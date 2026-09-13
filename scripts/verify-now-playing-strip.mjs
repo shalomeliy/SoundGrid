@@ -129,6 +129,8 @@ async function scenario(name, tracks, check) {
   try {
     await check(page, errors)
     ok(`${name}: no console errors`, errors.length === 0, errors[0])
+    const unhandled = await page.evaluate(() => window.__unhandled ?? [])
+    ok(`${name}: no unhandled rejections`, unhandled.length === 0, unhandled[0])
   } finally {
     await page.close()
   }
