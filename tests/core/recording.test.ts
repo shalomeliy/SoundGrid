@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCueSheet,
   bytesPerSecond,
+  detectRecordingGap,
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   maxRecordingBytes,
@@ -116,5 +117,38 @@ describe('buildCueSheet', () => {
     expect(sheet).toBe(
       'Track 1: 00:00:00 - 00:01:05  (track-1.wav)\n' + 'Track 2: 00:01:05 - 01:01:05  (track-2.wav)\n',
     )
+  })
+})
+
+/**
+ * v0.8.6: closes the HANDOFF debt that a suspended AudioContext (a
+ * backgrounded tab) could leave a silent gap in a master recording with
+ * nothing to catch it. `RecorderTap` only ever sees chunks it's actually
+ * handed, so the one number that can't lie is wall-clock elapsed time versus
+ * audio-frame time captured.
+ */
+describe('detectRecordingGap', () => {
+  it('finds nothing wrong when recorded audio matches elapsed time', () => {
+    expect(detectRecordingGap(60, 60 * 44100, 44100)).toBeNull()
+  })
+
+  it('absorbs small startup/flush slop under the default tolerance', () => {
+    // 0.5s less audio than wall-clock time — normal initAudio/tap startup cost.
+    expect(detectRecordingGap(60, 59.5 * 44100, 44100)).toBeNull()
+  })
+
+  it('reports a real gap in seconds — e.g. a suspended tab losing 30s', () => {
+    const gap = detectRecordingGap(120, 90 * 44100, 44100)
+    expect(gap).not.toBeNull()
+    expect(gap).toBeCloseTo(30, 6)
+  })
+
+  it('a custom tolerance widens or narrows what counts as a gap', () => {
+    expect(detectRecordingGap(65, 60 * 44100, 44100, 10)).toBeNull() // 5s gap, 10s tolerance
+    expect(detectRecordingGap(65, 60 * 44100, 44100, 1)).not.toBeNull() // same gap, 1s tolerance
+  })
+
+  it('degrades to "nothing to report" rather than dividing by zero with no sample rate', () => {
+    expect(detectRecordingGap(60, 0, 0)).toBeNull()
   })
 })

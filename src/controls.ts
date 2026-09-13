@@ -5,6 +5,7 @@ import { engine } from '@/platform/audio-webaudio/engine'
 import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
 import {
   buildCueSheet,
+  detectRecordingGap,
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   mergeChunks,
@@ -1947,6 +1948,24 @@ export async function stopRecordMaster(): Promise<void> {
   console.log(
     `[recording] stopped — ${masterRecordingChunks.length} chunks, ${totalFrames} frames @ ${masterRecordingSampleRate}Hz (${seconds.toFixed(2)}s)`,
   )
+  // The capture path itself can't tell if the AudioContext was ever
+  // suspended (a backgrounded tab, QA risk from v0.7.5 — never reproduced,
+  // never ruled out either): `RecorderTap` only ever sees the chunks it was
+  // actually handed. Wall-clock time elapsed versus audio-time captured is
+  // the one signal that can catch it after the fact, so this is checked on
+  // every stop rather than left as a silent maybe.
+  const startedAt = useStore.getState().recording.startedAt
+  if (startedAt != null) {
+    const wallClockSec = (Date.now() - startedAt) / 1000
+    const gap = detectRecordingGap(wallClockSec, totalFrames, masterRecordingSampleRate)
+    if (gap != null) {
+      useStore.getState().setNotice({
+        text: `Recording stopped — about ${gap.toFixed(0)}s of audio is missing compared to how long it ran. The browser may have suspended audio while the tab was in the background; check the file before relying on it.`,
+        tone: 'warn',
+        source: 'recording',
+      })
+    }
+  }
   useStore.getState().patchRecording({ active: null, savedState: totalFrames > 0 ? 'unsaved' : 'idle' })
 }
 

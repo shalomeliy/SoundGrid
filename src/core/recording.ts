@@ -91,6 +91,30 @@ export function mergeChunks(chunks: Float32Array[][]): Float32Array[] {
   return merged
 }
 
+/**
+ * A backgrounded tab can suspend the `AudioContext` mid-recording (QA risk,
+ * v0.7.5 — never reproduced, only ever a possibility) and silently lose
+ * whatever audio didn't get captured while it was suspended. Nothing in the
+ * capture path itself can tell — `RecorderTap` only ever sees the chunks it
+ * was actually handed — so this catches it after the fact: the one number
+ * that can't lie is wall-clock time elapsed versus audio-frame time
+ * captured. `toleranceSec` absorbs `initAudio`/tap startup and the 50ms
+ * flush `RecorderTap.stop` waits on — real gaps from a suspend are seconds
+ * to minutes, nothing this check would confuse with normal startup slop.
+ * Returns the gap in seconds, or `null` when there's nothing worth naming.
+ */
+export function detectRecordingGap(
+  wallClockElapsedSec: number,
+  recordedFrames: number,
+  sampleRate: number,
+  toleranceSec = 2,
+): number | null {
+  if (sampleRate <= 0) return null
+  const recordedSec = recordedFrames / sampleRate
+  const gap = wallClockElapsedSec - recordedSec
+  return gap > toleranceSec ? gap : null
+}
+
 export interface RecordingSegment {
   startFrame: number
   endFrame: number
