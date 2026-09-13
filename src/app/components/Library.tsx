@@ -26,6 +26,7 @@ import type { Track } from '@/core/types'
 import type { SortDir, SortKey } from '@/core/library-sort'
 import { useVirtualRows } from '@/app/hooks/useVirtualRows'
 import { Button, HintIcon } from '@/app/components/controls'
+import { CratesRail } from '@/app/components/CratesRail'
 
 /** Matches the `h-9` row height below — fixed regardless of `libraryTextScale`, which only scales font-size (see the comment on the table itself). */
 const ROW_HEIGHT = 36
@@ -731,6 +732,8 @@ export function Library() {
           }
         />
       ) : (
+        <div className="flex min-h-0 flex-1">
+          <CratesRail />
         <div ref={containerRef} className="min-h-0 flex-1 overflow-auto">
           {/*
             Sized against Serato on the same 14" panel: it fits ~31px rows with
@@ -860,6 +863,7 @@ export function Library() {
               )}
             </tbody>
           </table>
+        </div>
         </div>
       )}
     </section>
