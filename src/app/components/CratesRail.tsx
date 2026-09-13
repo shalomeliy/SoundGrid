@@ -56,7 +56,16 @@ export function CratesRail() {
       )}
       <div className="mt-1 flex flex-col gap-0.5">
         {[...crates.values()].map((crate) => (
-          <CrateRow key={crate.id} crate={crate} knownHashes={knownHashes} onDelete={() => onDelete(crate)} />
+          <CrateRow
+            key={crate.id}
+            crate={crate}
+            knownHashes={knownHashes}
+            onDelete={() => onDelete(crate)}
+            onRename={() => {
+              const name = window.prompt('Rename crate:', crate.name)
+              if (name?.trim()) ctl.renameCrate(crate.id, name.trim())
+            }}
+          />
         ))}
       </div>
     </div>
@@ -67,10 +76,12 @@ function CrateRow({
   crate,
   knownHashes,
   onDelete,
+  onRename,
 }: {
   crate: CrateRecord
   knownHashes: Set<string>
   onDelete: () => void
+  onRename: () => void
 }) {
   const members = crate.kind === 'manual' ? (crate.members ?? []) : (crate.materialized ?? [])
   const missing = members.filter((h) => !knownHashes.has(h)).length
@@ -124,7 +135,11 @@ function CrateRow({
       }`}
     >
       <div className="flex items-center gap-1">
-        <span className="min-w-0 flex-1 truncate" title={crate.name}>
+        <span
+          onDoubleClick={onRename}
+          className="min-w-0 flex-1 truncate"
+          title={`${crate.name} (double-click to rename)`}
+        >
           {crate.kind === 'smart' ? '★ ' : ''}
           {crate.name}
         </span>
