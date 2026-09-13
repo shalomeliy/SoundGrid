@@ -31,7 +31,10 @@
 - OGG best-effort (חיפוש comment header ב‑256KB הראשונים, בלי הרכבת Ogg packets) —
   אין OGG בספרייה של המשתמש, אז לא נבדק על אמת.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
-- אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
+- **sample-rate mismatch — לא תקלה, לא ניתן לתקן בדפדפן.** נבדק 13/09:
+  `decodeAudioData` כבר מרסם כל קובץ לקצב ה‑`AudioContext` נכון ושקוף. הפריט
+  ב‑ROADMAP.md (v0.18.0) הוא ASIO/WASAPI exclusive — Chromium אין לו גישה
+  לזה היום, רק אחרי Tauri. סגור עד v0.18.0.
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑
