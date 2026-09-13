@@ -156,6 +156,13 @@ export interface AppState {
    * In-memory only — cleared on reload, same as `recording`/`activeTransition`
    * (Shalom's explicit decision, 13/09: the set history is scoped to the
    * live session, not persisted).
+   *
+   * Only ever selected as `s.history.length` (`TopBar.tsx`) or the whole
+   * array read once when a screen opens (`SetHistory.tsx`) — never inside a
+   * selector that also reads a frame-rate field. Same trap `Library.tsx`'s
+   * now-playing selector already documents: reading `s.history` alongside
+   * `positionSec`/`peaks` would re-render on every animation frame instead
+   * of only on a new entry.
    */
   history: HistoryEntry[]
 

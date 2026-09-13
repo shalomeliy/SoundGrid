@@ -26,7 +26,10 @@ export function SetHistoryScreen({ onClose }: { onClose: () => void }) {
   }, [onClose])
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col bg-surface-0/97 backdrop-blur-sm">
+    <div
+      aria-label={`Set history, ${history.length} entries`}
+      className="absolute inset-0 z-40 flex flex-col bg-surface-0/97 backdrop-blur-sm"
+    >
       <header className="flex shrink-0 items-center gap-3 border-b border-hairline px-4 py-2.5">
         <h2 className="text-sm font-bold tracking-tight">Set history</h2>
         <span className="text-2xs text-grid-dim">{history.length} loaded this session</span>
