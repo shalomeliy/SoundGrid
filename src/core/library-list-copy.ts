@@ -31,7 +31,22 @@ export function libraryEmptyCopy(
    * would be true but useless, since clearing it alone would not bring
    * anything back. */
   preMixCount: number,
+  /**
+   * Name of the crate currently narrowing the table (v0.8.1), or `null` for
+   * none. Checked first, ahead of mixOnly and the text filter: a crate the
+   * owner just clicked is the most deliberate, most recent narrowing, and
+   * "this crate is empty" is a different fact from "your search matched
+   * nothing" even if both happen to be true at once.
+   */
+  activeCrateName: string | null = null,
 ): LibraryEmptyCopy {
+  if (activeCrateName) {
+    return {
+      title: `No tracks in "${activeCrateName}"`,
+      body: 'Drag tracks onto it from the crate rail, or clear the crate filter to see the whole library.',
+      offerMixOnlyReset: false,
+    }
+  }
   if (mixOnly && preMixCount > 0) {
     return {
       title: 'No tracks currently mix with what’s playing',

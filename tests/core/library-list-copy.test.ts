@@ -48,4 +48,21 @@ describe('libraryEmptyCopy', () => {
     expect(copy.title).toBe('No audio files found')
     expect(copy.offerMixOnlyReset).toBe(false)
   })
+
+  /**
+   * v0.8.1: a crate the owner just clicked is empty. This must win over
+   * every other reason, even a stale mixOnly/query combination left over
+   * from before the crate was selected — "this crate is empty" is the true,
+   * actionable fact, not "no audio files found" or "clear the filter".
+   */
+  it('names the crate, not mixOnly or the query, when a selected crate is empty', () => {
+    const copy = libraryEmptyCopy('trance', true, 5, 'Friday set')
+    expect(copy.title).toBe('No tracks in "Friday set"')
+    expect(copy.offerMixOnlyReset).toBe(false)
+  })
+
+  it('falls back to the query/mixOnly logic when no crate is active', () => {
+    const copy = libraryEmptyCopy('', false, 0, null)
+    expect(copy.title).toBe('No audio files found')
+  })
 })

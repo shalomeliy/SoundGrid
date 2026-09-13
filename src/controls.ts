@@ -2548,8 +2548,22 @@ export function moveSelection(delta: number) {
 }
 
 export function filteredTracks(): Track[] {
-  const { library } = useStore.getState()
-  return library.tracks.filter((t) => matchesQuery(t, library.query))
+  const { library, crates } = useStore.getState()
+  const base = library.tracks.filter((t) => matchesQuery(t, library.query))
+  const crate = library.activeCrateId ? crates.get(library.activeCrateId) : undefined
+  if (!crate) return base
+  const members = new Set(crate.kind === 'manual' ? (crate.members ?? []) : (crate.materialized ?? []))
+  return base.filter((t) => t.contentHash && members.has(t.contentHash))
+}
+
+/**
+ * Select which crate narrows the table, or `null` for the whole library
+ * (v0.8.1) — the one place this view-state action is dispatched from, per
+ * the project's "every user action goes through controls.ts" rule, even
+ * though the effect is a single-field store write.
+ */
+export function setActiveCrate(id: string | null) {
+  useStore.getState().setLibrary({ activeCrateId: id })
 }
 
 /**

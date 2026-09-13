@@ -15,9 +15,14 @@ const TRACK_MIME = 'application/x-soundgrid-track'
  * chrome; the rail spends width instead). No tree: a flat list is what the
  * feature spec settled on after the owner's real library — a few hundred
  * tracks in six genre folders — turned out not to need nesting.
+ *
+ * Clicking a crate row narrows the Library table to that crate's tracks
+ * (`ctl.setActiveCrate`) — without this, a crate could be filled but never
+ * looked at, which is not a track organizer, it is a write-only list.
  */
 export function CratesRail() {
   const crates = useStore((s) => s.crates)
+  const activeCrateId = useStore((s) => s.library.activeCrateId)
   const tracks = useStore((s) => s.library.tracks)
   const query = useStore((s) => s.library.query)
   const knownHashes = new Set(tracks.map((t) => t.contentHash).filter((h): h is string => h != null))
@@ -38,7 +43,14 @@ export function CratesRail() {
       count > 0
         ? `Delete "${crate.name}"? It has ${count} track${count === 1 ? '' : 's'} in it — the tracks themselves are not deleted, only this grouping.`
         : `Delete "${crate.name}"?`
-    if (window.confirm(warning)) ctl.deleteCrate(crate.id)
+    if (window.confirm(warning)) {
+      if (crate.id === activeCrateId) ctl.setActiveCrate(null)
+      ctl.deleteCrate(crate.id)
+    }
+  }
+
+  function onSelect(crate: CrateRecord) {
+    ctl.setActiveCrate(crate.id === activeCrateId ? null : crate.id)
   }
 
   return (
@@ -60,6 +72,8 @@ export function CratesRail() {
             key={crate.id}
             crate={crate}
             knownHashes={knownHashes}
+            selected={crate.id === activeCrateId}
+            onSelect={() => onSelect(crate)}
             onDelete={() => onDelete(crate)}
             onRename={() => {
               const name = window.prompt('Rename crate:', crate.name)
@@ -75,22 +89,26 @@ export function CratesRail() {
 function CrateRow({
   crate,
   knownHashes,
+  selected,
+  onSelect,
   onDelete,
   onRename,
 }: {
   crate: CrateRecord
   knownHashes: Set<string>
+  selected: boolean
+  onSelect: () => void
   onDelete: () => void
   onRename: () => void
 }) {
   const members = crate.kind === 'manual' ? (crate.members ?? []) : (crate.materialized ?? [])
   const missing = members.filter((h) => !knownHashes.has(h)).length
+  const tracks = useStore((s) => s.library.tracks)
   // Stale = re-running the saved query against the library right now would
   // produce a different result than the last refresh froze into
   // `materialized`. This recomputes the match for comparison only — it is
   // never written back, so "updates only on a refresh click" still holds
   // for the stored data; only the badge is live.
-  const tracks = useStore((s) => s.library.tracks)
   const stale =
     crate.kind === 'smart' &&
     crate.query != null &&
@@ -99,20 +117,31 @@ function CrateRow({
       const before = crate.materialized ?? []
       return current.length !== before.length || current.some((h) => !before.includes(h!))
     })()
+  // A track that matches the saved query but has no contentHash yet
+  // (background analysis still running, e.g. right after a fresh scan) is
+  // silently excluded from `refreshSmartCrate`'s result — named here rather
+  // than left invisible, per the project's own central "never skip
+  // silently" rule.
+  const pending =
+    crate.kind === 'smart' && crate.query != null
+      ? tracks.filter((t) => !t.contentHash && matchesQuery(t, crate.query!)).length
+      : 0
 
   const [dragOver, setDragOver] = useState(false)
+  const canAcceptDrop = crate.kind === 'manual'
 
   function onDragOver(e: React.DragEvent) {
-    if (!e.dataTransfer.types.includes(TRACK_MIME)) return
+    if (!canAcceptDrop || !e.dataTransfer.types.includes(TRACK_MIME)) return
     e.preventDefault()
-    e.dataTransfer.dropEffect = crate.kind === 'manual' ? 'copy' : 'none'
+    e.dataTransfer.dropEffect = 'copy'
     setDragOver(true)
   }
 
   function onDrop(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes(TRACK_MIME)) return
     e.preventDefault()
     setDragOver(false)
-    if (crate.kind !== 'manual') {
+    if (!canAcceptDrop) {
       useStore.getState().setNotice({
         text: `"${crate.name}" is a smart crate — its tracks come from its saved search, not from dragging one in. Refresh it instead.`,
         tone: 'warn',
@@ -127,25 +156,46 @@ function CrateRow({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
       onDragOver={onDragOver}
       onDragLeave={() => setDragOver(false)}
       onDrop={onDrop}
-      className={`group rounded-[var(--radius-sm)] px-2 py-1 text-xs hover:bg-surface-2 ${
-        dragOver ? 'outline-2 outline-[var(--color-accent)] -outline-offset-2' : ''
-      }`}
+      className={`group cursor-pointer rounded-[var(--radius-sm)] px-2 py-1 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
+        selected ? 'bg-surface-3' : 'hover:bg-surface-2'
+      } ${dragOver ? 'outline-2 outline-[var(--color-accent)] -outline-offset-2' : ''}`}
     >
       <div className="flex items-center gap-1">
-        <span
-          onDoubleClick={onRename}
-          className="min-w-0 flex-1 truncate"
-          title={`${crate.name} (double-click to rename)`}
-        >
+        <span className="min-w-0 flex-1 truncate" title={crate.name}>
           {crate.kind === 'smart' ? '★ ' : ''}
           {crate.name}
         </span>
         <span className="tnum shrink-0 text-2xs text-grid-dim">{members.length}</span>
         <button
-          onClick={onDelete}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRename()
+          }}
+          aria-label="Rename this crate"
+          className="shrink-0 text-2xs text-grid-dim opacity-0 hover:text-grid-text group-hover:opacity-100"
+          title="Rename this crate"
+        >
+          ✎
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          aria-label="Delete this crate"
           className="shrink-0 text-2xs text-grid-dim opacity-0 hover:text-warn group-hover:opacity-100"
           title="Delete this crate"
         >
@@ -153,9 +203,12 @@ function CrateRow({
         </button>
       </div>
       {crate.kind === 'smart' && (
-        <div className="mt-0.5 flex items-center gap-1">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
           <button
-            onClick={() => ctl.refreshSmartCrate(crate.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              ctl.refreshSmartCrate(crate.id)
+            }}
             className="text-2xs text-grid-dim hover:text-grid-text"
             title={`Re-run the saved search: ${crate.query}`}
           >
@@ -167,6 +220,14 @@ function CrateRow({
               title="The library changed since this crate was last refreshed — click refresh to update it."
             >
               stale
+            </span>
+          )}
+          {pending > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1 py-0.5 text-2xs font-semibold text-grid-muted"
+              title="These tracks match the saved search but are still being analyzed — refresh again once analysis catches up to include them."
+            >
+              {pending} pending
             </span>
           )}
         </div>

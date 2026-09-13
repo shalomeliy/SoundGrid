@@ -89,6 +89,7 @@ function fmtRelative(ts?: number): string {
 export function Library() {
   const library = useStore((s) => s.library)
   const setLibrary = useStore((s) => s.setLibrary)
+  const crates = useStore((s) => s.crates)
   const [mixOnly, setMixOnly] = useState(false)
   // Which key notation to show. DJs are split between musical and Camelot and
   // nobody wants to relearn theirs, so it's a preference that sticks.
@@ -518,7 +519,12 @@ export function Library() {
   // the two used to render the identical "no audio files" message.
   const preMixList = ctl.sortedFilteredTracks()
   const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
-  const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length)
+  const activeCrate = library.activeCrateId ? (crates.get(library.activeCrateId) ?? null) : null
+  const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length, activeCrate?.name ?? null)
+  // Only a manual crate's membership can be edited from here — a smart
+  // crate's contents are entirely rule-derived (`refreshSmartCrate`), so
+  // there is nothing for a per-row "remove" action to do to one.
+  const removableFromCrateId = activeCrate?.kind === 'manual' ? activeCrate.id : null
   // v0.8.0: windowed rendering so a large library doesn't cost a DOM node
   // per track. Called unconditionally (not inside the empty-state branch
   // below) — `list.length` is 0 in every empty state anyway, which
@@ -564,6 +570,20 @@ export function Library() {
         </span>
         {library.folderName && (
           <span className="max-w-[12rem] truncate text-xs text-grid-muted">{library.folderName}</span>
+        )}
+        {/*
+          Named, not silent: without this, a crate filter hiding most of the
+          library would look identical to "the library only has 5 tracks" —
+          the header's own track count already changes, but nothing says why.
+        */}
+        {activeCrate && (
+          <button
+            onClick={() => ctl.setActiveCrate(null)}
+            className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-text hover:bg-surface-3"
+            title="Showing only this crate's tracks — click to see the whole library again"
+          >
+            Crate: {activeCrate.name} ✕
+          </button>
         )}
         {/* Zero-size anchor: the badge is absolutely placed off it, so it never
             grows this header row (the row wraps to the search box at some
@@ -734,7 +754,11 @@ export function Library() {
           title={emptyCopy.title}
           body={emptyCopy.body}
           action={
-            emptyCopy.offerMixOnlyReset ? (
+            activeCrate ? (
+              <Button variant="toggle" active tone="var(--color-accent)" onClick={() => ctl.setActiveCrate(null)}>
+                Clear crate filter
+              </Button>
+            ) : emptyCopy.offerMixOnlyReset ? (
               <Button variant="toggle" active tone="var(--color-accent)" onClick={() => setMixOnly(false)}>
                 Show all tracks
               </Button>
@@ -862,6 +886,7 @@ export function Library() {
                   match={recs.get(t.id)}
                   keyMode={keyMode}
                   onSelect={() => setLibrary({ selectedId: t.id })}
+                  removableFromCrateId={removableFromCrateId}
                 />
               ))}
               {padBottom > 0 && (
@@ -977,10 +1002,12 @@ function Row({
   match,
   keyMode,
   onSelect,
+  removableFromCrateId,
 }: {
   track: Track
   selected: boolean
   match?: MixMatch
+  removableFromCrateId: string | null
   keyMode: KeyMode
   onSelect: () => void
 }) {
@@ -1131,6 +1158,19 @@ function Row({
       </td>
       <td className="tnum py-1.5 pr-2 text-right text-2xs text-grid-dim">{fmtRelative(track.lastPlayedAt)}</td>
       <td className="whitespace-nowrap py-1.5 pl-2 pr-3 text-right">
+        {removableFromCrateId && track.contentHash && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              ctl.removeTrackFromCrate(removableFromCrateId, track.contentHash!)
+            }}
+            aria-label="Remove from this crate"
+            title="Remove from this crate"
+            className="mr-1 inline-grid h-6 w-6 place-items-center rounded-[var(--radius-xs)] text-2xs font-bold text-grid-dim transition-colors hover:bg-surface-2 hover:text-warn"
+          >
+            −
+          </button>
+        )}
         <LoadBtn deck="A" track={track} />
         <LoadBtn deck="B" track={track} />
       </td>

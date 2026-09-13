@@ -234,6 +234,13 @@ export interface AppState {
     /** which column the table is sorted by (v0.8.0) — null means scan order, today's default */
     sortKey: SortKey | null
     sortDir: SortDir
+    /**
+     * The crate currently narrowing the table (v0.8.1) — null means "whole
+     * library". Lives on `library`, not `crates`, because it is view state
+     * for *this* table, not data about the crate itself; `controls.ts`'s
+     * `filteredTracks()` is the single place that reads it.
+     */
+    activeCrateId: string | null
   }
 
   /**
@@ -357,6 +364,7 @@ export const useStore = create<AppState>((set) => ({
     unreadable: 0,
     sortKey: null,
     sortDir: 'asc',
+    activeCrateId: null,
   },
   crates: new Map(),
   midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
