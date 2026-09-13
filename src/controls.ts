@@ -846,15 +846,17 @@ async function persistTempoForDeck(deckId: DeckId): Promise<void> {
 
 /**
  * Re-applies both racks' stored beat-time so a beat-synced Delay/Echo/Filter
- * follows the master deck's tempo fader instead of staying locked to the
- * BPM it happened to compute at when the time was last set — the product
- * decision recorded in `workshop-output/FEATURE_SPEC.md`. Only wired to the
- * tempo fader touching the *current* master deck (`setTempo`, above), not to
- * SYNC engaging or the master deck being reassigned — a narrower scope than
- * the spec's own wording, named here rather than silently missing: those
- * paths run deep inside SYNC/transition logic this version doesn't touch,
- * and widening the change there risks the exact kind of regression Shalom
- * asked this version to guard against.
+ * follows the master deck's tempo instead of staying locked to the BPM it
+ * happened to compute at when the time was last set — the product decision
+ * recorded in `workshop-output/FEATURE_SPEC.md`. Originally wired only to
+ * `setTempo` touching the current master deck, named here as a known gap
+ * (HANDOFF.md): SYNC engaging on the very first press (no master existed
+ * yet to read a BPM from) and the master deck being reassigned
+ * (`setMasterDeck`) both change what `masterPlayingBpm()` returns just as
+ * much as the tempo fader does, and neither called this. v0.8.6 wires both
+ * — as an added call at the point each already changes `masterDeckId`, not
+ * a change to the SYNC/transition logic itself, which is what the original
+ * "risks regression" note was about.
  */
 function refreshFxTimeForMasterTempo() {
   const { fx } = useStore.getState()
@@ -2289,7 +2291,14 @@ export function syncDeck(deckId: DeckId) {
     return
   }
 
-  if (masterDeckId == null) useStore.setState({ masterDeckId: resolvedMaster })
+  // First-ever SYNC press: no master existed yet, so `masterPlayingBpm()`
+  // had nothing to read and FX beat-sync time was never set from a real
+  // BPM. Now that one exists, give FX its first real value instead of
+  // waiting for the master deck's tempo fader to be touched.
+  if (masterDeckId == null) {
+    useStore.setState({ masterDeckId: resolvedMaster })
+    refreshFxTimeForMasterTempo()
+  }
   const ratio = master.bpm / st.bpm
   const tempo = (ratio - 1) / settings.values.tempoRange
   setTempo(deckId, tempo)
@@ -2307,6 +2316,10 @@ export function syncDeck(deckId: DeckId) {
 export function setMasterDeck(deckId: DeckId) {
   const { decks, patchDeck } = useStore.getState()
   useStore.setState({ masterDeckId: deckId })
+  // The new master's BPM is (almost always) not the old master's — FX
+  // beat-sync time was computed against the deck that just stopped being
+  // master, and this is the one place that reassignment happens.
+  refreshFxTimeForMasterTempo()
   if (decks[deckId].syncActive) patchDeck(deckId, { syncActive: false })
 
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
