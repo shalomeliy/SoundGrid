@@ -38,6 +38,11 @@ import {
   setLastPlayed as persistLastPlayedByHash,
   setTrackNote as persistTrackNoteByHash,
 } from '@/platform/track-meta-idb/store'
+import {
+  deleteCrateRecord,
+  saveCrate,
+  type CrateRecord,
+} from '@/platform/crates-idb/store'
 import { matchesQuery } from '@/core/library-search'
 import { sortTracks } from '@/core/library-sort'
 import { getCues, putCues } from '@/platform/cues-idb/store'
@@ -2635,6 +2640,130 @@ async function persistTrackNote(trackId: string, note: string): Promise<void> {
     })
   }
   await persistTrackNoteByHash(hash, note)
+}
+
+/**
+ * Crates (v0.8.1) — named track groupings, independent of the on-disk
+ * folder structure. Same choke-point shape as `setTrackGenre`/`setTrackNote`
+ * above: an optimistic, immediate store update, then an async persist whose
+ * failure surfaces through the notice banner rather than a swallowed catch.
+ */
+
+function patchCrates(id: string, record: CrateRecord | null) {
+  const { crates, set } = useStore.getState()
+  const next = new Map(crates)
+  if (record) next.set(id, record)
+  else next.delete(id)
+  set('crates', next)
+}
+
+function reportCrateFailure(err: unknown) {
+  useStore.getState().setNotice({
+    text: `Crate change applied but not saved: ${err instanceof Error ? err.message : String(err)}`,
+    tone: 'warn',
+    source: 'library',
+  })
+}
+
+export function createCrate(name: string) {
+  const record: CrateRecord = { id: crypto.randomUUID(), name, kind: 'manual', members: [] }
+  patchCrates(record.id, record)
+  void saveCrate(record).catch(reportCrateFailure)
+}
+
+export function renameCrate(id: string, name: string) {
+  const record = useStore.getState().crates.get(id)
+  if (!record) return
+  const next = { ...record, name }
+  patchCrates(id, next)
+  void saveCrate(next).catch(reportCrateFailure)
+}
+
+/**
+ * The caller (`CratesRail.tsx`) is responsible for confirming this with the
+ * user first — `window.confirm`, since nothing in this app has needed a
+ * confirmation dialog before now and one button doesn't earn a new
+ * component. This function itself just does the (now-authorized) delete.
+ */
+export function deleteCrate(id: string) {
+  patchCrates(id, null)
+  void deleteCrateRecord(id).catch(reportCrateFailure)
+}
+
+/**
+ * Add a track to a manual crate. Idempotent — a track already in `members`
+ * produces no change, so dragging the same track onto the same crate twice
+ * is a visible no-op, never a duplicate entry. Rejected for a smart crate:
+ * its membership is entirely rule-derived (`refreshSmartCrate`), so a
+ * manual pin here would create two competing sources of truth for the same
+ * row — the caller (`CratesRail.tsx`) is expected not to offer this as a
+ * drop target for a smart crate at all, but this function refuses too, in
+ * case something else ever calls it directly.
+ */
+export function addTrackToCrate(crateId: string, track: Track) {
+  const record = useStore.getState().crates.get(crateId)
+  if (!record || record.kind !== 'manual') return
+  if (!track.contentHash) {
+    void persistTrackToCrateByFreshHash(crateId, track)
+    return
+  }
+  if (record.members?.includes(track.contentHash)) return // already a member — no-op, not a duplicate
+  const next = { ...record, members: [...(record.members ?? []), track.contentHash] }
+  patchCrates(crateId, next)
+  void saveCrate(next).catch(reportCrateFailure)
+}
+
+/**
+ * Same on-demand-hash shape as `persistGenreOverride`/`persistTrackNote`
+ * above: most tracks already have `contentHash` by the time a user drags
+ * one into a crate (the background analysis queue reaches them first), but
+ * a track dragged right after a fresh scan might not yet. One-off hash
+ * here, kept on the track so nothing re-hashes it later, then the same
+ * membership write `addTrackToCrate` does for a track that already had one.
+ */
+async function persistTrackToCrateByFreshHash(crateId: string, track: Track): Promise<void> {
+  const current = useStore.getState().library.tracks.find((t) => t.id === track.id)
+  if (!current) return // rescanned/removed since the drop — nothing left to attach to
+  const hash = current.contentHash ?? (await hashFile(current.handle))
+  if (!current.contentHash) {
+    const { library, setLibrary } = useStore.getState()
+    setLibrary({ tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, contentHash: hash } : t)) })
+  }
+  addTrackToCrate(crateId, { ...current, contentHash: hash })
+}
+
+export function removeTrackFromCrate(crateId: string, hash: string) {
+  const record = useStore.getState().crates.get(crateId)
+  if (!record?.members) return
+  const next = { ...record, members: record.members.filter((h) => h !== hash) }
+  patchCrates(crateId, next)
+  void saveCrate(next).catch(reportCrateFailure)
+}
+
+export function createSmartCrate(name: string, query: string) {
+  // Empty until the first explicit refresh — never auto-filled at creation,
+  // consistent with "a smart crate updates only on a refresh click."
+  const record: CrateRecord = { id: crypto.randomUUID(), name, kind: 'smart', query, materialized: [] }
+  patchCrates(record.id, record)
+  void saveCrate(record).catch(reportCrateFailure)
+}
+
+/**
+ * Re-runs the crate's saved query against the library as it stands *right
+ * now* and freezes the result — never a live/derived view, so "only on a
+ * refresh click" is a property of the stored data, not a rendering
+ * discipline someone could accidentally break later.
+ */
+export function refreshSmartCrate(crateId: string) {
+  const { crates, library } = useStore.getState()
+  const record = crates.get(crateId)
+  if (!record || record.kind !== 'smart' || record.query == null) return
+  const materialized = library.tracks
+    .filter((t) => t.contentHash && matchesQuery(t, record.query!))
+    .map((t) => t.contentHash!)
+  const next = { ...record, materialized, refreshedAt: Date.now() }
+  patchCrates(crateId, next)
+  void saveCrate(next).catch(reportCrateFailure)
 }
 
 // ————————————————————————————————————————————————————————————————

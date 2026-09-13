@@ -8,6 +8,7 @@ import { TopBar } from '@/app/components/TopBar'
 import { TransitionRatingPrompt } from '@/app/components/TransitionRatingPrompt'
 import * as ctl from '@/controls'
 import { settings } from '@/platform/settings-idb/store'
+import { getCrates } from '@/platform/crates-idb/store'
 import { useRenderLoop } from '@/app/hooks/useRenderLoop'
 import { useStore } from '@/app/state/store'
 import type { DeckId } from '@/core/types'
@@ -32,6 +33,13 @@ export default function App() {
   // built-in defaults, which is the same thing it did before there were any.
   useEffect(() => {
     void settings.init()
+  }, [])
+
+  // Crates (v0.8.1) are independent of the library scan, so they load once
+  // at boot rather than as part of Library.tsx's scan pipeline. Until this
+  // resolves the crate rail is simply empty, same as an empty library.
+  useEffect(() => {
+    void getCrates().then((crates) => useStore.getState().set('crates', crates))
   }, [])
 
   useEffect(() => {

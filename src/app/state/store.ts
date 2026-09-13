@@ -15,6 +15,7 @@ import { detectCapabilities } from '@/platform/capabilities'
 import { emptySamplerSlot, SAMPLER_SLOT_COUNT, type SamplerSlot } from '@/core/sampler'
 import { FX_TIME_STEPS } from '@/core/fx'
 import type { SortDir, SortKey } from '@/core/library-sort'
+import type { CrateRecord } from '@/platform/crates-idb/store'
 
 /** Who put a message on screen, so only they can take it down. */
 export type NoticeSource =
@@ -235,6 +236,15 @@ export interface AppState {
     sortDir: SortDir
   }
 
+  /**
+   * Named track groupings, independent of the on-disk folder structure
+   * (v0.8.1). Loaded once at boot from `platform/crates-idb/store.ts` (see
+   * `App.tsx`), then kept in sync optimistically by every `controls.ts`
+   * crate action — the same "update the store now, persist in the
+   * background" shape `library.tracks` itself uses for genre/note edits.
+   */
+  crates: Map<string, CrateRecord>
+
   midi: {
     status: MidiStatus
     devices: MidiDeviceInfo[]
@@ -348,6 +358,7 @@ export const useStore = create<AppState>((set) => ({
     sortKey: null,
     sortDir: 'asc',
   },
+  crates: new Map(),
   midi: { status: 'idle', devices: [], lastMessage: null, lastJog: null, learning: null },
   output: { devices: [], currentId: null, multichannel: false, sinkSupported: false },
   audioReady: false,
