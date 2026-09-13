@@ -129,13 +129,19 @@ export function Library() {
   // Narrow subscription to primitives only: the playhead moves every frame, but
   // recommendations depend just on play state / bpm / tempo / loaded track, so
   // the whole library list doesn't re-render 60×/s. useShallow compares each
-  // element, so this must stay a flat array of primitives.
-  const [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK] = useStore(
+  // element, so this must stay a flat array of primitives — never add
+  // positionSec, peaks, or anything else that ticks at frame rate here; that
+  // would re-render the entire table 60×/s the same way subscribing to `s.decks`
+  // wholesale would (v0.8.2's "now playing" contentHash fields below are safe
+  // because a load/eject is the only thing that changes them).
+  const [aP, aB, aT, aId, aK, bP, bB, bT, bId, bK, aHash, bHash] = useStore(
     useShallow((s) => [
       s.decks.A.playing, s.decks.A.bpm, s.decks.A.tempo, s.decks.A.track?.id ?? null,
       s.decks.A.track?.camelot ?? null,
       s.decks.B.playing, s.decks.B.bpm, s.decks.B.tempo, s.decks.B.track?.id ?? null,
       s.decks.B.track?.camelot ?? null,
+      s.decks.A.track?.contentHash ?? null,
+      s.decks.B.track?.contentHash ?? null,
     ]),
   )
   // Mix Assist (v0.4.6): a track that just came off a deck stays out of the
@@ -887,6 +893,8 @@ export function Library() {
                   keyMode={keyMode}
                   onSelect={() => setLibrary({ selectedId: t.id })}
                   removableFromCrateId={removableFromCrateId}
+                  loadedOnA={aHash != null && aHash === t.contentHash}
+                  loadedOnB={bHash != null && bHash === t.contentHash}
                 />
               ))}
               {padBottom > 0 && (
@@ -1003,6 +1011,8 @@ function Row({
   keyMode,
   onSelect,
   removableFromCrateId,
+  loadedOnA,
+  loadedOnB,
 }: {
   track: Track
   selected: boolean
@@ -1010,6 +1020,9 @@ function Row({
   removableFromCrateId: string | null
   keyMode: KeyMode
   onSelect: () => void
+  /** v0.8.2: this row's track is currently loaded on deck A/B (loaded, not necessarily playing — paused counts). */
+  loadedOnA: boolean
+  loadedOnB: boolean
 }) {
   const key = keyLabel(track, keyMode)
   const tone = keyColor(track.camelot)
@@ -1087,6 +1100,42 @@ function Row({
           {match && (
             <span id={matchDescId} className="sr-only">
               {matchTitle}
+            </span>
+          )}
+          {(loadedOnA || loadedOnB) && (
+            // v0.8.2: a letter, not a colored dot — the Mix Assist dot above
+            // already spends this exact color/position pair on a different
+            // meaning ("mixes with"), and at the physical size this table
+            // renders at on the owner's screen a same-shaped dot in the same
+            // spot would be indistinguishable from it (see the ring-vs-fill
+            // comment above, same underlying measurement).
+            <span className="flex shrink-0 items-center gap-0.5">
+              {loadedOnA && (
+                <span
+                  aria-label="Loaded on deck A"
+                  title="Loaded on deck A"
+                  className="grid h-4 w-4 place-items-center rounded-[var(--radius-xs)] text-[10px] font-bold leading-none"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-deck-a), transparent 82%)',
+                    color: 'var(--color-deck-a)',
+                  }}
+                >
+                  A
+                </span>
+              )}
+              {loadedOnB && (
+                <span
+                  aria-label="Loaded on deck B"
+                  title="Loaded on deck B"
+                  className="grid h-4 w-4 place-items-center rounded-[var(--radius-xs)] text-[10px] font-bold leading-none"
+                  style={{
+                    background: 'color-mix(in srgb, var(--color-deck-b), transparent 82%)',
+                    color: 'var(--color-deck-b)',
+                  }}
+                >
+                  B
+                </span>
+              )}
             </span>
           )}
           <span className="truncate">{track.title ?? track.name}</span>
