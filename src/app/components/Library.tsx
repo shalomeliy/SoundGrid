@@ -897,7 +897,7 @@ export function Library() {
                   selected={t.id === library.selectedId}
                   match={recs.get(t.id)}
                   keyMode={keyMode}
-                  onSelect={() => setLibrary({ selectedId: t.id })}
+                  onSelect={() => ctl.selectTrack(t.id)}
                   removableFromCrateId={removableFromCrateId}
                   loadedOnA={aHash != null && aHash === t.contentHash}
                   loadedOnB={bHash != null && bHash === t.contentHash}
@@ -1065,13 +1065,25 @@ function Row({
       onDoubleClick={() =>
         match ? ctl.loadSuggestionToDeck(track, match.deck) : void ctl.loadTrackToDeck('A', track)
       }
+      // v0.8.7: the row itself was mouse-only — `onClick`/`onDoubleClick` with
+      // no `tabIndex` — which broke the project's own "never break the
+      // keyboard path" rule (a11y audit, 12/09). Enter/Space only select the
+      // row, same as a click; loading to a deck stays the bracket keys in
+      // App.tsx (which deck is a separate, unresolved product question).
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
       aria-selected={selected}
       // The match reason otherwise lived only in a hover title — undiscoverable
       // without a mouse. aria-describedby appends to the row's own computed
       // name (title/artist/bpm/key) instead of replacing it, which aria-label
       // would have done.
       aria-describedby={matchDescId}
-      className={`h-9 cursor-grab border-b border-hairline/50 transition-colors active:cursor-grabbing ${
+      className={`h-9 cursor-grab border-b border-hairline/50 outline-none transition-colors active:cursor-grabbing focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] focus-visible:outline-offset-[-2px] ${
         selected ? 'bg-accent/15' : 'hover:bg-surface-2'
       }`}
     >

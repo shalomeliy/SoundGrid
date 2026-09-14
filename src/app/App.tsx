@@ -17,6 +17,7 @@ import type { DeckId } from '@/core/types'
 export default function App() {
   useRenderLoop()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsGroup, setSettingsGroup] = useState<'hardware' | 'legal'>('hardware')
   const [historyOpen, setHistoryOpen] = useState(false)
   const notice = useStore((s) => s.notice)
   const setNotice = useStore((s) => s.setNotice)
@@ -181,7 +182,17 @@ export default function App() {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <TopBar onOpenSettings={() => setSettingsOpen(true)} onOpenHistory={() => setHistoryOpen(true)} />
+      <TopBar
+        onOpenSettings={() => {
+          setSettingsGroup('hardware')
+          setSettingsOpen(true)
+        }}
+        onOpenLegal={() => {
+          setSettingsGroup('legal')
+          setSettingsOpen(true)
+        }}
+        onOpenHistory={() => setHistoryOpen(true)}
+      />
       {/* Anything the app refused or quietly substituted says so here. It sits
           under the top bar rather than in a corner toast because a refusal the
           user misses is the same as no refusal at all. */}
@@ -210,7 +221,9 @@ export default function App() {
       <div className="min-h-[200px] flex-1 px-3 pb-3">
         <Library />
       </div>
-      {settingsOpen && <SettingsScreen onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsScreen onClose={() => setSettingsOpen(false)} initialGroup={settingsGroup} />
+      )}
       {historyOpen && <SetHistoryScreen onClose={() => setHistoryOpen(false)} />}
     </div>
   )

@@ -1,0 +1,62 @@
+import { OSS_NOTICES } from '@/app/oss-notices.generated'
+
+/**
+ * Prose for Settings → Privacy & Terms (v0.8.7). Kept out of `Settings.tsx`
+ * on purpose: that file is generated-from-`FIELDS` UI plumbing, and this is
+ * unrelated prose that would otherwise dilute it (write-feature-spec,
+ * 12/09).
+ *
+ * The user's original request listed cookie policy, refunds, form consent,
+ * analytics, third parties and reviews — none of which exist in SoundGrid
+ * (no cookies, no payment, no forms that send data anywhere, no analytics,
+ * no reviews; re-verify with `grep -rE "fetch\\(|analytics|cookie" src/`
+ * before trusting this comment — `tests/repo/privacy-claims.test.ts` runs
+ * that same grep on every `npm run check`). A page that claimed to guard
+ * against them would be a false statement, not a protection. So this states
+ * plainly what does not apply, the same way `COMPANION_EXT` in
+ * `platform/source-fsaccess/library.ts` names what it hides instead of
+ * omitting it.
+ */
+
+export const PRIVACY_KEPT_LOCALLY = [
+  {
+    what: 'Your library folder permission',
+    why: 'So SoundGrid can re-open the same folder next time without asking again. Revoke it any time from Chrome’s site settings.',
+  },
+  {
+    what: 'A metadata cache for your tracks',
+    why: 'Title, artist, BPM, key, genre, notes, and analysis results — read once from your files and reused so re-scanning a large library is fast.',
+  },
+  {
+    what: 'Your settings',
+    why: 'Everything on the other tabs in this screen: controller feel, display, output device, hint mode, and so on.',
+  },
+] as const
+
+export const PRIVACY_NOT_APPLICABLE = [
+  'Cookies — SoundGrid sets none. There is no session to track across visits.',
+  'Analytics or usage tracking — nothing about how you use the app is measured or sent anywhere.',
+  'Third parties — no data of yours goes to any other company or service.',
+  'Refunds — SoundGrid is not sold. There is nothing to buy and nothing to refund.',
+  'Form consent — there are no forms that submit anything.',
+  'Reviews — SoundGrid does not collect or publish reviews of you or your library.',
+] as const
+
+export const PRIVACY_NEVER = [
+  'Nothing you play, record, or store here ever leaves this computer.',
+  'There is no server. SoundGrid cannot send your data anywhere even if it wanted to — there is nowhere for it to go.',
+] as const
+
+export const TERMS_TEXT = [
+  'SoundGrid is provided as-is, with no warranty of any kind, for your own personal use.',
+  'The person running it is solely responsible for anything that happens during a live performance, including a mix that goes wrong, a lost or corrupted file, or hardware that misbehaves. SoundGrid’s authors are not liable for any of it.',
+] as const
+
+export const TRADEMARK_NOTICE =
+  'SoundGrid is an independent project, built from scratch on the open web platform. It is not affiliated with, endorsed by, or sponsored by AlphaTheta, Pioneer DJ, Serato, or rekordbox. Any product names mentioned (such as the DDJ-FLX4 controller this app talks to over Web MIDI) are the trademarks of their respective owners, named only to describe compatibility.'
+
+export const COPYRIGHT_NOTICE =
+  'You are solely responsible for the rights to any music you play or record with SoundGrid. SoundGrid does not check, and cannot check, whether you have the right to use a given track.'
+
+export const ossNotices = OSS_NOTICES
+export const ossNoticeCount = OSS_NOTICES.length
