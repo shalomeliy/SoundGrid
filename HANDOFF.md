@@ -15,11 +15,12 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.7` נסגרה ומוזגה (14/09), ותוקן תיקון המשך על טבעת הפוקוס אחרי דיווח של שלום. פירוט: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md). |
-| **branch** | `claude/serene-ramanujan-7ejt8u`, מכיל את `main` (`git merge-base --is-ancestor 68d083f origin/main`). |
-| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה. |
+| **בעבודה** | `v0.8.5` — חיפוש סמנטי בספרייה. Spec מאושר מול שלום (14/09,
+  `workshop-output/FEATURE_SPEC.md`), ממתין ל‑Plan Mode/`PLAN.md`. |
+| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 702b749 origin/main`). |
+| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | `v0.8.5` — חיפוש סמנטי בספרייה, `ROADMAP.md`. |
+| **הבא בתור** | סיום `v0.8.5` (ראה למעלה), אחר-כך `v0.9.0`. |
 
 ---
 
