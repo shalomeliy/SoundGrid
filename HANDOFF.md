@@ -15,11 +15,14 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.7` נסגרה ומוזגה (14/09), ותוקן תיקון המשך על טבעת הפוקוס אחרי דיווח של שלום. פירוט: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md). |
-| **branch** | `claude/serene-ramanujan-7ejt8u`, מכיל את `main` (`git merge-base --is-ancestor 68d083f origin/main`). |
-| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה. |
+| **בעבודה** | `v0.8.5` — M1 בנוי (`Embedder`, `meyda`/MIT לא `essentia.js`/AGPL,
+  cache, חיווט לתור). מדידה: ~2 שנ'/דקת-אודיו — **קלאסי בלבד, לא CLAP!**
+  הבא: M2 (למדוד CLAP), **ואז לעצור ולשאול את שלום שוב איזו שיטה** — לא
+  להניח שהתשובה הקודמת תקפה. ר' `PLAN.md` "שער יציאה מ‑M2". |
+| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 702b749 origin/main`). |
+| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | `v0.8.5` — חיפוש סמנטי בספרייה, `ROADMAP.md`. |
+| **הבא בתור** | M2 (ראה למעלה), אחר-כך `v0.9.0`. |
 
 ---
 
@@ -95,15 +98,15 @@
   מדי בפועל (ר' `docs/handoff/v0.5.5.md`), אז הפיצ'ר מכובה כברירת מחדל.
   `device:'wasm'` קבוע (לא `'auto'` — GPU תקע שבב אמיתי). אם ירצה לחזור
   לזה: BYO‑key עדיין לא נבנה, זו האפשרות הבאה לבדוק.
-- **key‑lock (14/09):** Signalsmith Stretch (MIT, WASM+AudioWorklet רשמי) — לא Rubber
-  Band (GPL/בתשלום), לא בנייה עצמית. v0.9.0, פירוט ב‑`ROADMAP.md`.
+- **key‑lock (14/09):** Signalsmith Stretch (MIT, WASM רשמי) — לא Rubber Band
+  (GPL/בתשלום), לא בנייה עצמית. v0.9.0, פירוט ב‑`ROADMAP.md`.
 - **ייבוא תגיות (14/09):** סדר עדיפות Serato (Hot Cues+Beatgrid) → rekordbox XML;
   לא לגעת ב‑PDB/ANLZ/`master.db` המוצפן (סיכון תחזוקה גבוה מהתועלת). v0.16.0.
-- **Ableton Link (14/09):** אין אפשרות ל‑WASM בדפדפן — UDP multicast חסום פיזית
-  בדפדפן, לא רק קשה. נדחה לגמרי ל‑Tauri; MIDI Clock (ב‑v0.19.0) לא מושפע.
-- **Stems (14/09):** Demucs/htdemucs (ONNX) — אבל המשקולות המאומנות ברישיון
-  "מדעי בלבד", לפתור לפני מימוש. תכונת "עבד פעם, שמור תוצאה", לא בזמן אמת;
-  ביצועים אמיתיים תלויים ב‑Tauri. v0.20.0.
+- **Ableton Link (14/09):** אין אפשרות ל‑WASM בדפדפן — UDP multicast חסום
+  פיזית, לא רק קשה. נדחה לגמרי ל‑Tauri; MIDI Clock (v0.19.0) לא מושפע.
+- **Stems (14/09):** Demucs/htdemucs (ONNX) — אבל משקולותיו ברישיון "מדעי
+  בלבד", לפתור לפני מימוש. "עבד פעם, שמור תוצאה", לא בזמן אמת; ביצועים
+  אמיתיים תלויים ב‑Tauri. v0.20.0.
 
 ---
 
