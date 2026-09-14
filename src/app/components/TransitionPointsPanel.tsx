@@ -125,8 +125,15 @@ export function TransitionPointsPanel({
   }
 
   return (
+    // `max-h-48 overflow-y-auto` (v0.8.6): unbounded, this grows with the
+    // candidate count, and a track with several candidates could push it
+    // tall enough to cover the deck's own Play/Sync buttons underneath —
+    // found live (Shalom, screenshot) as "I can't reach Play with the other
+    // deck playing". It auto-shows without a click of its own (see the class
+    // doc comment above), so there was no way to dismiss it except doing the
+    // exact thing it was blocking.
     <div
-      className="absolute left-0 top-full z-30 mt-1 w-72 rounded-[var(--radius-md)] border border-hairline bg-surface-2 p-2.5 text-left shadow-[var(--shadow-pop)]"
+      className="absolute left-0 top-full z-30 mt-1 max-h-48 w-72 overflow-y-auto rounded-[var(--radius-md)] border border-hairline bg-surface-2 p-2.5 text-left shadow-[var(--shadow-pop)]"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="mb-2 label">Transition points — based on energy</div>
