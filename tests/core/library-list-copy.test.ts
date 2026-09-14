@@ -65,4 +65,23 @@ describe('libraryEmptyCopy', () => {
     const copy = libraryEmptyCopy('', false, 0, null)
     expect(copy.title).toBe('No audio files found')
   })
+
+  /**
+   * Live bug (2026-09-13): a crate whose real members hadn't been hashed yet
+   * by the background analysis queue rendered as a genuinely empty crate —
+   * "No tracks in X" — right after a folder scan, indistinguishable from a
+   * crate that actually has nothing in it. `CratesRail.tsx`'s own "N not
+   * found" badge had the same problem.
+   */
+  it('says it is still checking, not that the crate is empty, while analysis catches up', () => {
+    const copy = libraryEmptyCopy('', false, 0, 'Trance', true)
+    expect(copy.title).toBe('Still checking "Trance"')
+    expect(copy.title).not.toBe('No tracks in "Trance"')
+    expect(copy.offerMixOnlyReset).toBe(false)
+  })
+
+  it('reports the crate as empty once analysis has settled', () => {
+    const copy = libraryEmptyCopy('', false, 0, 'Trance', false)
+    expect(copy.title).toBe('No tracks in "Trance"')
+  })
 })

@@ -39,8 +39,24 @@ export function libraryEmptyCopy(
    * nothing" even if both happen to be true at once.
    */
   activeCrateName: string | null = null,
+  /**
+   * A crate's members are matched against the library by `contentHash`
+   * (`CratesRail.tsx`), and a freshly scanned track has none until the
+   * background analysis queue reaches it. Right after loading a folder, a
+   * crate that genuinely has tracks in it can render exactly like an empty
+   * one — "No tracks in X" reads as permanent, so while analysis is still
+   * catching up this says so instead of declaring the crate empty.
+   */
+  crateAnalysisCatchingUp = false,
 ): LibraryEmptyCopy {
   if (activeCrateName) {
+    if (crateAnalysisCatchingUp) {
+      return {
+        title: `Still checking "${activeCrateName}"`,
+        body: 'The library is still analyzing tracks after a scan — this crate will fill back in once it catches up.',
+        offerMixOnlyReset: false,
+      }
+    }
     return {
       title: `No tracks in "${activeCrateName}"`,
       body: 'Drag tracks onto it from the crate rail, or clear the crate filter to see the whole library.',

@@ -86,14 +86,19 @@ const openSettings = async (page) => {
   ok('no horizontal overflow inside the field list', !box.scrollerOverflowX)
 
   const groups = await page.locator('nav button').allInnerTexts()
-  ok('all five groups present', groups.length === 5, groups.join(' / '))
+  // System (v0.2.5's own capabilities group) joined the original five —
+  // Controller/Feel/Display/Library/Help — later; six is current, not a bug.
+  ok('all six groups present', groups.length === 6, groups.join(' / '))
 
   // Every group renders without throwing, and the calibration constants are
-  // nowhere among the labels.
+  // nowhere among the labels. Scoped to the settings panel (`.z-40`) — the
+  // crate rail (v0.8.1) also carries `.overflow-y-auto`, so the unscoped
+  // locator started matching two elements and throwing strict-mode errors.
+  const fieldList = page.locator('.z-40 .overflow-y-auto')
   const labels = []
   for (const g of groups) {
     await page.getByRole('button', { name: g, exact: true }).click()
-    labels.push(...(await page.locator('.overflow-y-auto').innerText()).split('\n'))
+    labels.push(...(await fieldList.innerText()).split('\n'))
   }
   const banned = ['PLATTER_SIZE', 'POSITION_EPSILON', 'DECLICK', 'ANCHOR_EVERY', 'STANDSTILL']
   const leaked = banned.filter((b) => labels.some((l) => l.includes(b)))

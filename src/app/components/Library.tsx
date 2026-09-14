@@ -526,7 +526,13 @@ export function Library() {
   const preMixList = ctl.sortedFilteredTracks()
   const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
   const activeCrate = library.activeCrateId ? (crates.get(library.activeCrateId) ?? null) : null
-  const emptyCopy = libraryEmptyCopy(library.query, mixOnly, preMixList.length, activeCrate?.name ?? null)
+  const emptyCopy = libraryEmptyCopy(
+    library.query,
+    mixOnly,
+    preMixList.length,
+    activeCrate?.name ?? null,
+    queuedTotal > 0,
+  )
   // Only a manual crate's membership can be edited from here — a smart
   // crate's contents are entirely rule-derived (`refreshSmartCrate`), so
   // there is nothing for a per-row "remove" action to do to one.

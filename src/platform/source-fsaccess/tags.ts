@@ -556,21 +556,55 @@ async function readFlac(file: File, tags: TrackTags) {
   }
 }
 
+interface OggPage {
+  payloadStart: number
+  pageEnd: number
+}
+
 /**
- * Best-effort OGG: find the comment header inside the first pages rather than
- * reassembling Ogg packets — it fits in one page for any normally-tagged file.
+ * Reads one Ogg page's framing (`OggS` + version/flags/granule/serial/
+ * sequence/checksum, then an N-byte segment table whose sum is the payload
+ * length) — just enough to find where a page's payload starts and ends,
+ * not to reassemble multi-page packets. `null` on anything short or
+ * malformed enough not to trust, same "degrade rather than guess" as the
+ * rest of this file.
+ */
+function readOggPage(b: Uint8Array, p: number): OggPage | null {
+  if (p + 27 > b.length || ascii(b, p, 4) !== 'OggS') return null
+  const segCount = b[p + 26]
+  const segTableStart = p + 27
+  if (segTableStart + segCount > b.length) return null
+  let payloadLen = 0
+  for (let i = 0; i < segCount; i++) payloadLen += b[segTableStart + i]
+  const payloadStart = segTableStart + segCount
+  const pageEnd = payloadStart + payloadLen
+  if (pageEnd > b.length) return null
+  return { payloadStart, pageEnd }
+}
+
+/**
+ * Best-effort OGG: the comment header is always the second page (the first
+ * is the identification header) for any normally-tagged Vorbis/Opus file,
+ * so this walks real Ogg page framing to reach it directly instead of
+ * scanning raw bytes for the `\x03vorbis`/`OpusTags` signature — a blind
+ * scan risks a false match inside the compressed audio payload of a later
+ * page (pure chance, but a 256KB window is a lot of chances) landing on
+ * page 1's signature check before ever reaching the real header, and
+ * silently returning garbage instead of the actual tags. No real OGG file
+ * exists in this environment to test this against — see
+ * `tests/platform/tags.test.ts` for what synthetic coverage exists instead.
  */
 async function readOgg(file: File, tags: TrackTags) {
   const b = await slice(file, 0, 262_144)
-  for (let i = 0; i + 8 < b.length; i++) {
-    if (b[i] === 0x03 && ascii(b, i + 1, 6) === 'vorbis') {
-      parseVorbisComments(b, i + 7, tags)
-      return
-    }
-    if (b[i] === 0x4f && ascii(b, i, 8) === 'OpusTags') {
-      parseVorbisComments(b, i + 8, tags)
-      return
-    }
+  const page0 = readOggPage(b, 0)
+  if (!page0) return
+  const page1 = readOggPage(b, page0.pageEnd)
+  if (!page1) return
+  const start = page1.payloadStart
+  if (b[start] === 0x03 && ascii(b, start + 1, 6) === 'vorbis') {
+    parseVorbisComments(b, start + 7, tags)
+  } else if (b[start] === 0x4f && ascii(b, start, 8) === 'OpusTags') {
+    parseVorbisComments(b, start + 8, tags)
   }
 }
 
@@ -582,12 +616,19 @@ async function readOgg(file: File, tags: TrackTags) {
  * from an `ID3 ` chunk, which DJ software writes *after* the audio payload —
  * hence seeking chunk by chunk instead of reading a window off the front.
  */
+// Every chunk costs at least an 8-byte header, so this bounds the walk to
+// roughly a 32KB run of headers even on a pathological file — nowhere close
+// to real WAV/AIFF files (a handful of top-level chunks), but high enough
+// that a legitimate ID3 chunk sitting past the 64th chunk (the old cap —
+// hit on a real file, v0.8.3 debt) is never missed again.
+const MAX_CHUNKS = 4096
+
 async function readChunked(file: File, tags: TrackTags, littleEndian: boolean) {
   const u32 = littleEndian ? u32le : u32be
   let byteRate = 0
   let p = 12
 
-  for (let i = 0; i < 64 && p + 8 <= file.size; i++) {
+  for (let i = 0; i < MAX_CHUNKS && p + 8 <= file.size; i++) {
     const head = await slice(file, p, 8)
     if (head.length < 8) return
     const id = ascii(head, 0, 4)
@@ -614,8 +655,12 @@ async function readChunked(file: File, tags: TrackTags, littleEndian: boolean) {
       await readId3(file, body, tags)
     }
 
-    if (size <= 0) return
-    p = body + size + (size & 1)
+    // A zero-size chunk (padding some writers emit) used to abort the whole
+    // walk here, which could strand a real ID3 chunk written after it
+    // unread. Step past just the header and keep going; only a *negative*
+    // size — impossible from an unsigned read — would mean truly corrupt
+    // data worth stopping for, and u32/u32be never produce one.
+    p = size > 0 ? body + size + (size & 1) : body
   }
 }
 

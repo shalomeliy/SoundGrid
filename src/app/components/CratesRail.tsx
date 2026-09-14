@@ -26,6 +26,16 @@ export function CratesRail() {
   const tracks = useStore((s) => s.library.tracks)
   const query = useStore((s) => s.library.query)
   const knownHashes = new Set(tracks.map((t) => t.contentHash).filter((h): h is string => h != null))
+  // Same "not done yet" test `Library.tsx`'s header count uses. A fresh scan's
+  // tracks start with no `contentHash` at all until the background queue
+  // reaches them (`addTrackToCrate`'s comment above), so right after loading a
+  // folder a crate's real members briefly fail to match anything in
+  // `knownHashes` — not because they moved or were deleted, but because the
+  // library hasn't caught up. Without this flag that transient state rendered
+  // as "N not found" / an empty crate, which reads as permanent data loss.
+  const analysisCatchingUp = tracks.some(
+    (t) => t.analysisState === 'queued' || t.analysisState === 'analyzing',
+  )
 
   function onNewCrate() {
     const name = window.prompt('New crate name:')
@@ -72,6 +82,7 @@ export function CratesRail() {
             key={crate.id}
             crate={crate}
             knownHashes={knownHashes}
+            analysisCatchingUp={analysisCatchingUp}
             selected={crate.id === activeCrateId}
             onSelect={() => onSelect(crate)}
             onDelete={() => onDelete(crate)}
@@ -89,6 +100,7 @@ export function CratesRail() {
 function CrateRow({
   crate,
   knownHashes,
+  analysisCatchingUp,
   selected,
   onSelect,
   onDelete,
@@ -96,6 +108,7 @@ function CrateRow({
 }: {
   crate: CrateRecord
   knownHashes: Set<string>
+  analysisCatchingUp: boolean
   selected: boolean
   onSelect: () => void
   onDelete: () => void
@@ -238,7 +251,15 @@ function CrateRow({
           )}
         </div>
       )}
-      {missing > 0 && (
+      {missing > 0 && analysisCatchingUp && (
+        <div
+          className="mt-0.5 text-2xs text-grid-muted"
+          title="The library is still analyzing tracks after a scan — these will match again once it catches up. If they still don't after that, they were moved or deleted outside SoundGrid."
+        >
+          {missing} checking…
+        </div>
+      )}
+      {missing > 0 && !analysisCatchingUp && (
         <div
           className="mt-0.5 text-2xs text-warn"
           title="These tracks are no longer in the library — moved or deleted outside SoundGrid."

@@ -15,9 +15,9 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.3` נסגרה (13/09), סוגרת את "ניהול ספרייה" (v0.8.0-v0.8.3). פירוט: [`docs/handoff/v0.8.3.md`](docs/handoff/v0.8.3.md). |
-| **branch** | `claude/eloquent-pascal-3mabcx`, מכיל את `main` (`git merge-base --is-ancestor e598851 origin/main`). |
-| **גרסה נוכחית** | `v0.8.3` (`package.json`) — נסגרה. |
+| **בעבודה** | אין כרגע — `v0.8.6` נסגרה (13/09): מנת חובות טכניים + באג crate חי. פירוט: [`docs/handoff/v0.8.6.md`](docs/handoff/v0.8.6.md). |
+| **branch** | `claude/quirky-ptolemy-2qeikv`, מכיל את `main` (`git merge-base --is-ancestor 79d877a origin/main`). |
+| **גרסה נוכחית** | `v0.8.6` (`package.json`) — נסגרה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
 | **הבא בתור** | `v0.8.4` — פרטיות/תנאי שימוש כנים + תיקון נגישות אמיתי, `ROADMAP.md`. |
 
@@ -28,12 +28,15 @@
 - **עריכת ז'אנר ידנית שכבר אבדה *לפני* v0.4.0 נשארת אבודה** — המיגרציה
   (`genre-overrides-idb/migrate.ts`) מתקנת רק קדימה: קובץ שכבר זז לפני שהיא רצה
   ואיבד את ההתאמה לנתיב הישן, אין לה ממה לשחזר. חוב שהמשתמש כבר קיבל והסכים לו.
-- `readTags` על WAV/AIFF לא מוצא ID3 אם הוא יושב אחרי הצ'אנק ה‑64 (cap של הלולאה).
-- OGG best-effort (חיפוש comment header ב‑256KB הראשונים, בלי הרכבת Ogg packets) —
-  אין OGG בספרייה של המשתמש, אז לא נבדק על אמת.
+- **OGG best-effort, חוזק 13/09 — עדיין לא נבדק על קובץ אמיתי.** `readOgg`
+  עבר מסריקת בייטים עיוורת להליכה על עמודי Ogg (עמוד 1 = comment header),
+  כדי שהתקה מקרית של `\x03vorbis` בתוך אודיו דחוס לא תיתפס ככותרת. מכוסה
+  ב‑`tests/platform/tags.test.ts` על קובץ סינתטי — נכשל אמיתית מול הישן.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
-- אין טיפול ב‑sample-rate mismatch בין הקובץ ל‑AudioContext (v0.18).
-- אין persistence ל‑tempo בין טעינות (v0.16) — cue points/hot cues כן נשמרים מ‑v0.4.0.
+- **sample-rate mismatch — לא תקלה, לא ניתן לתקן בדפדפן.** נבדק 13/09:
+  `decodeAudioData` כבר מרסם כל קובץ לקצב ה‑`AudioContext` נכון ושקוף. הפריט
+  ב‑ROADMAP.md (v0.18.0) הוא ASIO/WASAPI exclusive — Chromium אין לו גישה
+  לזה היום, רק אחרי Tauri. סגור עד v0.18.0.
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑
@@ -69,15 +72,13 @@
   (v0.7.0), הקלטה (v0.7.5: הקלט/עצור/שמור/מחק/סמן טראק). כולם עכבר בלבד —
   אין FLX4 בסביבה המרוחקת לאמת מולה. לתקן דרך Learn אם לחיצה/סיבוב לא עושה
   כלום. פרטים לכל אחד: `docs/handoff/v0.3.0.md`/`v0.5.0.md`.
-- **זמן FX מסונכרן-ביט עוקב רק אחרי פדל הטמפו של הדק שכבר master** — לא אחרי
-  SYNC שנדלק או אחרי שהמאסטר משתנה. אם FX נשמע "תקוע" על BPM ישן — לגעת
-  בפדל הטמפו פעם אחת מתקן.
-- **הקלטת מאסטר לא נבדקה מול טאב ברקע** — אם ה‑`AudioContext` נכנס ל‑
-  `suspended` באמצע הקלטה ארוכה יכול להיות פער שקט בקובץ. זוהה כסיכון
-  בסקירת QA, לא שוחזר בפועל ולא תוקן בגרסה הזו.
+- **הקלטת מאסטר מול טאב ברקע — לא נמנע, אבל כבר לא שקט (13/09).** אי אפשר
+  למנוע `AudioContext` שנכנס ל‑`suspended` מכאן, אז `stopRecordMaster` משווה
+  זמן‑שעון לזמן‑אודיו שנתפס בפועל (`detectRecordingGap`, `core/recording.ts`)
+  ומזהיר אם יש פער — לא שוחזר ריאלית כדי לאמת, אבל הזיהוי עצמו מכוסה
+  ב‑`tests/core/recording.test.ts`.
 - **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו יושב ב‑
   IndexedDB המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה סלוטים לא נכללו.
-- **`verify-pad-modes.mjs`/`verify-settings.mjs`/`verify-library-boot.mjs` התיישנו** מול גרסאות מאוחרות — לא תוקן, לא קשור לדיף אחרון.
 
 ---
 

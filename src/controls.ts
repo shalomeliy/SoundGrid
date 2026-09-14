@@ -5,6 +5,7 @@ import { engine } from '@/platform/audio-webaudio/engine'
 import type { RecorderTap } from '@/platform/audio-webaudio/recorder-tap'
 import {
   buildCueSheet,
+  detectRecordingGap,
   estimateSecondsRemaining,
   MASTER_RECORDING_MAX_SEC,
   mergeChunks,
@@ -48,6 +49,7 @@ import {
 import { matchesQuery } from '@/core/library-search'
 import { sortTracks } from '@/core/library-sort'
 import { getCues, putCues } from '@/platform/cues-idb/store'
+import { getTempo, putTempo } from '@/platform/tempo-idb/store'
 import { getExcellentPoints, markExcellent } from '@/platform/mix-ratings-idb/store'
 import { clock } from '@/platform/clock-audio'
 import { readTrackData } from '@/platform/source-fsaccess/library'
@@ -318,6 +320,11 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     c.kind == null && !isOrdinalLabel(c) ? { ...c, kind: 'mixEntry' as const } : c,
   )
   const cuePointSec = storedCues?.cuePointSec ?? 0
+  // v0.8.6: `null` (never saved for this track, or hash unknown) means the
+  // deck keeps whatever tempo it already had — same "leave it alone" default
+  // the physical pitch fader would give, not a reset to 0. Only a value this
+  // exact track was saved at previously overrides the current fader.
+  const storedTempo = contentHash ? await getTempo(contentHash) : null
   // v0.5.4: same "not yet identified, not an error" treatment as `storedCues`.
   const excellentMixPoints = contentHash ? await getExcellentPoints(contentHash) : []
   // "First cue point" (Settings › Feel › On track load) means this saved CUE
@@ -339,6 +346,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
   if (outgoingId && outgoingId !== track.id) markRecentlyRemoved(outgoingId)
 
   engine.decks[deckId].load(buffer)
+  // Applied straight to the engine, not through `setTempo` — that function's
+  // extra work (cancelling an active transition, rescheduling this same
+  // persist, refreshing FX beat-sync time) is for a genuine fader touch, not
+  // for re-applying a value that was already this track's saved tempo a
+  // moment ago.
+  if (storedTempo != null) engine.decks[deckId].setTempo(storedTempo)
   if (startSec > 0) engine.decks[deckId].seek(startSec)
   patchDeck(deckId, {
     track: { ...track, contentHash, bpm: track.bpm ?? undefined, durationSec },
@@ -352,11 +365,18 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     syncActive: false,
     peaks: null,
     bands: null,
+    ...(storedTempo != null ? { tempo: storedTempo } : {}),
     hotCues,
     cuePointSec,
     excellentMixPoints,
     loopActive: false,
   })
+  // A (re)load can change this deck's bpm/tempo as much as touching the
+  // tempo fader does — found by change-reviewer (v0.8.6): loading a track
+  // straight onto the deck that's already master silently left FX beat-sync
+  // time computed against the old bpm until the fader or SYNC was next
+  // touched. Guarded the same way setTempo already is.
+  if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
   const { library, setLibrary } = useStore.getState()
   setLibrary({
     tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, contentHash, durationSec } : t)),
@@ -404,6 +424,10 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       peaks: analysis.peaks,
       bands: analysis.bands,
     })
+    // Analysis can settle on a different bpm than the tag-based value the
+    // load above already refreshed FX against (e.g. no tag bpm at all) —
+    // same guard, same reasoning.
+    if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
     const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
     setLibAfter({
       tracks: libAfter.tracks.map((t) =>
@@ -805,19 +829,45 @@ export function setTempo(deckId: DeckId, tempo: number) {
   engine.decks[deckId].setTempo(t)
   useStore.getState().patchDeck(deckId, { tempo: t, syncActive: false })
   if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
+  schedulePersistTempo(deckId)
+}
+
+const persistTempoTimers: Record<DeckId, number> = { A: 0, B: 0 }
+/** Debounced like `schedulePersistSamplerBank` — a fader drag calls `setTempo` many times a second, and a write per tick would hammer IndexedDB for no benefit over the value it settles on. */
+function schedulePersistTempo(deckId: DeckId) {
+  window.clearTimeout(persistTempoTimers[deckId])
+  persistTempoTimers[deckId] = window.setTimeout(() => void persistTempoForDeck(deckId), 400)
+}
+
+async function persistTempoForDeck(deckId: DeckId): Promise<void> {
+  const { decks, setNotice } = useStore.getState()
+  const deck = decks[deckId]
+  const hash = deck.track?.contentHash
+  if (!hash) return // not yet identified (fresh scan, or hashing failed) — nothing to key the write on
+  try {
+    await putTempo(hash, deck.tempo)
+  } catch (err) {
+    setNotice({
+      text: `Tempo for "${deck.track?.title ?? deck.track?.name}" wasn't saved: ${err instanceof Error ? err.message : String(err)}`,
+      tone: 'warn',
+      source: 'load',
+    })
+  }
 }
 
 /**
  * Re-applies both racks' stored beat-time so a beat-synced Delay/Echo/Filter
- * follows the master deck's tempo fader instead of staying locked to the
- * BPM it happened to compute at when the time was last set — the product
- * decision recorded in `workshop-output/FEATURE_SPEC.md`. Only wired to the
- * tempo fader touching the *current* master deck (`setTempo`, above), not to
- * SYNC engaging or the master deck being reassigned — a narrower scope than
- * the spec's own wording, named here rather than silently missing: those
- * paths run deep inside SYNC/transition logic this version doesn't touch,
- * and widening the change there risks the exact kind of regression Shalom
- * asked this version to guard against.
+ * follows the master deck's tempo instead of staying locked to the BPM it
+ * happened to compute at when the time was last set — the product decision
+ * recorded in `workshop-output/FEATURE_SPEC.md`. Originally wired only to
+ * `setTempo` touching the current master deck, named here as a known gap
+ * (HANDOFF.md): SYNC engaging on the very first press (no master existed
+ * yet to read a BPM from) and the master deck being reassigned
+ * (`setMasterDeck`) both change what `masterPlayingBpm()` returns just as
+ * much as the tempo fader does, and neither called this. v0.8.6 wires both
+ * — as an added call at the point each already changes `masterDeckId`, not
+ * a change to the SYNC/transition logic itself, which is what the original
+ * "risks regression" note was about.
  */
 function refreshFxTimeForMasterTempo() {
   const { fx } = useStore.getState()
@@ -1908,6 +1958,24 @@ export async function stopRecordMaster(): Promise<void> {
   console.log(
     `[recording] stopped — ${masterRecordingChunks.length} chunks, ${totalFrames} frames @ ${masterRecordingSampleRate}Hz (${seconds.toFixed(2)}s)`,
   )
+  // The capture path itself can't tell if the AudioContext was ever
+  // suspended (a backgrounded tab, QA risk from v0.7.5 — never reproduced,
+  // never ruled out either): `RecorderTap` only ever sees the chunks it was
+  // actually handed. Wall-clock time elapsed versus audio-time captured is
+  // the one signal that can catch it after the fact, so this is checked on
+  // every stop rather than left as a silent maybe.
+  const startedAt = useStore.getState().recording.startedAt
+  if (startedAt != null) {
+    const wallClockSec = (Date.now() - startedAt) / 1000
+    const gap = detectRecordingGap(wallClockSec, totalFrames, masterRecordingSampleRate)
+    if (gap != null) {
+      useStore.getState().setNotice({
+        text: `Recording stopped — about ${gap.toFixed(0)}s of audio is missing compared to how long it ran. The browser may have suspended audio while the tab was in the background; check the file before relying on it.`,
+        tone: 'warn',
+        source: 'recording',
+      })
+    }
+  }
   useStore.getState().patchRecording({ active: null, savedState: totalFrames > 0 ? 'unsaved' : 'idle' })
 }
 
@@ -2252,7 +2320,14 @@ export function syncDeck(deckId: DeckId) {
     return
   }
 
-  if (masterDeckId == null) useStore.setState({ masterDeckId: resolvedMaster })
+  // First-ever SYNC press: no master existed yet, so `masterPlayingBpm()`
+  // had nothing to read and FX beat-sync time was never set from a real
+  // BPM. Now that one exists, give FX its first real value instead of
+  // waiting for the master deck's tempo fader to be touched.
+  if (masterDeckId == null) {
+    useStore.setState({ masterDeckId: resolvedMaster })
+    refreshFxTimeForMasterTempo()
+  }
   const ratio = master.bpm / st.bpm
   const tempo = (ratio - 1) / settings.values.tempoRange
   setTempo(deckId, tempo)
@@ -2270,6 +2345,10 @@ export function syncDeck(deckId: DeckId) {
 export function setMasterDeck(deckId: DeckId) {
   const { decks, patchDeck } = useStore.getState()
   useStore.setState({ masterDeckId: deckId })
+  // The new master's BPM is (almost always) not the old master's — FX
+  // beat-sync time was computed against the deck that just stopped being
+  // master, and this is the one place that reassignment happens.
+  refreshFxTimeForMasterTempo()
   if (decks[deckId].syncActive) patchDeck(deckId, { syncActive: false })
 
   const other: DeckId = deckId === 'A' ? 'B' : 'A'
