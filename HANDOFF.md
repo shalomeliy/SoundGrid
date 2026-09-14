@@ -93,15 +93,15 @@
   מדי בפועל (ר' `docs/handoff/v0.5.5.md`), אז הפיצ'ר מכובה כברירת מחדל.
   `device:'wasm'` קבוע (לא `'auto'` — GPU תקע שבב אמיתי). אם ירצה לחזור
   לזה: BYO‑key עדיין לא נבנה, זו האפשרות הבאה לבדוק.
-
----
-
-## החלטות פתוחות — להחליט מול המשתמש
-
-- key‑lock (master tempo): phase‑vocoder ב‑`AudioWorklet` — לבנות עצמאית או WASM? (v0.9)
-- ייבוא תגיות Serato/rekordbox — פורמט קדימות? (v0.16). לתגיות פשוטות (BPM/key) — נסגר ב‑v0.1.7
-- Ableton Link — WASM port מול שרת גשר מקומי (v0.19)
-- stems — מודל on-device: איזה? רישוי? (v0.20)
+- **key‑lock (14/09):** Signalsmith Stretch (MIT, WASM+AudioWorklet רשמי) — לא Rubber
+  Band (GPL/בתשלום), לא בנייה עצמית. v0.9.0, פירוט ב‑`ROADMAP.md`.
+- **ייבוא תגיות (14/09):** סדר עדיפות Serato (Hot Cues+Beatgrid) → rekordbox XML;
+  לא לגעת ב‑PDB/ANLZ/`master.db` המוצפן (סיכון תחזוקה גבוה מהתועלת). v0.16.0.
+- **Ableton Link (14/09):** אין אפשרות ל‑WASM בדפדפן — UDP multicast חסום פיזית
+  בדפדפן, לא רק קשה. נדחה לגמרי ל‑Tauri; MIDI Clock (ב‑v0.19.0) לא מושפע.
+- **Stems (14/09):** Demucs/htdemucs (ONNX) — אבל המשקולות המאומנות ברישיון
+  "מדעי בלבד", לפתור לפני מימוש. תכונת "עבד פעם, שמור תוצאה", לא בזמן אמת;
+  ביצועים אמיתיים תלויים ב‑Tauri. v0.20.0.
 
 ---
 
