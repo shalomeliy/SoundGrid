@@ -56,8 +56,9 @@
   מעבר למה ש‑autocorrelation פשוט תומך. «Set downbeat here» ב‑`BeatGridPanel` הוא
   הכלי לתקן ידנית. פרטים: [`docs/handoff/v0.3.0.md`](docs/handoff/v0.3.0.md).
 - **`npm audit` מדווח 4 high על `@huggingface/transformers`** (v0.5.5 שלב 2) —
-  ב‑`onnxruntime-node`/`sharp`, תלויות Node שהחבילה גוררת. נבדק: ה‑`exports`
-  map שלה מפנה build דפדפן נפרד — לא רץ בבנדל בפועל. חוב מתועד, לא מוסתר.
+  ב‑`onnxruntime-node`/`sharp`, תלויות Node שהחבילה גוררת. ה‑`exports` map שלה
+  מפנה build דפדפן נפרד — לא רץ בבנדל בפועל. מ‑14/09 גם נבדק אוטומטית בכל
+  `npm run check` (`tests/repo/ai-local-node-deps.test.ts`), לא רק פעם ידנית.
 - **`platform/ai-local/` קיים ועובד, אבל מכובה** — ~1-2 דקות לפקודה בלי GPU
   (v0.5.5, ר' `docs/handoff/v0.5.5.md`). לא לגעת בלי בקשה מפורשת של שלום.
 - **Sync-follow של לולאת סאמפלר לא אומת מול דק אמיתי משנה טמפו** — עבר code
@@ -73,6 +74,7 @@
   ומזהיר אם יש פער — הזיהוי מכוסה ב‑`tests/core/recording.test.ts`.
 - **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו יושב ב‑
   IndexedDB המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה סלוטים לא נכללו.
+  תוכנן לגרסה נפרדת: `ROADMAP.md` v0.8.8.
 
 ---
 
