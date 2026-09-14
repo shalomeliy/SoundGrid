@@ -103,7 +103,7 @@ export function TopBar({
               value={output.currentId ?? ''}
               onChange={(e) => pickOutput(e.target.value)}
               disabled={!output.sinkSupported || busy}
-              className="rounded-[var(--radius-sm)] border border-hairline bg-surface-2 px-2 py-1 text-xs text-grid-text outline-none transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-50"
+              className="rounded-[var(--radius-sm)] border border-hairline bg-surface-2 px-2 py-1 text-xs text-grid-text outline-none transition-colors hover:bg-surface-3 focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] disabled:opacity-50"
             >
               <option value="">System default</option>
               {output.devices.map((d) => (

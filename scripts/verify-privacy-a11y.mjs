@@ -12,12 +12,11 @@
  *
  * Result on 2026-09-14, Chromium 1194 (`PW_CHROME=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
  * in this container — playwright@1.63.0 defaults to a headless_shell build
- * that is not the one pre-installed here): 17/17.
+ * that is not the one pre-installed here): 19/19.
  *
  * One real bug found running this, not just added tests for one that
  * existed: any element combining `outline-none` (unconditional) with
- * `focus-visible:outline-*` never actually painted a ring — confirmed on
- * `HintIcon` and the `<select>`s in Settings/TopBar/AiControlBar. Tailwind v4
+ * `focus-visible:outline-*` never actually painted a ring. Tailwind v4
  * resolves `outline-2`'s `outline-style` from a shared `--tw-outline-style`
  * custom property, and `outline-none` pins that variable to `none`
  * *unconditionally* — not scoped to a non-focus state — so every element
@@ -26,10 +25,19 @@
  * no `outline-none` at all (verified live — Tab, then getComputedStyle —
  * before trusting that from reading the class list alone; an earlier draft
  * of this comment wrongly named Button too, caught by change-reviewer).
- * This file's row now also sets `focus-visible:[--tw-outline-style:solid]`
- * to win the variable back on focus; the same one-line fix is still owed to
- * `HintIcon` and the affected `<select>`s — tracked in HANDOFF.md, not fixed
- * here to keep this version to what it was scoped for.
+ *
+ * First shipped fixing only the row itself, on the theory that `HintIcon`
+ * and the other `<select>`s were separate, out-of-scope debt. Shalom found
+ * the actual user-facing cost of that half-measure immediately: tabbing off
+ * the row and onto its own genre `<select>`/note `<input>`/load buttons —
+ * the exact cells this same fix was supposed to make usable — dropped the
+ * ring instantly, so the ring appeared to flicker on for one stop out of
+ * five and vanish for the rest, which read as "focus is somewhere I can't
+ * see" rather than as an accessibility win. Fixed everywhere the same
+ * pattern occurs (`Library.tsx`'s search box/genre select/note input,
+ * `Settings.tsx`, `TopBar.tsx`, `AiControlBar.tsx`, `HintIcon` in
+ * `controls.tsx`) with the same one-line addition,
+ * `focus-visible:[--tw-outline-style:solid]`.
  */
 import { chromium } from 'playwright'
 
@@ -97,7 +105,10 @@ function harness(entries) {
 })()`
 }
 
-const entries = [{ name: 'One Track.mp3', bytes: buildTaggedMp3Bytes('One Track', 128) }]
+const entries = [
+  { name: 'One Track.mp3', bytes: buildTaggedMp3Bytes('One Track', 128) },
+  { name: 'Two Track.mp3', bytes: buildTaggedMp3Bytes('Two Track', 130) },
+]
 
 /** WCAG 2.x relative-luminance contrast ratio between two computed rgb() strings. */
 function contrastRatio(rgbA, rgbB) {
@@ -204,6 +215,38 @@ ok(
   combined.ariaSelected === 'true' && combined.outlineStyle === 'solid' && combined.outlineWidth === '2px',
   JSON.stringify(combined),
 )
+
+// Regression check (found by Shalom, 14/09): tabbing off the row and INTO
+// its own cells — genre <select>, note <input>, the two load buttons — must
+// never drop to an invisible focus. Before the fix below, each of those
+// cells combined an unconditional `outline-none` with `focus-visible:outline-*`,
+// so the ring vanished the instant focus left the <tr> even though the same
+// Tab press kept moving; the user only ever saw the ring on the row itself,
+// one stop in five, and lost track of focus everywhere else.
+const cellStops = []
+for (let i = 0; i < 4; i++) {
+  await page.keyboard.press('Tab')
+  cellStops.push(
+    await page.evaluate(() => {
+      const el = document.activeElement
+      return { tag: el?.tagName, type: el?.type, outlineStyle: getComputedStyle(el).outlineStyle }
+    }),
+  )
+}
+const invisible = cellStops.filter((s) => s.outlineStyle === 'none')
+ok(
+  'every cell inside the row (genre select, note input, load A/B) keeps a visible focus ring',
+  invisible.length === 0,
+  JSON.stringify(cellStops),
+)
+
+// One more Tab should land on the NEXT row and light up the same way.
+await page.keyboard.press('Tab')
+const nextRowVisible = await page.evaluate(() => {
+  const el = document.activeElement
+  return el?.tagName === 'TR' && getComputedStyle(el).outlineStyle === 'solid'
+})
+ok('tabbing on from the last cell reaches the next row, ring visible again', nextRowVisible)
 
 ok('no page error at any point', errors.length === 0, errors.join('; '))
 
