@@ -15,14 +15,16 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.5` — M1 בנוי (`Embedder`, `meyda`/MIT לא `essentia.js`/AGPL,
-  cache, חיווט לתור). מדידה: ~2 שנ'/דקת-אודיו — **קלאסי בלבד, לא CLAP!**
-  הבא: M2 (למדוד CLAP), **ואז לשאול את שלום שוב** — לא להניח שהתשובה
-  הקודמת תקפה. ר' `PLAN.md` "שער יציאה מ‑M2". |
-| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 702b749 origin/main`). |
+| **בעבודה** | `v0.8.5` M1 בנוי. M2: `scripts/measure-clap-embedding.mjs`
+  נכתב ונבדק — **חסום ברשת בקונטיינר** (נכשל ב‑0.3 שנ', `huggingface.co`
+  חסום ע"י מדיניות הרשת, אושר מול `__agentproxy/status`, לא תקלה — אותו
+  תקדים כמו `platform/ai-local/worker.ts`). מספר CLAP אמיתי דורש הרצה על
+  מחשב עם אינטרנט. **אחרי שיש מספר — לשאול את שלום שוב, לא להניח.** ר'
+  `PLAN.md` "שער יציאה מ‑M2". |
+| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor c4dcaf3 origin/main`). |
 | **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | M2 (ראה למעלה), אחר-כך `v0.9.0`. |
+| **הבא בתור** | שלום מריץ `node scripts/measure-clap-embedding.mjs` (אחרי `npm install`) על מחשבו → שאלה חוזרת עם המספר → M3 או גניזת CLAP, אחר-כך `v0.9.0`. |
 
 ---
 
@@ -97,15 +99,10 @@
   מדי בפועל (ר' `docs/handoff/v0.5.5.md`), אז הפיצ'ר מכובה כברירת מחדל.
   `device:'wasm'` קבוע (לא `'auto'` — GPU תקע שבב אמיתי). אם ירצה לחזור
   לזה: BYO‑key עדיין לא נבנה, זו האפשרות הבאה לבדוק.
-- **key‑lock (14/09):** Signalsmith Stretch (MIT, WASM רשמי) — לא Rubber Band
-  (GPL/בתשלום), לא בנייה עצמית. v0.9.0, פירוט ב‑`ROADMAP.md`.
-- **ייבוא תגיות (14/09):** סדר עדיפות Serato (Hot Cues+Beatgrid) → rekordbox XML;
-  לא לגעת ב‑PDB/ANLZ/`master.db` המוצפן (סיכון תחזוקה גבוה מהתועלת). v0.16.0.
-- **Ableton Link (14/09):** אין אפשרות ל‑WASM בדפדפן — UDP multicast חסום
-  פיזית, לא רק קשה. נדחה לגמרי ל‑Tauri; MIDI Clock (v0.19.0) לא מושפע.
-- **Stems (14/09):** Demucs/htdemucs (ONNX) — אבל משקולותיו ברישיון "מדעי
-  בלבד", לפתור לפני מימוש. "עבד פעם, שמור תוצאה", לא בזמן אמת; ביצועים
-  אמיתיים תלויים ב‑Tauri. v0.20.0.
+- **4 החלטות ארכיטקטורה לגרסאות עתידיות (14/09) — key‑lock, ייבוא תגיות,
+  Ableton Link, Stems** — מתועדות במלואן ב‑`ROADMAP.md` תחת הגרסה שלהן
+  (v0.9.0/v0.16.0/v0.19.0/v0.20.0), לא כפולות כאן: אף אחת לא התחילה, אז
+  זה "מה נבנה הלאה" (`ROADMAP.md`), לא "מה בעבודה עכשיו" (הקובץ הזה).
 
 ---
 
