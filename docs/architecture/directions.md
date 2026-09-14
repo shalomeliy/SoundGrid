@@ -106,8 +106,10 @@ interface Clock {
 }
 ```
 
-היום: מימוש יחיד מעל `audioContext.currentTime`. עתיד: מימוש Ableton Link (v0.19)
-נכנס בלי לגעת בשום צרכן. `useRenderLoop` נרשם ל‑`clock.subscribe` במקום rAF ישיר.
+היום: מימוש יחיד מעל `audioContext.currentTime`. עתיד: מימוש Ableton Link נכנס בלי
+לגעת בשום צרכן — אבל **רק אחרי Tauri** (הוחלט 14/09, `ROADMAP.md` post‑1.0): Link
+דורש UDP multicast שדפדפן לא יכול לפתוח, אז המימוש חייב קוד native. `useRenderLoop`
+נרשם ל‑`clock.subscribe` במקום rAF ישיר.
 
 ---
 

@@ -782,11 +782,12 @@ DJ במיקס חי כמעט לא עוצר לדרג שיר.
 ## v0.9.0 — זיהוי סולם + מיקס הרמוני
 **מטרה:** לדעת את הסולם ולמזג לפיו.
 - זיהוי key (chroma + template matching), תצוגת Camelot + מוזיקלי
-- Key‑lock (master tempo) — שינוי tempo בלי שינוי pitch, ב‑`AudioWorklet`. מועמד קונקרטי:
-  פורט WASM של [Rubber Band Library](https://github.com/breakfastquay/rubberband) (LGPL,
-  time‑stretch/pitch‑shift באיכות גבוהה, זה מה שרוב תוכנות ה‑DJ בקוד פתוח משתמשות בו),
-  מול phase vocoder עצמאי בקוד שלנו — עדיין **החלטה פתוחה** (ראה `HANDOFF.md`), לא
-  ברירת מחדל. לבדוק רישיון LGPL מול חבילה סטטית ל‑SPA לפני שסוגרים
+- **Key‑lock (master tempo) — הוחלט 14/09:** [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch)
+  (MIT, בנייה רשמית WASM+AudioWorklet מאת המחבר עצמו) — שינוי tempo בלי שינוי pitch,
+  ב‑`AudioWorklet`. נבחר על פני Rubber Band (GPL/רישיון מסחרי בתשלום — לא מתאים לבעלים
+  שלא רוצה משא־ומתן משפטי) ועל פני SoundTouch (LGPL, איכות נמוכה יותר בהיסטים גדולים —
+  זו חלופת גיבוי אם Signalsmith יתברר כבד מדי על המעבד בפועל). בנייה עצמית של phase
+  vocoder נפסלה: תחום התמחות שלוקח שנים לעשות טוב (phasiness, טשטוש transients)
 - Key‑sync: התאמת pitch של דק לדק השני
 - הדגשה בספרייה של טראקים תואמים הרמונית לדק המנגן
 - **הושלם כאשר:** key‑lock ב‑±8% לא משנה גובה צליל בשמיעה; זיהוי key נכון ב‑>70% במדגם.
@@ -882,7 +883,12 @@ DJ במיקס חי כמעט לא עוצר לדרג שיר.
 **מטרה:** נקודות שמורות לכל טראק.
 - Memory cues + saved loops לכל טראק ב‑IndexedDB, קפיצה מהירה ביניהם
 - Loop rolls, saved loops עם שם, beat‑jump מתוך cue
-- ייבוא read‑only של beatgrid/cues מקבצי המשתמש (GEOB/Serato Markers, rekordbox XML) — רק מהקבצים שלו
+- **ייבוא תגיות — סדר עדיפות הוחלט 14/09:** (1) Serato — Hot Cues + Beatgrid
+  מ‑GEOB/`Serato Markers2`/`Serato BeatGrid` בתוך ה‑ID3 (רוב רוכשי FLX4 הם משתמשי
+  Serato); (2) rekordbox — רק דרך קובץ ה‑XML לייצוא (`File > Export Collection in
+  XML`), פשוט לפרסר. **לא** לגעת ב‑`export.pdb`/ANLZ הבינארי או ב‑`master.db`
+  המוצפן (SQLCipher) של rekordbox — לא מתועד רשמית ומשתנה בין גרסאות, סיכון
+  תחזוקה גבוה מהתועלת. read‑only בכל המקרים, רק מקבצי המשתמש עצמו
 - ייצוא ה‑crates/cues של SoundGrid ל‑JSON
 - **הושלם כאשר:** טעינת טראק מציגה את כל ה‑cues השמורים; ייבוא XML של rekordbox עובד.
 
@@ -908,16 +914,28 @@ DJ במיקס חי כמעט לא עוצר לדרג שיר.
 - Dithering בהקלטה
 - **הושלם כאשר:** round‑trip latency < 15ms על FLX4 עם דרייבר; אין xruns בסט של שעה.
 
-## v0.19.0 — MIDI Clock / Ableton Link
+## v0.19.0 — MIDI Clock
 **מטרה:** סנכרון עם ציוד חיצוני.
 - שליחה/קבלה של MIDI clock (24 ppqn), start/stop
-- Ableton Link (session tempo, phase) — דרך WASM port או שרת גשר מקומי
 - SoundGrid כ‑master או slave, הצגת peers
+- **Ableton Link הוצא מהגרסה הזו — הוחלט 14/09:** אין אפשרות אמיתית ל‑WASM
+  בדפדפן. Link מדבר UDP multicast ברשת המקומית, ודפדפן חסום מזה מבחינת
+  ארגון (sandbox), לא רק "קשה לממש" — אין תחליף. פרויקטי גישור קיימים
+  (למשל [vigliensoni/browser-sync-ableton-link](https://github.com/vigliensoni/browser-sync-ableton-link))
+  מריצים שרת עזר native + WebSocket, אבל זו התקנה נוספת שהמשתמש צריך להריץ
+  בעצמו — לא שווה לפני שיש דסקטופ אמיתי. Link עצמו מסודר ע"י Ableton כרישיון
+  כפול GPLv2 / מסחרי (`link-devs@ableton.com`) — ההחלטה בין השניים נדחית
+  לזמן שבו יש קוד native ב‑Tauri שיכול לדבר UDP אמיתי. ר' רשימת post‑1.0 למטה.
 - **הושלם כאשר:** דראם מכונה חיצונית נשארת נעולה ל‑BPM של SoundGrid.
 
 ## v0.20.0 — Stems + הפרדה בזמן אמת
 **מטרה:** לשלוט בתופים/בס/ווקאל/מלודיה בנפרד.
-- מודל הפרדת stems on‑device (WASM / WebGPU), ניתוח מראש ל‑4 ערוצי stem
+- **מודל — הוחלט 14/09:** Demucs/htdemucs (ONNX export, יש דמו עובד בדפדפן דרך
+  `onnxruntime-web`), ניתוח מראש (לא בזמן אמת — "עבד פעם, שמור תוצאה") ל‑4 ערוצי
+  stem. **חסם לפני מימוש:** הקוד עצמו MIT, אבל המשקולות המאומנות (ה"מוח" של
+  המודל) מוגבלות לשימוש מדעי בלבד — לפתור את שאלת הרישוי הזו לפני שכותבים שורת
+  קוד. ביצועים אמיתיים (לא 1‑2 דקות לשיר כמו ה‑AI המקומי הכבוי היום) תלויים
+  ב‑GPU native, כלומר בפועל ב‑Tauri — בדפדפן זו תישאר תכונת רקע איטית
 - פאדרי stem + mute/solo לכל דק, מיפוי לקונטרולר
 - פדים: acapella / instrumental / drums‑only בלחיצה
 - Fallback: אם אין GPU — הפרדה offline בלבד עם מטמון
@@ -938,3 +956,8 @@ DJ במיקס חי כמעט לא עוצר לדרג שיר.
 ## רעיונות ל‑post‑1.0 (לא ממוספר)
 - שיתוף פעולה לייב (שני DJ, WebRTC), video mixing, ניתוח sentiment של קהל,
   MIDI mapping marketplace, ענן sync של הספרייה בין מכשירים, גרסת מובייל מלאה.
+- **Ableton Link אמיתי (native, אחרי Tauri) — הוחלט 14/09:** vendoring של
+  [Ableton/link](https://github.com/Ableton/link) בקוד ה‑Rust של Tauri, UDP
+  multicast אמיתי, חשיפת מצב הסנכרון ל‑webview דרך IPC. בחירת רישיון (GPLv2
+  מול מסחרי מ‑Ableton) נדחית לרגע הזה, לפי מודל ההפצה בפועל של SoundGrid אז.
+  הועבר מ‑v0.19.0 — פירוט המחקר שם.
