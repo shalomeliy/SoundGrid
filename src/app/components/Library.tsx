@@ -654,7 +654,7 @@ export function Library() {
             value={library.query}
             onChange={(e) => setLibrary({ query: e.target.value })}
             placeholder="Filter tracks…"
-            className="w-52 rounded-[var(--radius-sm)] border border-hairline bg-surface-0 py-1 pl-6 pr-2 text-xs outline-none transition-colors focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+            className="w-52 rounded-[var(--radius-sm)] border border-hairline bg-surface-0 py-1 pl-6 pr-2 text-xs outline-none transition-colors focus-visible:border-transparent focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
           />
           <HintIcon id="library.search" className="absolute -right-1.5 -top-1.5" />
         </label>
@@ -1179,7 +1179,7 @@ function Row({
           value={track.genre ?? ''}
           onChange={(e) => e.target.value && ctl.setTrackGenre(track.id, e.target.value)}
           title={track.genre ?? 'No genre — pick one'}
-          className={`w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 pl-1 pr-0.5 outline-none transition-colors hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
+          className={`w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 pl-1 pr-0.5 outline-none transition-colors hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)] ${
             track.genre ? 'text-grid-muted' : 'text-grid-dim'
           }`}
         >
@@ -1282,7 +1282,7 @@ function NoteInput({ track }: { track: Track }) {
       }}
       placeholder="–"
       title={track.note}
-      className="w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 px-1 text-2xs text-grid-muted outline-none transition-colors placeholder:text-grid-dim hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+      className="w-full truncate rounded-[var(--radius-xs)] border border-transparent bg-transparent py-0.5 px-1 text-2xs text-grid-muted outline-none transition-colors placeholder:text-grid-dim hover:border-hairline hover:bg-surface-2 hover:text-grid-text focus-visible:border-transparent focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
     />
   )
 }

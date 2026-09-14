@@ -95,7 +95,7 @@ export function HintIcon({ id, className = 'relative' }: { id: HintId; className
         onKeyDown={(e) => {
           if (e.key === 'Escape') hide()
         }}
-        className="grid h-4 w-4 shrink-0 cursor-help place-items-center rounded-full border border-hairline-strong bg-surface-3 text-[9px] font-bold normal-case leading-none text-grid-dim outline-none transition-colors hover:text-grid-text focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
+        className="grid h-4 w-4 shrink-0 cursor-help place-items-center rounded-full border border-hairline-strong bg-surface-3 text-[9px] font-bold normal-case leading-none text-grid-dim outline-none transition-colors hover:text-grid-text focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--color-accent)]"
       >
         ?
       </span>

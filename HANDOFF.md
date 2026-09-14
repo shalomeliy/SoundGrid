@@ -15,8 +15,8 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.7` נסגרה (14/09): פרטיות/תנאי שימוש כנים + נגישות מקלדת. פירוט: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md). |
-| **branch** | `claude/serene-ramanujan-7ejt8u`, מכיל את `main` (`git merge-base --is-ancestor 8d7f855 origin/main`). |
+| **בעבודה** | אין כרגע — `v0.8.7` נסגרה ומוזגה (14/09), ותוקן תיקון המשך על טבעת הפוקוס אחרי דיווח של שלום. פירוט: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md). |
+| **branch** | `claude/serene-ramanujan-7ejt8u`, מכיל את `main` (`git merge-base --is-ancestor 68d083f origin/main`). |
 | **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
 | **הבא בתור** | `v0.8.5` — חיפוש סמנטי בספרייה, `ROADMAP.md`. |
@@ -37,12 +37,6 @@
   `decodeAudioData` כבר מרסם נכון ושקוף. הפריט ב‑ROADMAP (v0.18.0) הוא
   ASIO/WASAPI exclusive — נגיש רק אחרי Tauri. סגור עד אז.
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
-- **טבעת פוקוס נעלמת בכל רכיב שמערבב `outline-none` עם `focus-visible:outline-*`**
-  (נמצא 14/09, `--tw-outline-style` משותף ש‑`outline-none` נועל על `none`
-  בלי תנאי). **תוקן רק בשורת הטבלה ב‑`Library.tsx`.** `HintIcon` וה‑`<select>`
-  ב‑Settings/TopBar/AiControlBar נושאים את אותו צירוף ועדיין שקטים. `Button`
-  **לא** נפגע — אין לו `outline-none` (טענה גורפת שגויה כאן תוקנה בסקירה).
-  פרטים: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑
   `platform/settings-idb/boot-latency.ts`. מבודד לקובץ אחד עם מפתח אחד בכוונה. אם

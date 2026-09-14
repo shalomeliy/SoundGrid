@@ -199,7 +199,7 @@ function Control({ field, value }: { field: Field; value: Settings[keyof Setting
           const picked = field.options.find((o) => String(o.value) === e.target.value)
           if (picked) void settings.set(field.key, picked.value as never)
         }}
-        className="rounded-[var(--radius-sm)] border border-hairline bg-surface-2 px-2 py-1 text-xs text-grid-text outline-none transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+        className="rounded-[var(--radius-sm)] border border-hairline bg-surface-2 px-2 py-1 text-xs text-grid-text outline-none transition-colors hover:bg-surface-3 focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
       >
         {field.options.map((o) => (
           <option key={String(o.value)} value={String(o.value)}>

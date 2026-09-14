@@ -49,7 +49,7 @@ export function AiControlBar() {
               if (e.key === 'Enter') void ctl.submitAiCommand(ai.input)
             }}
             placeholder="Type a command — e.g. “loop 8 beats on deck A”"
-            className="min-w-0 flex-1 rounded-[var(--radius-xs)] border border-hairline bg-surface-1 px-2 py-1 text-2xs text-grid-text outline-none focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
+            className="min-w-0 flex-1 rounded-[var(--radius-xs)] border border-hairline bg-surface-1 px-2 py-1 text-2xs text-grid-text outline-none focus-visible:[--tw-outline-style:solid] focus-visible:outline-2 focus-visible:outline-[var(--color-accent)]"
           />
         </>
       )}
