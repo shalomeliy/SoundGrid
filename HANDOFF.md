@@ -17,8 +17,8 @@
 | --- | --- |
 | **בעבודה** | `v0.8.5` — M1 בנוי (`Embedder`, `meyda`/MIT לא `essentia.js`/AGPL,
   cache, חיווט לתור). מדידה: ~2 שנ'/דקת-אודיו — **קלאסי בלבד, לא CLAP!**
-  הבא: M2 (למדוד CLAP), **ואז לעצור ולשאול את שלום שוב איזו שיטה** — לא
-  להניח שהתשובה הקודמת תקפה. ר' `PLAN.md` "שער יציאה מ‑M2". |
+  הבא: M2 (למדוד CLAP), **ואז לשאול את שלום שוב** — לא להניח שהתשובה
+  הקודמת תקפה. ר' `PLAN.md` "שער יציאה מ‑M2". |
 | **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 702b749 origin/main`). |
 | **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
@@ -59,9 +59,9 @@
   מעבר למה ש‑autocorrelation פשוט תומך. «Set downbeat here» ב‑`BeatGridPanel` הוא
   הכלי לתקן ידנית. פרטים: [`docs/handoff/v0.3.0.md`](docs/handoff/v0.3.0.md).
 - **`npm audit` מדווח 4 high על `@huggingface/transformers`** (v0.5.5 שלב 2) —
-  ב‑`onnxruntime-node`/`sharp`, תלויות Node שהחבילה גוררת. ה‑`exports` map שלה
-  מפנה build דפדפן נפרד — לא רץ בבנדל בפועל. מ‑14/09 גם נבדק אוטומטית בכל
-  `npm run check` (`tests/repo/ai-local-node-deps.test.ts`), לא רק פעם ידנית.
+  ב‑`onnxruntime-node`/`sharp`, תלויות Node שהחבילה גוררת. ה‑`exports` שלה
+  מפנה build דפדפן נפרד — לא רץ בבנדל. מ‑14/09 נבדק אוטומטית ב‑`npm run check`
+  (`tests/repo/ai-local-node-deps.test.ts`).
 - **`platform/ai-local/` קיים ועובד, אבל מכובה** — ~1-2 דקות לפקודה בלי GPU
   (v0.5.5, ר' `docs/handoff/v0.5.5.md`). לא לגעת בלי בקשה מפורשת של שלום.
 - **Sync-follow של לולאת סאמפלר לא אומת מול דק אמיתי משנה טמפו** — עבר code
@@ -75,9 +75,8 @@
   למנוע `AudioContext` שנכנס ל‑`suspended`, אז `stopRecordMaster` משווה
   זמן‑שעון לזמן‑אודיו שנתפס (`detectRecordingGap`, `core/recording.ts`)
   ומזהיר אם יש פער — הזיהוי מכוסה ב‑`tests/core/recording.test.ts`.
-- **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו יושב ב‑
-  IndexedDB המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה סלוטים לא נכללו.
-  תוכנן לגרסה נפרדת: `ROADMAP.md` v0.8.8.
+- **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו ב‑IndexedDB
+  המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה נכללו. תוכנן: `ROADMAP.md` v0.8.8.
 
 ---
 
