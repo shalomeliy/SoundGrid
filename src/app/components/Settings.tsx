@@ -5,6 +5,16 @@ import { settings } from '@/platform/settings-idb/store'
 import { useSettings } from '@/app/hooks/useSettings'
 import { useStore } from '@/app/state/store'
 import { Button } from '@/app/components/controls'
+import {
+  COPYRIGHT_NOTICE,
+  ossNoticeCount,
+  ossNotices,
+  PRIVACY_KEPT_LOCALLY,
+  PRIVACY_NEVER,
+  PRIVACY_NOT_APPLICABLE,
+  TERMS_TEXT,
+  TRADEMARK_NOTICE,
+} from '@/app/legal-content'
 
 /**
  * The Settings screen.
@@ -20,18 +30,27 @@ import { Button } from '@/app/components/controls'
  * owner's screen.
  */
 
-const GROUPS: { id: FieldGroup | 'system'; label: string; blurb: string }[] = [
+type Group = FieldGroup | 'system' | 'legal'
+
+const GROUPS: { id: Group; label: string; blurb: string }[] = [
   { id: 'hardware', label: 'Controller', blurb: 'Your FLX4, and how hard it pushes.' },
   { id: 'feel', label: 'Feel', blurb: 'How the decks respond to a hand.' },
   { id: 'display', label: 'Display', blurb: 'What is drawn, and how often.' },
   { id: 'library', label: 'Library', blurb: 'The track list and how keys are named.' },
   { id: 'help', label: 'Help', blurb: 'Explain every control before you touch it.' },
   { id: 'system', label: 'System', blurb: 'What this machine supports, and what SoundGrid does with it.' },
+  { id: 'legal', label: 'Privacy & Terms', blurb: 'What leaves this computer (nothing), and what you agree to by using this.' },
 ]
 
-export function SettingsScreen({ onClose }: { onClose: () => void }) {
+export function SettingsScreen({
+  onClose,
+  initialGroup = 'hardware',
+}: {
+  onClose: () => void
+  initialGroup?: Group
+}) {
   const values = useSettings()
-  const [group, setGroup] = useState<FieldGroup | 'system'>('hardware')
+  const [group, setGroup] = useState<Group>(initialGroup)
 
   // Esc closes. A full-screen panel with no keyboard way out is a trap, and the
   // decks keep playing behind it — this must never be the thing between the DJ
@@ -80,6 +99,8 @@ export function SettingsScreen({ onClose }: { onClose: () => void }) {
 
         {group === 'system' ? (
           <SystemPanel />
+        ) : group === 'legal' ? (
+          <LegalPanel />
         ) : (
           <div className="flex flex-col gap-3">
             {group === 'hardware' && <JogMeasure />}
@@ -416,7 +437,10 @@ function SystemPanel() {
 
       {/* Stated, not omitted. Two of the things a DJ tool is most often asked
           about are things SoundGrid does not do, and a settings screen that
-          simply lacked the toggles would leave the user guessing. */}
+          simply lacked the toggles would leave the user guessing. Points at
+          the full Privacy & Terms tab (v0.8.7) rather than repeating the
+          claim here — one place to keep accurate instead of two that can
+          drift apart. */}
       <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
         <div className="mb-1.5 text-xs font-semibold text-grid-text">What SoundGrid does not do</div>
         <ul className="flex list-disc flex-col gap-1 pl-4 text-2xs text-grid-dim">
@@ -434,6 +458,88 @@ function SystemPanel() {
             this computer.
           </li>
         </ul>
+        <p className="mt-1.5 text-2xs text-grid-dim">
+          Full detail, including licensing and third-party credits, in the{' '}
+          <b className="text-grid-muted">Privacy &amp; Terms</b> tab above.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Privacy & Terms tab (v0.8.7). Five named sections — privacy, terms,
+ * trademark, copyright, open-source credits — the same card style as
+ * `FieldRow`/`SystemPanel` rather than a pasted document, so it reads like
+ * the rest of this screen instead of like a lawyer walked in.
+ */
+function LegalPanel() {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+        <div className="mb-1.5 text-xs font-semibold text-grid-text">Privacy</div>
+        <p className="mb-1.5 text-2xs font-semibold text-grid-muted">
+          {PRIVACY_NEVER[0]} {PRIVACY_NEVER[1]}
+        </p>
+        <div className="mb-1.5 text-2xs text-grid-dim">Kept on this computer only, and why:</div>
+        <ul className="mb-2 flex list-disc flex-col gap-1 pl-4 text-2xs text-grid-dim">
+          {PRIVACY_KEPT_LOCALLY.map((row) => (
+            <li key={row.what}>
+              <b className="text-grid-muted">{row.what}.</b> {row.why}
+            </li>
+          ))}
+        </ul>
+        <div className="mb-1.5 text-2xs text-grid-dim">
+          Named here because these are the questions most apps get asked — none of them apply to
+          SoundGrid:
+        </div>
+        <ul className="flex list-disc flex-col gap-1 pl-4 text-2xs text-grid-dim">
+          {PRIVACY_NOT_APPLICABLE.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+        <div className="mb-1.5 text-xs font-semibold text-grid-text">Terms of use</div>
+        <ul className="flex list-disc flex-col gap-1 pl-4 text-2xs text-grid-dim">
+          {TERMS_TEXT.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+        <div className="mb-1.5 text-xs font-semibold text-grid-text">Trademarks</div>
+        <p className="text-2xs text-grid-dim">{TRADEMARK_NOTICE}</p>
+      </div>
+
+      <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+        <div className="mb-1.5 text-xs font-semibold text-grid-text">Copyright</div>
+        <p className="text-2xs text-grid-dim">{COPYRIGHT_NOTICE}</p>
+      </div>
+
+      <div className="rounded-[var(--radius-sm)] border border-hairline bg-surface-1 px-3 py-2.5">
+        <div className="mb-1.5 text-xs font-semibold text-grid-text">License</div>
+        <p className="text-2xs text-grid-dim">
+          SoundGrid&apos;s own code is MIT licensed — see the <code>LICENSE</code> file. It is built
+          with open-source libraries, each under its own license.
+        </p>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-2xs text-grid-muted hover:text-grid-text">
+            {ossNoticeCount} open-source packages
+          </summary>
+          <ul className="mt-1.5 max-h-48 overflow-y-auto text-2xs text-grid-dim">
+            {ossNotices.map((n) => (
+              <li key={n.name} className="flex justify-between gap-2 border-b border-hairline/50 py-0.5">
+                <span className="truncate">{n.name}</span>
+                <span className="tnum shrink-0 text-grid-dim">
+                  {n.version} · {n.license}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       </div>
     </div>
   )

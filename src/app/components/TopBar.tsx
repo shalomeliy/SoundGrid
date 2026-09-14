@@ -9,9 +9,11 @@ import { Button, HintIcon, Pill, type PillTone } from '@/app/components/controls
 
 export function TopBar({
   onOpenSettings,
+  onOpenLegal,
   onOpenHistory,
 }: {
   onOpenSettings: () => void
+  onOpenLegal: () => void
   onOpenHistory: () => void
 }) {
   const audioReady = useStore((s) => s.audioReady)
@@ -184,6 +186,15 @@ export function TopBar({
           </Button>
           <HintIcon id="topbar.settings" className="absolute -right-1.5 -top-1.5" />
         </span>
+        {/* v0.8.7: shown on every screen, not buried in a tab nobody opens
+            until something goes wrong (product-expert) — a `button`, not a
+            link, since it opens the tab in-app rather than navigating. */}
+        <button
+          onClick={onOpenLegal}
+          className="whitespace-nowrap text-2xs text-grid-dim underline decoration-dotted underline-offset-2 transition-colors hover:text-grid-muted"
+        >
+          Not affiliated with Pioneer DJ/Serato · Privacy
+        </button>
       </div>
     </header>
   )

@@ -15,11 +15,11 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | אין כרגע — `v0.8.6` נסגרה (13/09): מנת חובות טכניים + באג crate חי. פירוט: [`docs/handoff/v0.8.6.md`](docs/handoff/v0.8.6.md). |
-| **branch** | `claude/quirky-ptolemy-2qeikv`, מכיל את `main` (`git merge-base --is-ancestor 79d877a origin/main`). |
-| **גרסה נוכחית** | `v0.8.6` (`package.json`) — נסגרה. |
+| **בעבודה** | אין כרגע — `v0.8.7` נסגרה (14/09): פרטיות/תנאי שימוש כנים + נגישות מקלדת. פירוט: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md). |
+| **branch** | `claude/serene-ramanujan-7ejt8u`, מכיל את `main` (`git merge-base --is-ancestor 8d7f855 origin/main`). |
+| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | `v0.8.4` — פרטיות/תנאי שימוש כנים + תיקון נגישות אמיתי, `ROADMAP.md`. |
+| **הבא בתור** | `v0.8.5` — חיפוש סמנטי בספרייה, `ROADMAP.md`. |
 
 ---
 
@@ -34,10 +34,15 @@
   ב‑`tests/platform/tags.test.ts` על קובץ סינתטי — נכשל אמיתית מול הישן.
 - הפריסה מכוילת ל‑~710px גובה. ה‑waveform ברצפה (`min-h-[96px]`); אין לוגיקת breakpoint.
 - **sample-rate mismatch — לא תקלה, לא ניתן לתקן בדפדפן.** נבדק 13/09:
-  `decodeAudioData` כבר מרסם כל קובץ לקצב ה‑`AudioContext` נכון ושקוף. הפריט
-  ב‑ROADMAP.md (v0.18.0) הוא ASIO/WASAPI exclusive — Chromium אין לו גישה
-  לזה היום, רק אחרי Tauri. סגור עד v0.18.0.
+  `decodeAudioData` כבר מרסם נכון ושקוף. הפריט ב‑ROADMAP (v0.18.0) הוא
+  ASIO/WASAPI exclusive — נגיש רק אחרי Tauri. סגור עד אז.
 - Waveform ב‑canvas רגיל ב‑main thread, מצויר מחדש כל frame (v0.12).
+- **טבעת פוקוס נעלמת בכל רכיב שמערבב `outline-none` עם `focus-visible:outline-*`**
+  (נמצא 14/09, `--tw-outline-style` משותף ש‑`outline-none` נועל על `none`
+  בלי תנאי). **תוקן רק בשורת הטבלה ב‑`Library.tsx`.** `HintIcon` וה‑`<select>`
+  ב‑Settings/TopBar/AiControlBar נושאים את אותו צירוף ועדיין שקטים. `Button`
+  **לא** נפגע — אין לו `outline-none` (טענה גורפת שגויה כאן תוקנה בסקירה).
+  פרטים: [`docs/handoff/v0.8.7.md`](docs/handoff/v0.8.7.md).
 - **עותק שני של `latency` ב‑`localStorage`** (v0.2.5). ‏`AudioContext` דורש
   `latencyHint` בבנייה, לפני ש‑IndexedDB עונה, אז הערך ממוראר ב‑
   `platform/settings-idb/boot-latency.ts`. מבודד לקובץ אחד עם מפתח אחד בכוונה. אם
@@ -57,26 +62,21 @@
   מעבר למה ש‑autocorrelation פשוט תומך. «Set downbeat here» ב‑`BeatGridPanel` הוא
   הכלי לתקן ידנית. פרטים: [`docs/handoff/v0.3.0.md`](docs/handoff/v0.3.0.md).
 - **`npm audit` מדווח 4 high על `@huggingface/transformers`** (v0.5.5 שלב 2) —
-  ב‑`onnxruntime-node`/`sharp`, ה‑exports של Node שהחבילה גם כן תלויה בהם. נבדק:
-  ה‑`exports` map שלה (`package.json` של החבילה) מפנה build דפדפן נפרד, לא Node —
-  לא רץ בבנדל הדפדפן בפועל. נשאר כחוב מתועד, לא הוסתר.
-- **`platform/ai-local/` קיים ועובד, אבל מכובה** — ~1-2 דקות לפקודה על מעבד
-  בלי GPU בטוח (v0.5.5, ר' `docs/handoff/v0.5.5.md`). לא לגעת בלי בקשה מפורשת
-  של שלום — הוא בחר לעצור, לא "עוד לא הגענו לזה".
-- **Sync-follow של לולאת סאמפלר לא אומת מול דק אמיתי משנה טמפו** — הקוד עבר
-  code review וה-arithmetic מכוסה בבדיקות יחידה (`tests/core/sampler.test.ts`),
-  אבל אין ספרייה אמיתית בקונטיינר המרוחק לבדוק תרחיש live מלא. פרטים:
-  `docs/handoff/v0.6.0.md`.
+  ב‑`onnxruntime-node`/`sharp`, תלויות Node שהחבילה גוררת. נבדק: ה‑`exports`
+  map שלה מפנה build דפדפן נפרד — לא רץ בבנדל בפועל. חוב מתועד, לא מוסתר.
+- **`platform/ai-local/` קיים ועובד, אבל מכובה** — ~1-2 דקות לפקודה בלי GPU
+  (v0.5.5, ר' `docs/handoff/v0.5.5.md`). לא לגעת בלי בקשה מפורשת של שלום.
+- **Sync-follow של לולאת סאמפלר לא אומת מול דק אמיתי משנה טמפו** — עבר code
+  review, ה‑arithmetic מכוסה ב‑`tests/core/sampler.test.ts`, אבל אין דק אמיתי
+  בקונטיינר לבדוק תרחיש live מלא. פרטים: `docs/handoff/v0.6.0.md`.
 - **אין בינדינג FLX4 לשישה סטים של פקדים חדשים** — תיקון רשת ידני (v0.3.0),
-  כפתורי מצב פדים (v0.5.0), עריכת סלוט סאמפלר (v0.6.0), 10 בינדינגי FX
-  (v0.7.0), הקלטה (v0.7.5: הקלט/עצור/שמור/מחק/סמן טראק). כולם עכבר בלבד —
-  אין FLX4 בסביבה המרוחקת לאמת מולה. לתקן דרך Learn אם לחיצה/סיבוב לא עושה
-  כלום. פרטים לכל אחד: `docs/handoff/v0.3.0.md`/`v0.5.0.md`.
+  מצבי פדים (v0.5.0), עריכת סלוט סאמפלר (v0.6.0), 10 בינדינגי FX (v0.7.0),
+  הקלטה (v0.7.5). כולם עכבר בלבד — אין FLX4 מרוחק לאמת מולו. לתקן דרך
+  Learn אם לחיצה/סיבוב לא עושה כלום. פרטים: `docs/handoff/v0.3.0.md`/`v0.5.0.md`.
 - **הקלטת מאסטר מול טאב ברקע — לא נמנע, אבל כבר לא שקט (13/09).** אי אפשר
-  למנוע `AudioContext` שנכנס ל‑`suspended` מכאן, אז `stopRecordMaster` משווה
-  זמן‑שעון לזמן‑אודיו שנתפס בפועל (`detectRecordingGap`, `core/recording.ts`)
-  ומזהיר אם יש פער — לא שוחזר ריאלית כדי לאמת, אבל הזיהוי עצמו מכוסה
-  ב‑`tests/core/recording.test.ts`.
+  למנוע `AudioContext` שנכנס ל‑`suspended`, אז `stopRecordMaster` משווה
+  זמן‑שעון לזמן‑אודיו שנתפס (`detectRecordingGap`, `core/recording.ts`)
+  ומזהיר אם יש פער — הזיהוי מכוסה ב‑`tests/core/recording.test.ts`.
 - **ייצוא בנק הסאמפלר (JSON) לא כולל סלוטים מוקלטים** — האודיו יושב ב‑
   IndexedDB המקומי, לא בקובץ הניתן להעברה; הודעה מונה כמה סלוטים לא נכללו.
 

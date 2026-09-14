@@ -2687,6 +2687,17 @@ export function setActiveCrate(id: string | null) {
 }
 
 /**
+ * Select a track row (v0.8.7). `Library.tsx` used to write `selectedId`
+ * straight to the store from its row's `onClick`, the one spot in that file
+ * that skipped the "every user action goes through `controls.ts`" rule —
+ * found while wiring the row up to the keyboard, which needed a function to
+ * call from `onKeyDown` too.
+ */
+export function selectTrack(id: string) {
+  useStore.getState().setLibrary({ selectedId: id })
+}
+
+/**
  * `filteredTracks()` plus the column sort (v0.8.0) — kept separate rather
  * than folded into it because `moveSelection` and Mix Assist's
  * recommendation matching both want the filter alone, unsorted, and never
