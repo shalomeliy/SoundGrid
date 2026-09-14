@@ -617,7 +617,7 @@ async function readOgg(file: File, tags: TrackTags) {
  * hence seeking chunk by chunk instead of reading a window off the front.
  */
 // Every chunk costs at least an 8-byte header, so this bounds the walk to
-// roughly a 4KB run of headers even on a pathological file — nowhere close
+// roughly a 32KB run of headers even on a pathological file — nowhere close
 // to real WAV/AIFF files (a handful of top-level chunks), but high enough
 // that a legitimate ID3 chunk sitting past the 64th chunk (the old cap —
 // hit on a real file, v0.8.3 debt) is never missed again.

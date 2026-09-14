@@ -371,6 +371,12 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
     excellentMixPoints,
     loopActive: false,
   })
+  // A (re)load can change this deck's bpm/tempo as much as touching the
+  // tempo fader does — found by change-reviewer (v0.8.6): loading a track
+  // straight onto the deck that's already master silently left FX beat-sync
+  // time computed against the old bpm until the fader or SYNC was next
+  // touched. Guarded the same way setTempo already is.
+  if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
   const { library, setLibrary } = useStore.getState()
   setLibrary({
     tracks: library.tracks.map((t) => (t.id === track.id ? { ...t, contentHash, durationSec } : t)),
@@ -418,6 +424,10 @@ export async function loadTrackToDeck(deckId: DeckId, track: Track) {
       peaks: analysis.peaks,
       bands: analysis.bands,
     })
+    // Analysis can settle on a different bpm than the tag-based value the
+    // load above already refreshed FX against (e.g. no tag bpm at all) —
+    // same guard, same reasoning.
+    if (useStore.getState().masterDeckId === deckId) refreshFxTimeForMasterTempo()
     const { library: libAfter, setLibrary: setLibAfter } = useStore.getState()
     setLibAfter({
       tracks: libAfter.tracks.map((t) =>
