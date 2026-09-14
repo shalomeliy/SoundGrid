@@ -15,8 +15,10 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.5` — חיפוש סמנטי בספרייה. Spec מאושר מול שלום (14/09,
-  `workshop-output/FEATURE_SPEC.md`), ממתין ל‑Plan Mode/`PLAN.md`. |
+| **בעבודה** | `v0.8.5` — M1 (`workshop-output/PLAN.md`) בנוי: פורט `Embedder`,
+  embedder קלאסי (`meyda`, MIT — לא `essentia.js`, AGPL-3.0, בוטל), cache,
+  חיווט לתור. מדידה גולמית (פרוקסי, לא מחשב שלום): ~2 שנ' לדקת אודיו.
+  הבא: M2 (מדידת CLAP), אז M3 (UI). |
 | **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 702b749 origin/main`). |
 | **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה. |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |

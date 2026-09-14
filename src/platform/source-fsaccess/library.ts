@@ -5,9 +5,11 @@ import type { Track } from '@/core/types'
 import { readTags } from '@/platform/source-fsaccess/tags'
 import { hashBytes } from '@/platform/source-fsaccess/hash'
 import { engine } from '@/platform/audio-webaudio/engine'
-import { pcmFromAudioBuffer } from '@/platform/analyzer-js/analyze'
+import { pcmFromAudioBuffer, pcmCopyFromAudioBuffer } from '@/platform/analyzer-js/analyze'
 import { analyzerWorker } from '@/platform/analyzer-worker'
 import { analysisCache } from '@/platform/analyze-cache-idb/store'
+import { classicalEmbedder } from '@/platform/embed-classical'
+import { embeddingCache } from '@/platform/embed-cache-idb/store'
 
 const HANDLE_KEY = 'soundgrid:libraryDir'
 
@@ -386,6 +388,21 @@ export async function queueLibraryAnalysis(
           const buffer = await engine.decode(data)
           analysis = await analyzerWorker.analyze(pcmFromAudioBuffer(buffer))
           await analysisCache.put(contentHash, analysis)
+          // v0.8.5: piggybacks on this exact decode rather than a second
+          // queue/pass — `workshop-output/PLAN.md` §3. Only on a cache miss
+          // for the analysis above: a track analyzed before v0.8.5 existed
+          // isn't force-redecoded just to backfill an embedding — that's a
+          // separate library-wide scan, out of scope for M1. A failure here
+          // never fails the track's analysis (BPM/waveform already
+          // succeeded) — no UI surface for it yet, that's M3.
+          if (!(await embeddingCache.get(contentHash, classicalEmbedder.modelId))) {
+            try {
+              const vector = await classicalEmbedder.embed(pcmCopyFromAudioBuffer(buffer))
+              await embeddingCache.put(contentHash, classicalEmbedder.modelId, vector)
+            } catch {
+              // See comment above — swallowed on purpose for M1.
+            }
+          }
         }
         done++
         if (opts.signal?.cancelled) return
