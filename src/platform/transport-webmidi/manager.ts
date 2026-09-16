@@ -153,6 +153,9 @@ class MidiManager {
           if (t) void ctl.loadTrackToDeck(deck, t)
         }
         break
+      case 'beatShift':
+        if (value > 0 && deck) ctl.shiftDeckByBeat(deck, (b.param ?? 1) === -1 ? -1 : 1)
+        break
       case 'tempo':
         if (deck) ctl.setTempo(deck, bipolar(value, b.invert))
         break

@@ -6,6 +6,8 @@ export type ControlAction =
   | 'play'
   | 'cue'
   | 'sync'
+  /** v0.8.8: jump the deck by exactly one whole beat, live. `Binding.param` is the direction: 1 = forward, -1 = back. */
+  | 'beatShift'
   | 'load'
   | 'tempo'
   | 'jog'

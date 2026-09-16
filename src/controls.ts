@@ -811,6 +811,53 @@ export function nudgeDeck(deckId: DeckId, deltaSec: number) {
 }
 
 /**
+ * Live bar/downbeat correction (v0.8.8) — jumps the deck by exactly one
+ * whole beat (`60 / grid.bpm` seconds), forward or back. Deliberately NOT a
+ * `BeatGrid` edit: `phaseDeltaSec`'s phase math (`core/beatgrid.ts`) folds
+ * to a single beat period, so a whole-beat seek is invisible to it — SYNC
+ * stays locked with no special-casing. This is what makes the shift safe:
+ * it corrects which beat lines up as "one" without touching why SYNC
+ * thinks it's already correct. `workshop-output/FEATURE_SPEC_BARSYNC.md`
+ * has the full story — `estimateBeatGrid` can find beat phase, never bar
+ * phase, so this exists as a live, by-ear correction instead.
+ */
+export function shiftDeckByBeat(deckId: DeckId, direction: 1 | -1) {
+  const deck = engine.decks[deckId]
+  if (!deck.hasTrack) return
+  const { decks, masterDeckId, setNotice } = useStore.getState()
+  const st = decks[deckId]
+
+  if (masterDeckId === deckId) {
+    setNotice({
+      text: `Deck ${deckId} is the master — shift the other deck instead.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  const grid = st.beatGrid
+  if (!grid) {
+    setNotice({
+      text: `Deck ${deckId} has no beat grid yet — nothing to shift.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  if (st.loopActive) {
+    setNotice({
+      text: `Deck ${deckId} has an active loop — turn it off before shifting the beat.`,
+      tone: 'warn',
+      source: 'sync',
+    })
+    return
+  }
+  cancelTransitionIfEitherDeckTouched(deckId)
+  const beatSec = 60 / grid.bpm
+  seekDeck(deckId, deck.position + direction * beatSec)
+}
+
+/**
  * Touching the tempo fader breaks an active phase-lock (v0.3.0) — matches
  * real hardware, where grabbing the fader is how a DJ takes tempo back from
  * SYNC. `syncDeck`/`setMasterDeck` call this to *set* the matched tempo and
