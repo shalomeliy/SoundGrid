@@ -68,6 +68,16 @@ async function main() {
   }
   const loadMs = performance.now() - loadStart
   console.log(`[measure-clap] model loaded in ${(loadMs / 1000).toFixed(1)}s`)
+  // `truncation: 'rand_trunc'` (feature_extraction_clap.js's default) means any waveform
+  // longer than `nb_max_samples` is NOT processed in full — a random `nb_max_samples`-length
+  // crop is taken and the rest is discarded. Logging the window explicitly here because a
+  // near-constant per-track time regardless of TRACK_DURATIONS_SEC (found on a first real
+  // run) is the visible symptom of that crop, not a speed win — see HANDOFF.md.
+  const windowSeconds = featureExtractor.config.nb_max_samples / featureExtractor.config.sampling_rate
+  console.log(
+    `[measure-clap] truncation strategy: ${featureExtractor.config.truncation} — every track is cropped/padded to ` +
+      `${windowSeconds.toFixed(1)}s at ${featureExtractor.config.sampling_rate}Hz before embedding, whatever its real length`,
+  )
 
   const results = []
   for (const seconds of TRACK_DURATIONS_SEC) {
