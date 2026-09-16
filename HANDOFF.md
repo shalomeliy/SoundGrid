@@ -15,16 +15,18 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.5`: M1 בנוי, M2 נמדד (CLAP נגנז — חותך קטע אקראי, לא כל
-  השיר; מספרים ב‑`PLAN.md` §שער M2). **M3 (UI "מצא דומה", קלאסי בלבד) עדיין
-  לא נבנה — זה מה שנשאר לסגירת v0.8.5.** בנפרד: רעיון חדש (Mix Assist +
-  התאמת **סאונד** בנקודות מעבר אמיתיות) כתוב ומאושר-ברובו ב‑
-  `workshop-output/FEATURE_SPEC.md` — **לא** v0.8.5, גרסה נפרדת (`v0.8.9`).
-  עוד לא תוכנן ברמת קבצים. |
-| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor c4dcaf3 origin/main`). |
-| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה (M3 חסר). |
+| **בעבודה** | `v0.8.5` M3 (קלאסי בלבד, CLAP נגנז — `PLAN.md` §שער M2). **1/2
+  בוצע ואומת (`8e7873c`):** תוקן פער אמיתי (embedding לא הופיע על cache-hit
+  — כל טראק "ישן" נשאר "לא נבדק" לצמיתות) + `queueEmbeddingBackfill`,
+  שניהם מאומתים ב‑Playwright אמיתי (`scripts/verify-embedding-cache-hit.mjs`,
+  `verify-embedding-backfill.mjs`). **2/2 פתוח:** חיווט + badge ל‑
+  `Library.tsx` (משימה 4), כפתור שורה + סינון + צ'יפ (משימה 5), check מלא +
+  אימות ספריית שלום (משימה 6) — `PLAN.md` §14. רעיון נפרד (Mix Assist +
+  סאונד) מאושר ל‑`v0.8.9`, לא מתוכנן ברמת קבצים — אחרי v0.8.5. |
+| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 8e7873c origin/main`). |
+| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה (M3 2/2). |
 | **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | שלום מריץ `node scripts/measure-clap-embedding.mjs` (אחרי `npm install`) על מחשבו → שאלה חוזרת עם המספר → M3 או גניזת CLAP, אחר-כך `v0.9.0`. |
+| **הבא בתור** | M3 משימה 4 (חיווט Library.tsx), ר' `PLAN.md` §14. |
 
 ---
 
