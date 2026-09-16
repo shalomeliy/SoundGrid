@@ -1368,7 +1368,7 @@ function SimilarBtn({ track, onFindSimilar }: { track: Track; onFindSimilar: () 
       disabled={!track.embedding}
       aria-label="Find similar tracks"
       title={title}
-      className="ml-1 inline-grid h-6 w-6 place-items-center rounded-[var(--radius-xs)] text-2xs font-bold text-grid-dim transition-colors hover:bg-surface-2 hover:text-grid-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-grid-dim"
+      className="ml-1 inline-grid h-6 w-6 place-items-center rounded-[var(--radius-xs)] text-2xs font-bold text-grid-muted transition-colors hover:bg-surface-2 hover:text-grid-text disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-grid-muted"
     >
       ≈
     </button>
