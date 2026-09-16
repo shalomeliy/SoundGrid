@@ -1,158 +1,179 @@
-# FEATURE_SPEC — v0.8.5: חיפוש סמנטי בספרייה ("תראה לי עוד כאלה")
+# FEATURE SPEC — sound-match at transition points (Mix Assist extension)
 
-**סטטוס: מאושר מול שלום (14/09).** נכתב מסבב סקירות product-expert /
-architecture-expert / design-expert / qa-expert / security-expert (14/09), פלוס
-בדיקת שוק נפרדת של מודלי audio embedding אמיתיים (ODSs, ONNX, latency). security-expert
-הופעל כי הפיצ'ר מריץ ניתוח על כל קובץ בספריית המשתמש ומוסיף שדה חדש (embedding)
-לקאש הקיים — אותו נימוק בדיוק כמו ב‑v0.8.0/v0.8.1. **ממתין לפתיחת Plan Mode ל‑`PLAN.md`.**
+Not v0.8.5. This is a separate, later feature that grew out of closing v0.8.5's model
+choice — v0.8.5 itself (M1 built, M2 measured and decided classical-only, **M3 — the
+"find similar" UI in `Library.tsx` — still open**) is unaffected and un-blocked by this
+spec; it is expected to close first. Target version for this feature: **v0.8.9** (after
+`v0.8.8`, sampler-bank export, already reserved in `ROADMAP.md`).
 
-## הבקשה המקורית (ROADMAP.md "## v0.8.5")
+## Context and observed problem
 
-שאילתות כמו "פסייטראנס 138 פיק-טיים שמתמזג עם זה" או "טראקים שנשמעים כמו זה" —
-מעבר לתגיות. audio embeddings דרך `Analyzer`, חיפוש קרבה (cosine) עם סינון היברידי
-מול מטא-דאטה קיים, "more like this" מטראק נבחר/מנגן, הכל מקומי. Done-when המקורי:
-"'more like this' על טראק מחזיר 10 תוצאות סבירות מספרייה של 1000+" — לא מדיד כפי שהוא.
+SoundGrid already ships Mix Assist (`src/core/structure.ts`'s `findTransitionCandidates`/
+`energyProximity`, rendered in `src/app/components/TransitionPointsPanel.tsx`): when a DJ
+loads a track to a deck while the other plays, a popover lists candidate mix-in points
+and compares each one's **loudness** to what's currently playing on the other deck
+("close"/"louder"/"quieter than what's playing now"). It never compares the actual
+**sound** — two points at the same volume can be a kick drum and a vocal, and the panel
+can't tell them apart.
 
-## הסיכון שנבדק לפני שנכתב שורת קוד
+While closing v0.8.5's CLAP-vs-classical decision (CLAP rejected for whole-track "find
+similar" because its default truncation randomly crops ~10s of any longer track —
+`node_modules/@huggingface/transformers/src/models/clap/feature_extraction_clap.js`),
+Shalom described his real mixing workflow: exit track A around its 1st/2nd chorus, enter
+track B into its first verse/chorus. What matters for "will this transition work" is the
+sound at those specific points, not the whole song — and CLAP's "flaw" (a fixed ~10s
+window) is actually the right size for a short, deliberately-placed clip instead of a
+whole track.
 
-הפרויקט כבר שרף פעם אחת עם AI מקומי: `platform/ai-local/` (v0.5.5, מודל שיחה
-מקומי) התברר כאיטי ב‑1-2 דקות לפקודה בלי GPU, ונכבה כברירת מחדל
-(`HANDOFF.md`). v0.8.5 מבקש embeddings דרך מודל on-device — **אותה משפחת סיכון,
-הפעם על 1000+ קבצים ולא פקודה אחת**. בדקתי בפועל (חיפוש שוק): קיים מודל AI
-אמיתי מתאים ((LAION-CLAP, ONNX, ~160MB) עם דוגמת הרצה אמיתית בדפדפן — אבל
-**אף אחד בעולם לא פרסם מדידת זמן אמיתית שלו רץ ב‑WASM בדפדפן**. לעומת זאת יש
-שיטה קלאסית (MFCC/chroma, בלי רשת נוירונים) עם ספריית WASM אחת (Essentia.js)
-שכן נמדדה בדפדפן ומתוארת כ"real-time" — בלי הורדת מודל מהרשת בכלל.
+## Target user and decision
 
-## החלטות מול שלום (14/09)
+Shalom, at the moment he already uses Mix Assist: a track just loaded, paused, the other
+deck playing — a planning moment, not mid-transition. The decision this feature informs:
+"does this candidate point actually sound like it'll blend, not just play at the same
+volume."
 
-1. **קודם מודדים, אחר-כך בוחרים (לא הוברר כברירת מחדל של AI).** שלום ביקש
-   מלכתחילה במפורש את מודל ה‑AI (LAION-CLAP), ואני חזרתי אליו עם ההשוואה
-   למקרה ה‑AI הקודם שכבר שרף אותו. ההחלטה הסופית: **v0.8.5 בונה קודם את
-   השיטה הקלאסית (Essentia.js MFCC/chroma) כברירת מחדל שעובדת מהיום הראשון**
-   — ובמקביל מודדים בפועל כמה זמן לוקח ל‑CLAP לעבד טראק אחד (על מחשב אמיתי,
-   או בקונטיינר כתחליף גס ומתועד ככזה). **רק אחרי שיש מספר אמיתי** מחליטים אם
-   CLAP הופך לברירת מחדל, נשאר "פיצ'ר מתקדם" מאחורי דגל, או נגנז.
-2. **טראק שעדיין לא נותח לדמיון:** כפתור "מצא דומה" מופיע אפור (disabled) עם
-   tooltip שמסביר — "עדיין לא נבדק לדמיון". לא סמל שעון נפרד ברשימה.
-3. **שדרוג עתידי של מודל הזיהוי (למשל מעבר ל‑CLAP כברירת מחדל):** מתעדכן
-   בשקט ברקע — טראקים ישנים ממשיכים לעבוד עם הניתוח הישן שלהם עד שהם
-   מנותחים מחדש בתור הרקע הרגיל. אין נעילה גורפת של הפיצ'ר באמצע שדרוג.
+## User and business outcome
 
-## תקציר חמש הסקירות
+Fewer surprises after committing to a transition picked from the panel. This is additive
+signal, not a promise: like the existing energy line, it must never claim more certainty
+than a short-clip heuristic supports.
 
-### product-expert — הממצא הקריטי
-- תוצאת המשתמש היא לא "יש embeddings" אלא אמון: DJ באמצע הכנה לוחץ על טראק
-  ומצפה שמה שחוזר *נשמע* קרוב — לא שזה חזר מהר. שני אופנים לשבור את זה: תוצאות
-  שגויות בשקט, או "למה הטראק הזה חסר?" בלי הסבר.
-- **המלצה:** לבנות כ‑batch רקע אופציונלי שמאכלס `AnalysisCache`/`EmbeddingCache`
-  לפי contentHash — לא embedding מיידי בזמן שאילתה. done-when המקורי
-  (`ROADMAP.md:780`) לא מציין latency, אז זה עומד בו בלי לפתור inference בזמן אמת.
-- **המלצה:** לחשוף כיסוי ניתוח במפורש ולפי-טראק ("742/1000 נותחו"), לעולם לא
-  רשימת תוצאות ריקה/קצרה בלי הסבר.
-- **Non-goals ל‑v0.8.5:** embedding מיידי (on-demand) בזמן שאילתה; ניסוח
-  "מיידי"/"חכם" לפני שנמדד; co-pilot מבוסס embeddings (זה v0.13.5).
-- **סיכון:** להתייחס למספר ה‑1-2 דקות של ה‑LLM כהוכחה לזמן embedding הוא היקש
-  לא-מוכח, לא מדידה — בדיוק למה נדרשה בדיקת שוק נפרדת (ראה למעלה).
+## Goal, non-goals, assumptions
 
-### architecture-expert — מבנה מוצע
-- **פורט חדש `core/ports/embedder.ts`**, לא הרחבה של `Analyzer`/`TrackAnalysis`
-  (`core/ports/analyzer.ts:26`) ולא שימוש ב‑`AIProvider`'s `embed-audio`
-  (`core/ports/ai.ts:65` — נבחר ומעולם לא מומש; אותו פורט מיועד לפעולות
-  שיחה/הצעה, לא לחילוץ features נומרי גורף):
-  ```ts
-  interface Embedder {
-    readonly modelId: string
-    embed(pcm: PcmData): Promise<Float32Array>
-  }
-  interface EmbeddingCache {
-    get(key: string, modelId: string): Promise<Float32Array | null>
-    put(key: string, modelId: string, vector: Float32Array): Promise<void>
-  }
-  ```
-- **שתי מימושים ב‑`platform/`, לא אחד:**
-  - `platform/embed-classical/` — Essentia.js WASM, MFCC/chroma. ברירת המחדל
-    של v0.8.5. בלי הורדת מודל, בלי Worker חדש בהכרח (להעריך מול
-    `analyzer-worker` הקיים כתבנית).
-  - `platform/embed-clap/` — CLAP דרך `@huggingface/transformers`, Worker
-    נפרד (**לא** לשתף Worker עם `platform/ai-local/` — עומס שונה לגמרי,
-    שיתוף Worker אחד יחסום chat בזמן embedding מלא לספרייה). **לא פעיל
-    כברירת מחדל** עד מדידה אמיתית (החלטה 1 למעלה).
-- **Cache נפרד**, לא בתוך `TrackAnalysis`/`analysisCache` הקיים
-  (`platform/analyze-cache-idb/store.ts`) — embeddings הם וקטורים גדולים
-  (512-1024 float) עם מחזור-חיים שונה (שדרוג מודל מבטל הכל, לא כמו
-  `ANALYZER_VERSION` הסקלרי). `platform/embed-cache-idb/` חדש, מפתח
-  `(contentHash, modelId)` — שדרוג מודל = namespace חדש, לא invalidation גורף
-  (תואם החלטה 3).
-- **חיפוש הדמיון עצמו (cosine + סינון היברידי) הוא מתמטיקה טהורה** —
-  `core/embedding-search.ts` חדש, קורא ל‑`Embedder` הפעיל בלי לדעת מי הוא.
-- **מיחזור התור הקיים:** ניתוח embedding רוכב על אותו תור רקע קיים ל‑BPM/
-  waveform (`queueLibraryAnalysis` ב‑`platform/source-fsaccess/library.ts`)
-  ולא בונה תור שני — כך שה‑badges הקיימים ("N נותחו"/"N נכשלו") מתרחבים,
-  לא משוכפלים.
-- **סיכון:** `core/` שמייבא טיפוס/tensor מ‑`@huggingface/transformers` "רק
-  לנוחות טיפוסים" הוא בדיוק ההפרה שכבר קרתה (`f8f5cf8`) — `Embedder` מחזיר
-  `Float32Array` גולמי ותו לא.
+**Goal:** for each transition candidate already shown in the panel, add a second,
+independent "sounds similar / sounds different from what's playing now" reading,
+alongside (never replacing) the existing energy reading.
 
-### design-expert — איך זה חייב להיראות
-נשען על `src/app/components/Library.tsx`: שורות רינדור (~960-1290), badges
-בכותרת (~639-722), פעולות-שורה קיימות (~1133-1147), אייקון-מוביל-שורה
-(~965-1010), הצ'יפ הקיים "משדך למה שמתנגן" (~616-632).
-- **כפתור אייקון נוסף לשורה**, ליד הפעולות הקיימות ("טען לדק A/B") — לא תפריט
-  קליק-ימני (אין כזה תבנית בקוד היום, יהיה בלתי-מתגלה).
-- לחיצה מסננת את הטבלה הקיימת במקום (לא פאנל שני על מסך 710px) + צ'יפ פעיל
-  "דומה ל: <שם השיר> ×" לניקוי.
-- **בלי אחוז דמיון מספרי** (דיוק מדומה שהשיטה לא תומכת בו) — tooltip בעברית
-  פשוטה שמסביר במה זה דומה ("קצב ואנרגיה דומים"), אותו אידיום כמו tooltip
-  המיון הקיים (~L833).
-- **badge בכותרת בסגנון הקיים** ("N/M נותחו לדמיון") — מרחיב את ה‑badges
-  הקיימים (~666-721), לא ממציא UI מקביל.
-- **סיכון:** אם ה‑badge לא מופיע כמו ה‑skipped/queued הקיימים, חלק מהתוצאות
-  יחסר בשקט — בדיוק מה שהכלל המרכזי אוסר.
+**Non-goals (v1 of this feature):**
+- Not a merged/replaced UI — additive only. A full replacement is a later, separate
+  decision Shalom makes explicitly; this build must not hard-wire the two signals
+  together so that replacing one is a rewrite.
+- Not live re-embedding of the outgoing deck's continuously-moving playhead position.
+  Compared value: the outgoing deck's own **nearest upcoming transition candidate**
+  (found the same way `nextCandidateFrom` already picks an "exit point" today), not the
+  literal instantaneous position. Both sides are always precomputed/cached — nothing is
+  embedded live during playback.
+- Not a change to the whole-track "find similar in library" cache or feature (v0.8.5) —
+  separate cache, separate use case, may reuse the same `Embedder`/model choice or not.
+- Not a merged confidence score, not a threshold-tuning UI (blocked anyway by this
+  project's no-calibration-in-Settings rule), not reuse in the whole-library search.
 
-### qa-expert — קריטריון מדיד + מקרי קצה
-- **done-when חדש, מדיד:** "'מצא דומה' על טראק מחזיר 10 תוצאות שבהן ≥7
-  חולקות ז'אנר ראשי (שם התיקייה) או BPM בטווח ±8%; נבדק ידנית על 5 טראקים
-  מ‑3+ ז'אנרים אצל שלום (למשל HipHop/Techno/House), על cache קר וחם, עם
-  זמן-עד-תוצאות מתועד." — חל על ה‑embedder הקלאסי (ברירת המחדל). ל‑CLAP יש
-  קריטריון נפרד: מדידת שניות-לטראק אמיתית, לא "תוצאות סבירות".
-- **מקרי קצה חובה:** ספרייה ריקה/קטנה (להסתיר את הכפתור, בסגנון `Capabilities`
-  ב‑`directions.md`), cache קר בהפעלה ראשונה, קובץ שזז/השתנה (cache miss גלוי),
-  batch שלוקח הרבה יותר מהצפוי (badge לא-חוסם, לא מודאל), אין WebWorker/WebGPU
-  (נפילה גלויה ל‑main thread, לא כבייה שקטה), וקטור embedding פגום (= cache
-  miss, לעולם לא תוצאה חלקית), שדרוג מודל (החלטה 3 — לא נעילה גורפת).
-- **מה כן ניתן ל‑vitest עכשיו:** פונקציית דירוג ה‑cosine, בלנדינג הסינון
-  ההיברידי, ופתרון ה‑cache (במקביל ל‑`tests/core/analysis-cache.test.ts`) —
-  כולן לוגיקה טהורה. מה שלא: זמן inference אמיתי (צריך ספרייה אמיתית, בדיוק
-  כמו ה‑BPM/Key ב‑v0.1.7) — נמדד ולא מנוחש.
-- **סיכון:** זמן ה‑batch על 1000+ קבצים לא נמדד בכלל — אם השיטה הקלאסית
-  מתבררת איטית יותר מהצפוי, זו עוד הפתעה בלי מספר קודם.
+**Assumptions:** `findTransitionCandidates`'s candidates are deterministic given a
+track's energy contour and `structure.ts`'s tunable constants — stable until those
+constants change.
 
-### security-expert — שני checks
-1. **v0.8.5 כפי שנבנה (Essentia.js WASM, ברירת מחדל) לא מוריד שום מודל
-   מרשת** — אין את סיכון שרשרת-האספקה שקיים היום ב‑`platform/ai-local/
-   worker.ts:57` (מודל שיחה נמשך מ‑HuggingFace Hub בלי pin לגרסה מדויקת).
-   **אם/כש‑CLAP יאושר בעתיד** (החלטה 1) — לפני שהוא נכנס בכלל, הוא **חייב**
-   revision hash מוצמד + אימות integrity, לא את אותו דפוס לא-מוצמד של
-   `worker.ts:57`.
-2. **וקטור embedding הוא נתון חדש שנשמר מקומית** — טביעת-אצבע שמחושבת מתוכן
-   קובץ המשתמש. להוסיף אותו במפורש להצהרת הפרטיות (v1.0.0) לצד נתוני הניתוח
-   הקיימים, לא להשאיר "עוד שדה" בלתי-מתועד ב‑IndexedDB.
-- **אין נקודת קצה שרת חדשה כאן** — עדיין אפס. אם/כש‑CLAP ייכנס, ההורדה
-  החד-פעמית של משקולות המודל היא היוצא-מן-הכלל הלגיטימי היחיד ל"הכל מקומי" —
-  לקרוא לזה בשם במפורש כשמגיע הרגע, לא לטשטש בין "אין רשת" ל"אין שליחת אודיו".
+## Proposed experience
 
-## מה לא נכנס ל‑v0.8.5 (non-goals)
+`TransitionPointsPanel.tsx`: each candidate row keeps its existing energy dot + label,
+and gains a **second small dot on the same row** (not a second line — the panel is
+already height-capped, v0.8.6). Label text stays one line; when the two signals disagree,
+no extra "conflict" copy is added — two independently-colored, independently-labeled dots
+already communicate "these are two separate readings" once seen a couple of times, and
+inventing a "these disagree" callout would claim a certainty about what disagreement
+*means* that neither heuristic supports.
 
-- CLAP/AI כברירת מחדל — רק אחרי מדידה אמיתית (החלטה 1).
-- embedding מיידי בזמן שאילתה — batch רקע בלבד.
-- אחוז דמיון מספרי בממשק.
-- co-pilot/הצעות יזומות מבוססות embeddings — v0.13.5.
+Copy (mirrors `PROXIMITY_LABEL`'s hedged register exactly):
+- similar: "sounds similar to what's playing now"
+- different: "sounds different from what's playing now"
+- not yet computed: dot only, `var(--color-grid-dim)` (same token as the existing "can't
+  compare" state), no promise implied, no second sentence per row.
 
-## הבא בתור
+No change to the panel's empty state ("No clear transition points found") — nothing to
+attach a sound reading to when there are no candidates.
 
-1. Plan Mode → `PLAN.md` קובץ-אחרי-קובץ, כולל: הפורט, שני המימושים
-   (Essentia קודם, CLAP מאחורי דגל), ה‑cache החדש, הרחבת התור הקיים, ה‑UI
-   ב‑`Library.tsx`, טסטים ב‑`tests/core/`.
-2. מדידה אמיתית של CLAP (שלב מוקדם ב‑PLAN, לא בסוף) — מספר, לא ניחוש.
-3. אימות ידני מול ספריית שלום לפי הקריטריון של qa-expert.
+## System / data implications
+
+- **Extraction point:** `queueLibraryAnalysis` (`platform/source-fsaccess/library.ts`,
+  ~line 386-406), same cache-miss branch as v0.8.5's whole-track embed call. Right after
+  `analyzerWorker.analyze` resolves, `analysis.bands`/`durationSec`/`beatGrid` are already
+  in hand — call `findTransitionCandidates` there (pure, no extra decode), then embed a
+  ~10s window around each candidate.
+- **Window extraction:** extend `pcmCopyFromAudioBuffer` (`platform/analyzer-js/
+  analyze.ts`) — `AudioBuffer.copyFromChannel(dest, channel, startFrame)` per candidate,
+  each call producing an independently-owned array. Same fix v0.8.5 already applied once
+  for the two-`embed()` aliasing bug, applied N times instead of once; no new risk.
+- **Cache:** a new store (not a bigger record in `embed-cache-idb`'s existing whole-track
+  table — different read shape: this needs "all candidate vectors for a track" at once).
+  Key: `` `${modelId}:${contentHash}:${structureVersion}:${candidateSec.toFixed(1)}` ``.
+  Reuses `embed-cache-idb`'s `modelId`/`embedderVersion` versioning semantics.
+- **`STRUCTURE_VERSION`:** a new constant next to `structure.ts`'s tunable heuristic
+  constants (`LOCAL_DEVIATION_RATIO`, `MIN_SUSTAIN_SEC`, etc.), stored per cache record
+  and checked on read alongside `embedderVersion` — closes the silent-staleness gap
+  (candidate timestamps shift if those constants are ever retuned; `embedderVersion`
+  alone wouldn't catch that). A repo-level test (pattern: `tests/repo/`) should fail if
+  any of those constants change without a matching version bump.
+- **Comparison:** live at panel-render time, but cheap — both sides are cache lookups +
+  one cosine op (`core/embedding-search.ts`'s existing `cosineSimilarity`), not inference.
+
+## Model choice (open, delegated with a constraint)
+
+Whole-track M1/M2 numbers don't transfer: a 10s window is CLAP's actual native size, not
+a truncation artifact, so this is a genuinely new question, not a re-ask of the M1/M2
+answer. Shalom delegated the final choice, with one constraint on how it's evaluated:
+**only measure/compare candidate pairs that already share the same BPM (required) and,
+where possible, the same musical key (preferred)** — because those are the only pairs a
+DJ would actually consider mixing regardless of how the sound-match reads, so they're the
+only pairs worth judging the heuristic against.
+
+Verification plan (v0.1.7 pattern, real files + real judgment, not guessed): a small Node
+script picks a handful of same-BPM (key-matched where available) candidate-point pairs
+from Shalom's real library, computes both classical and CLAP cosine scores for each pair,
+and Shalom labels each pair "blends"/"doesn't blend" by ear — same-machine run as the M2
+CLAP measurement, since only his machine has both the real library and real ears. Model
+choice is made from that comparison, not inherited from M1/M2's whole-track numbers.
+
+## Acceptance criteria (observable behavior)
+
+- A track with candidates and completed background analysis shows a second dot per row,
+  colored/labeled per the states above.
+- A candidate too close to the track's start/end for a full ~10s window: distinct
+  "can't extract" state (grey dot), never a padded/partial embedding presented as real.
+- A track with zero candidates: unchanged from today.
+- Background analysis still running or failed for a track: second dot reads the same
+  "not yet computed" grey state as "can't compare yet" already does for energy — no new
+  failure-vs-pending distinction needed unless testing shows it's actually confusing.
+- Disagreement between the two signals (e.g. close energy, different sound): both dots
+  render their own true reading; no merged verdict, no extra copy.
+
+## Loading / empty / error / partial / recovery states
+
+Covered above: not-yet-computed (grey, per-row), can't-extract (grey, boundary case),
+empty-panel (unchanged, energy-level "no candidates" message), disagreement (both shown
+plainly). No global loading state beyond what the panel already has.
+
+## Accessibility, security, privacy, operational constraints
+
+- **Accessibility risk (flagged by design review):** two same-hue dots on one row must
+  not be the only way to distinguish the two signals for a user who can't resolve two
+  adjacent 4px same-color dots — verify the per-dot label (hover/state text) always names
+  which signal it is, never a merged summary, before this ships.
+- **Security/privacy:** `SECURITY: no material change from the v0.8.5 conclusion` —
+  local-only, same `Embedder` port, no network calls, no new server surface. Storing
+  multiple short-clip vectors per track (vs. v0.8.5's one whole-track vector) doesn't
+  cross a new trust boundary. Two items to carry into implementation: (1) extend the
+  v1.0.0 privacy disclosure to explicitly name per-candidate clip vectors, not just the
+  whole-track one; (2) confirm the new cache key can't collide across two different
+  candidates of the same track (the key shape above already includes `candidateSec`, so
+  this should already hold — verify with a test, not by inspection alone).
+- If CLAP is chosen: pinned revision hash + integrity verification for the one-time model
+  download (same rule already flagged elsewhere in the codebase, `worker.ts:57`'s
+  unpinned pattern is not to be copied).
+
+## Verification plan and evidence
+
+- `tests/core/`: window-extraction bounds (candidate near start/end, track shorter than
+  window), cache-key/version resolution (mirroring `embedding-cache.test.ts`'s existing
+  pattern — `STRUCTURE_VERSION` mismatch invalidates), cosine math already covered.
+- Real-library, v0.1.7-pattern measurement (see Model choice above) — numbers written
+  down in `docs/handoff/v0.8.9.md` at close, not "it worked."
+- `npm run check` green before every commit, same gate as always.
+
+## Open decisions and tradeoffs (resolved this session — recorded, not reopened)
+
+| Question | Resolution |
+| --- | --- |
+| Additive vs. replace UI | Additive — two dots, same row, not two lines (height-capped panel). Full replace is a later, separate decision on Shalom's say-so. |
+| Live vs. precomputed outgoing-side comparison | Precomputed only — outgoing deck's own nearest upcoming candidate, never the literal live playhead position. |
+| Model for short clips | Delegated to the session, decided via a small real measurement constrained to same-BPM (required)/same-key (preferred) pairs — not inherited from the whole-track M1/M2 result. |
+| Cache shape | New store, keyed `(modelId, contentHash, structureVersion, candidateSec)`, separate from the whole-track embedding cache. |
+| Staleness on heuristic retune | New `STRUCTURE_VERSION` constant + repo-level check. |

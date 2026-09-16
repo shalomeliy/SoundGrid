@@ -384,25 +384,30 @@ export async function queueLibraryAnalysis(
         if (opts.signal?.cancelled) return
         onUpdate(new Map([[track.id, { contentHash }]]), { done, total, failed })
         let analysis = await analysisCache.get(contentHash)
+        // v0.8.5 M3: resolved on BOTH branches below (cache hit and miss) —
+        // M1 only ever set this on a miss, so a track whose analysis was
+        // already cached (every track analyzed before v0.8.5 existed, i.e.
+        // most of a real library on a normal reload) never got an embedding
+        // at all. `queueEmbeddingBackfill` below is the actual backfill pass
+        // for those; this `get` just picks up whatever it (or an earlier
+        // session) already computed, so a reload doesn't forget it.
+        let embedding: Float32Array | undefined
+        let embeddingFailed = false
         if (!analysis) {
           const buffer = await engine.decode(data)
           analysis = await analyzerWorker.analyze(pcmFromAudioBuffer(buffer))
           await analysisCache.put(contentHash, analysis)
           // v0.8.5: piggybacks on this exact decode rather than a second
-          // queue/pass — `workshop-output/PLAN.md` §3. Only on a cache miss
-          // for the analysis above: a track analyzed before v0.8.5 existed
-          // isn't force-redecoded just to backfill an embedding — that's a
-          // separate library-wide scan, out of scope for M1. A failure here
-          // never fails the track's analysis (BPM/waveform already
-          // succeeded) — no UI surface for it yet, that's M3.
-          if (!(await embeddingCache.get(contentHash, classicalEmbedder.modelId))) {
-            try {
-              const vector = await classicalEmbedder.embed(pcmCopyFromAudioBuffer(buffer))
-              await embeddingCache.put(contentHash, classicalEmbedder.modelId, vector)
-            } catch {
-              // See comment above — swallowed on purpose for M1.
-            }
+          // queue/pass — `workshop-output/PLAN.md` §3. A failure here never
+          // fails the track's analysis (BPM/waveform already succeeded).
+          try {
+            embedding = await classicalEmbedder.embed(pcmCopyFromAudioBuffer(buffer))
+            await embeddingCache.put(contentHash, classicalEmbedder.modelId, embedding)
+          } catch {
+            embeddingFailed = true
           }
+        } else {
+          embedding = (await embeddingCache.get(contentHash, classicalEmbedder.modelId)) ?? undefined
         }
         done++
         if (opts.signal?.cancelled) return
@@ -421,6 +426,11 @@ export async function queueLibraryAnalysis(
                 analysisState: 'analyzed',
                 bpm: analysis.bpm ?? undefined,
                 durationSec: analysis.durationSec,
+                ...(embedding
+                  ? { embedding, embeddingState: 'embedded' as const }
+                  : embeddingFailed
+                    ? { embeddingState: 'failed' as const }
+                    : {}),
               },
             ],
           ]),
@@ -432,6 +442,71 @@ export async function queueLibraryAnalysis(
         if (opts.signal?.cancelled) return
         const message = err instanceof Error ? err.message : String(err)
         onUpdate(new Map([[track.id, { analysisState: 'failed', analysisError: message }]]), {
+          done,
+          total,
+          failed,
+        })
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, worker))
+}
+
+/**
+ * Fourth pass, v0.8.5 M3: fills the gap `queueLibraryAnalysis` above
+ * deliberately left open — a track whose analysis was already cached before
+ * this feature existed never went through the cache-miss branch that
+ * computes an embedding, so on a real library (already analyzed in earlier
+ * sessions) almost nothing has one after a normal reload. Decided with
+ * Shalom (15/09, `HANDOFF.md`): runs automatically, in the background,
+ * right after `queueLibraryAnalysis` settles — never gated behind a manual
+ * action, never running *during* the main scan (the caller is responsible
+ * for sequencing, not this function).
+ *
+ * Only re-decodes tracks that actually need it — `analysisState === 'analyzed'`
+ * (so BPM/waveform work is never repeated) and no `embedding` yet. Deliberately
+ * `concurrency: 1` by default: this is real CPU work the app didn't already
+ * have to do for these tracks, and it has nowhere to be — unlike the main
+ * queue, nothing in the UI is waiting on it.
+ */
+export async function queueEmbeddingBackfill(
+  tracks: Track[],
+  onUpdate: (patch: Map<string, Partial<Track>>, progress: AnalysisQueueProgress) => void,
+  opts: { concurrency?: number; signal?: { cancelled: boolean } } = {},
+): Promise<void> {
+  const pending = tracks.filter((t) => t.analysisState === 'analyzed' && !t.embedding)
+  const concurrency = opts.concurrency ?? 1
+  const total = pending.length
+  let next = 0
+  let done = 0
+  let failed = 0
+  if (total === 0) return
+
+  async function worker() {
+    while (next < total) {
+      if (opts.signal?.cancelled) return
+      const track = pending[next++]
+      onUpdate(new Map([[track.id, { embeddingState: 'embedding' }]]), { done, total, failed })
+      try {
+        // `analysisState === 'analyzed'` guarantees a `contentHash` was
+        // already resolved for this track — same invariant `loadTrackToDeck`
+        // and the rest of this file already rely on.
+        const contentHash = track.contentHash as string
+        const file = await track.handle.getFile()
+        const data = await file.arrayBuffer()
+        const buffer = await engine.decode(data)
+        const embedding = await classicalEmbedder.embed(pcmFromAudioBuffer(buffer))
+        await embeddingCache.put(contentHash, classicalEmbedder.modelId, embedding)
+        done++
+        if (opts.signal?.cancelled) return
+        onUpdate(new Map([[track.id, { embedding, embeddingState: 'embedded' }]]), { done, total, failed })
+      } catch (err) {
+        done++
+        failed++
+        if (opts.signal?.cancelled) return
+        const message = err instanceof Error ? err.message : String(err)
+        onUpdate(new Map([[track.id, { embeddingState: 'failed', embeddingError: message }]]), {
           done,
           total,
           failed,

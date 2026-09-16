@@ -9,6 +9,7 @@ import {
   fileSystemAccessSupported,
   pickLibraryFolder,
   pickTrackFiles,
+  queueEmbeddingBackfill,
   queueLibraryAnalysis,
   readLibraryTags,
   restoreLibraryFolder,
@@ -16,6 +17,7 @@ import {
 } from '@/platform/source-fsaccess/library'
 import { useShallow } from 'zustand/react/shallow'
 import { bootCopy, bootFor, bootForScanError } from '@/core/library-boot'
+import { findSimilarTracks } from '@/core/embedding-search'
 import { libraryEmptyCopy } from '@/core/library-list-copy'
 import { mixRecommendations, type MixMatch } from '@/core/recommend'
 import { settings } from '@/platform/settings-idb/store'
@@ -91,6 +93,10 @@ export function Library() {
   const setLibrary = useStore((s) => s.setLibrary)
   const crates = useStore((s) => s.crates)
   const [mixOnly, setMixOnly] = useState(false)
+  // "More like this" (v0.8.5 M3): a seed track id, or null when not active.
+  // Same local-state shape as `mixOnly` — a view filter, not something any
+  // other part of the app needs to know about.
+  const [similarTo, setSimilarTo] = useState<string | null>(null)
   // Which key notation to show. DJs are split between musical and Camelot and
   // nobody wants to relearn theirs, so it's a preference that sticks.
   const { keyMode, libraryTextScale } = useSettings()
@@ -123,6 +129,14 @@ export function Library() {
     (t) => t.analysisState === 'queued' || t.analysisState === 'analyzing',
   ).length
   const analysisFailedTotal = library.tracks.filter((t) => t.analysisState === 'failed').length
+  // Background embedding backfill (M3, `applyEmbeddingBackfill` below) — a
+  // track already past BPM/waveform analysis but still missing an
+  // embedding, and not one whose embedding attempt already failed (that
+  // one is done, just unsuccessfully; counting it here would keep this
+  // badge stuck above zero forever on a track it will never retry).
+  const embeddingBackfillTotal = library.tracks.filter(
+    (t) => t.analysisState === 'analyzed' && !t.embedding && t.embeddingState !== 'failed',
+  ).length
   // lets a new scan abandon the tag pass of the one it replaced
   const tagScan = useRef({ cancelled: false })
 
@@ -356,6 +370,7 @@ export function Library() {
     await ctl.resolveSamplerSlots({ silent: true })
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
     if (!scan.cancelled) await ctl.resolveSamplerSlots()
+    void applyEmbeddingBackfill(scan)
   }
 
   /**
@@ -404,6 +419,7 @@ export function Library() {
     await ctl.resolveSamplerSlots({ silent: true })
     await Promise.all([applyTags(queued, scan), applyAnalysisQueue(queued, scan)])
     if (!scan.cancelled) await ctl.resolveSamplerSlots()
+    void applyEmbeddingBackfill(scan)
   }
 
   /**
@@ -520,11 +536,59 @@ export function Library() {
     )
   }
 
+  /**
+   * Fourth pass (v0.8.5 M3), fire-and-forget after the other three settle
+   * (`runScan`/`addFiles` above — `void`, never awaited by the caller: this
+   * is real background work, nothing else waits on it). Fills in the
+   * embedding `applyAnalysisQueue`'s cache-hit branch could only read, never
+   * compute — in practice almost the whole library on the first scan after
+   * this version, since every track analyzed before v0.8.5 hits that branch.
+   * Reads `library.tracks` fresh from the store rather than taking the
+   * `queued` array the other two passes use: that array is a snapshot frozen
+   * at `analysisState:'queued'` for the whole scan (`runScan`, above), so
+   * `queueEmbeddingBackfill`'s own `analysisState === 'analyzed'` filter
+   * would never match anything from it.
+   */
+  async function applyEmbeddingBackfill(scan: { cancelled: boolean }) {
+    await queueEmbeddingBackfill(
+      useStore.getState().library.tracks,
+      (patch) => {
+        if (scan.cancelled || patch.size === 0) return
+        const store = useStore.getState()
+        store.setLibrary({
+          tracks: store.library.tracks.map((t) => {
+            const p = patch.get(t.id)
+            return p ? { ...t, ...p } : t
+          }),
+        })
+      },
+      { signal: scan },
+    )
+  }
+
+  // "More like this" (M3): a seed track id in `similarTo` re-sorts/filters
+  // the list to its matches, taking over from `mixOnly` the same way mixOnly
+  // takes over from the plain list — the two are different questions
+  // ("what mixes with what's playing" vs "what sounds like this one track")
+  // and picking one seed at a time keeps the table's meaning unambiguous.
+  const similarMatches = useMemo(
+    () => (similarTo ? findSimilarTracks(similarTo, library.tracks) : []),
+    [similarTo, library.tracks],
+  )
+  const similarScoreById = useMemo(() => new Map(similarMatches.map((m) => [m.id, m.score])), [similarMatches])
+  const similarToTrack = similarTo ? (library.tracks.find((t) => t.id === similarTo) ?? null) : null
+
   // Kept separate from `list` so the empty state below can tell "mixOnly
   // filtered everything out" apart from "the folder genuinely has nothing" —
   // the two used to render the identical "no audio files" message.
   const preMixList = ctl.sortedFilteredTracks()
-  const list = mixOnly ? preMixList.filter((t) => recs.has(t.id)) : preMixList
+  const list = similarTo
+    ? preMixList
+        .filter((t) => similarScoreById.has(t.id))
+        .sort((a, b) => (similarScoreById.get(b.id) ?? -Infinity) - (similarScoreById.get(a.id) ?? -Infinity))
+    : mixOnly
+      ? preMixList.filter((t) => recs.has(t.id))
+      : preMixList
   const activeCrate = library.activeCrateId ? (crates.get(library.activeCrateId) ?? null) : null
   const emptyCopy = libraryEmptyCopy(
     library.query,
@@ -532,6 +596,7 @@ export function Library() {
     preMixList.length,
     activeCrate?.name ?? null,
     queuedTotal > 0,
+    similarToTrack ? (similarToTrack.title ?? similarToTrack.name) : null,
   )
   // Only a manual crate's membership can be edited from here — a smart
   // crate's contents are entirely rule-derived (`refreshSmartCrate`), so
@@ -597,6 +662,18 @@ export function Library() {
             Crate: {activeCrate.name} ✕
           </button>
         )}
+        {/* Same reasoning as the crate chip above: a seed-track filter that
+            silently narrowed the list with no visible way back would look
+            identical to "the library shrank". */}
+        {similarToTrack && (
+          <button
+            onClick={() => setSimilarTo(null)}
+            className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-text hover:bg-surface-3"
+            title="Showing tracks similar to this one — click to see the whole library again"
+          >
+            Similar to: {similarToTrack.title ?? similarToTrack.name} ✕
+          </button>
+        )}
         {/* Zero-size anchor: the badge is absolutely placed off it, so it never
             grows this header row (the row wraps to the search box at some
             widths, and a real flex sibling here would move that wrap point). */}
@@ -610,10 +687,18 @@ export function Library() {
               <Button
                 variant="toggle"
                 size="sm"
-                active={mixOnly}
+                // "More like this" (M3) always wins over Mix Only in `list`
+                // below — showing this lit while it's actually inert would
+                // be the same silent-skip failure the empty-state fix above
+                // exists to close, just as a toggle instead of a message.
+                active={mixOnly && !similarTo}
                 tone="var(--color-live)"
                 onClick={() => setMixOnly((v) => !v)}
-                title="Show only tracks that mix with what's playing"
+                title={
+                  similarTo
+                    ? "Showing tracks similar to the selected one — clear that filter to use Mix Only again"
+                    : "Show only tracks that mix with what's playing"
+                }
               >
                 ♫ {recs.size} mixable
               </Button>
@@ -723,6 +808,14 @@ export function Library() {
               {analysisFailedTotal} analysis failed
             </span>
           )}
+          {!library.scanning && embeddingBackfillTotal > 0 && (
+            <span
+              className="rounded-[var(--radius-xs)] bg-surface-2 px-1.5 py-0.5 text-2xs font-semibold text-grid-muted"
+              title="Filling in similarity data for tracks analyzed before this feature existed — the rest of the app already works while this runs."
+            >
+              {embeddingBackfillTotal} analyzing for similarity
+            </span>
+          )}
         </span>
       </div>
 
@@ -766,7 +859,11 @@ export function Library() {
           title={emptyCopy.title}
           body={emptyCopy.body}
           action={
-            activeCrate ? (
+            similarTo ? (
+              <Button variant="toggle" active tone="var(--color-accent)" onClick={() => setSimilarTo(null)}>
+                Clear similar filter
+              </Button>
+            ) : activeCrate ? (
               <Button variant="toggle" active tone="var(--color-accent)" onClick={() => ctl.setActiveCrate(null)}>
                 Clear crate filter
               </Button>
@@ -898,6 +995,7 @@ export function Library() {
                   match={recs.get(t.id)}
                   keyMode={keyMode}
                   onSelect={() => ctl.selectTrack(t.id)}
+                  onFindSimilar={() => setSimilarTo(t.id)}
                   removableFromCrateId={removableFromCrateId}
                   loadedOnA={aHash != null && aHash === t.contentHash}
                   loadedOnB={bHash != null && bHash === t.contentHash}
@@ -1016,6 +1114,7 @@ function Row({
   match,
   keyMode,
   onSelect,
+  onFindSimilar,
   removableFromCrateId,
   loadedOnA,
   loadedOnB,
@@ -1026,6 +1125,8 @@ function Row({
   removableFromCrateId: string | null
   keyMode: KeyMode
   onSelect: () => void
+  /** M3: seeds "more like this" with this row's track. */
+  onFindSimilar: () => void
   /** v0.8.2: this row's track is currently loaded on deck A/B (loaded, not necessarily playing — paused counts). */
   loadedOnA: boolean
   loadedOnB: boolean
@@ -1238,10 +1339,39 @@ function Row({
             −
           </button>
         )}
+        <SimilarBtn track={track} onFindSimilar={onFindSimilar} />
         <LoadBtn deck="A" track={track} />
         <LoadBtn deck="B" track={track} />
       </td>
     </tr>
+  )
+}
+
+/**
+ * "More like this" (v0.8.5 M3). Disabled per-row on `!track.embedding` —
+ * no artificial threshold ("only past 50 tracks" etc.) the way the header
+ * badge above also avoids one: the button already says why it can't be
+ * clicked yet, there is nothing a count-based gate would add.
+ */
+function SimilarBtn({ track, onFindSimilar }: { track: Track; onFindSimilar: () => void }) {
+  const title = track.embedding
+    ? 'Find similar tracks'
+    : track.embeddingState === 'failed'
+      ? `Similarity analysis failed${track.embeddingError ? `: ${track.embeddingError}` : ''} — still listed; loading it to a deck tries again.`
+      : 'Not yet analyzed for similarity'
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        onFindSimilar()
+      }}
+      disabled={!track.embedding}
+      aria-label="Find similar tracks"
+      title={title}
+      className="ml-1 inline-grid h-6 w-6 place-items-center rounded-[var(--radius-xs)] text-2xs font-bold text-grid-muted transition-colors hover:bg-surface-2 hover:text-grid-text disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-grid-muted"
+    >
+      ≈
+    </button>
   )
 }
 
