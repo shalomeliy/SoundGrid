@@ -263,6 +263,35 @@ export function Deck({ deckId }: { deckId: DeckId }) {
               <button> — this div is already `relative`, so the badge anchors
               to it exactly as it would have anchored to the button itself. */}
           <HintIcon id="deck.bpm" className="absolute -top-1 -right-1" />
+          {/* Live bar/downbeat correction (v0.8.8) — only relevant mid-mix:
+              this deck is phase-locked to the other one, which is actually
+              playing right now. `shiftDeckByBeat` itself guards master/no-
+              grid/active-loop with a notice; this condition only covers
+              "is there anything to shift at all" (same shape as the
+              "♫ N mixable" toggle in Library.tsx, which only shows while
+              `anyPlaying`). See workshop-output/FEATURE_SPEC_BARSYNC.md —
+              SYNC locks beat phase, never bar phase, so this is a live,
+              by-ear correction, not something the app can do silently. */}
+          {deck.syncActive && otherPlaying && (
+            <div className="mt-1 flex items-center justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => ctl.shiftDeckByBeat(deckId, -1)}
+                title="Beats ticking together but the drums still clash? Tap to bump the track back one whole beat — like nudging a record one click back so the big hits land together."
+                className="rounded-[var(--radius-xs)] px-1 py-0.5 text-2xs text-grid-dim transition-colors hover:bg-surface-2 hover:text-grid-text"
+              >
+                ◂ beat
+              </button>
+              <button
+                type="button"
+                onClick={() => ctl.shiftDeckByBeat(deckId, 1)}
+                title="Beats ticking together but the drums still clash? Tap to bump the track forward one whole beat — like nudging a record one click ahead so the big hits land together."
+                className="rounded-[var(--radius-xs)] px-1 py-0.5 text-2xs text-grid-dim transition-colors hover:bg-surface-2 hover:text-grid-text"
+              >
+                beat ▸
+              </button>
+            </div>
+          )}
           {/* A grid detection wasn't confident about, or found nothing at all,
               is shown — never silently trusted (CLAUDE.md's central rule).
               Cleared once the user checks or edits it (BeatGridPanel). */}
