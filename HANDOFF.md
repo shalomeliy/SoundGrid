@@ -15,18 +15,16 @@
 
 | | |
 | --- | --- |
-| **בעבודה** | `v0.8.5` M3 (קלאסי בלבד, CLAP נגנז — `PLAN.md` §שער M2). **1/2
-  בוצע ואומת (`8e7873c`):** תוקן פער אמיתי (embedding לא הופיע על cache-hit
-  — כל טראק "ישן" נשאר "לא נבדק" לצמיתות) + `queueEmbeddingBackfill`,
-  שניהם מאומתים ב‑Playwright אמיתי (`scripts/verify-embedding-cache-hit.mjs`,
-  `verify-embedding-backfill.mjs`). **2/2 פתוח:** חיווט + badge ל‑
-  `Library.tsx` (משימה 4), כפתור שורה + סינון + צ'יפ (משימה 5), check מלא +
-  אימות ספריית שלום (משימה 6) — `PLAN.md` §14. רעיון נפרד (Mix Assist +
-  סאונד) מאושר ל‑`v0.8.9`, לא מתוכנן ברמת קבצים — אחרי v0.8.5. |
-| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 8e7873c origin/main`). |
-| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה (M3 2/2). |
-| **`npm run check`** | ירוק — מלבד 8 כשלים pre-existing ב‑`doc-commits.test.ts` (שיבוט git רדוד), לא קשור. |
-| **הבא בתור** | M3 משימה 4 (חיווט Library.tsx), ר' `PLAN.md` §14. |
+| **בעבודה** | `v0.8.5` M3: כל 4 המשימות בנויות (קלאסי בלבד, CLAP נגנז).
+  `change-reviewer` תפס BLOCKER — 0 תוצאות דומות נפל ל‑"No audio files
+  found" השקרי, בדיוק ה‑silent-skip ש‑`library-list-copy.ts` נבנה למנוע —
+  תוקן. מאומת Playwright (16/16, `verify-similarity-ui.mjs`), לא על
+  ספריית שלום עדיין — **שער יציאה מ‑M3 = סגירת v0.8.5, מחכה לבדיקתו.** |
+| **branch** | `claude/dazzling-cerf-2ffk3w`, מכיל את `main` (`git merge-base --is-ancestor 1583ae2 origin/main`). |
+| **גרסה נוכחית** | `v0.8.7` (`package.json`) — נסגרה; `v0.8.5` בעבודה (M3, שער יציאה). |
+| **`npm run check`** | ירוק — 527/527, `doc-commits.test.ts` כלול (לא נכשל בקלון המלא). |
+| **הבא בתור** | שלום בודק "מצא דומה" על ספרייתו האמיתית → אם התוצאות הגיוניות,
+  v0.8.5 נסגרת ועוברת ל‑`docs/handoff/`, אחר-כך `v0.8.9`. |
 
 ---
 

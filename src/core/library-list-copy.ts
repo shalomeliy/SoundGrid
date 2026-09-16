@@ -48,7 +48,25 @@ export function libraryEmptyCopy(
    * catching up this says so instead of declaring the crate empty.
    */
   crateAnalysisCatchingUp = false,
+  /**
+   * Title of the seed track behind "find similar" (v0.8.5 M3), or `null`
+   * when it isn't active. Checked first, ahead of even the crate — of all
+   * four narrowings this file exists to tell apart, a similarity search is
+   * the one most likely to legitimately return nothing (the seed is the
+   * only embedded track so far, or nothing else in the library scores close
+   * to it), and it is also always the most recently clicked one, since
+   * choosing a new seed instantly replaces whichever crate/query/mixOnly
+   * state was already narrowing the table.
+   */
+  similarToName: string | null = null,
 ): LibraryEmptyCopy {
+  if (similarToName) {
+    return {
+      title: 'No similar tracks found yet',
+      body: `Nothing in your library currently sounds close to "${similarToName}" — this fills in as more tracks finish background analysis, or clear the filter to see the whole library.`,
+      offerMixOnlyReset: false,
+    }
+  }
   if (activeCrateName) {
     if (crateAnalysisCatchingUp) {
       return {
