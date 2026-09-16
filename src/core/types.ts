@@ -41,6 +41,20 @@ export interface Track {
   /** Set only when `analysisState` is `'failed'` — a short, named reason, shown in the row icon's tooltip. */
   analysisError?: string
   /**
+   * The track's own similarity vector (v0.8.5 M3) — held directly on the
+   * track, not re-read from `embeddingCache` per render: 25 floats
+   * (`CLASSICAL_EMBEDDING_LENGTH`) is small enough that copying it here
+   * costs nothing, the same call `bpm`/`durationSec` already make from the
+   * analysis pass. Undefined means "no embedding yet", never "embedding is
+   * a zero vector" — the "find similar" button stays disabled until this
+   * is set.
+   */
+  embedding?: Float32Array
+  /** Independent from `analysisState` — a track can finish BPM/waveform analysis (`'analyzed'`) well before its embedding backfill (M3) reaches it. */
+  embeddingState?: 'queued' | 'embedding' | 'embedded' | 'failed'
+  /** Set only when `embeddingState` is `'failed'`. */
+  embeddingError?: string
+  /**
    * Free-text note the owner typed on this row (v0.8.0) — same shape as
    * `genre`: not written by the scan itself, filled in at merge time from
    * `platform/track-meta-idb/store.ts`, keyed by `contentHash` (not `id`)
