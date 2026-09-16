@@ -1,0 +1,74 @@
+[
+  {
+    "input_file": "C:/Users/Shalom/Music/Tracks/Trance/CYBER SAMURAI.wav",
+    "status": "ok",
+    "duration_sec": 414.8,
+    "sample_rate": 44100,
+    "channels": 2,
+    "seconds_load": 2.05,
+    "timing_fix": {
+      "tool": "timing_fix",
+      "output_file": "C:/Users/Shalom/Music/Tracks/Trance\\corrected\\CYBER SAMURAI - timing_fixed.wav",
+      "tempo_before_bpm": 143.55,
+      "target_bpm": 144,
+      "tempo_after_bpm": 143.55,
+      "bpm_error_before": 0.445,
+      "bpm_error_after": 0.445,
+      "confidence_proxy_before": 0.962,
+      "confidence_proxy_after": 0.953,
+      "beats_detected_before": 927,
+      "beats_detected_after": 936,
+      "seconds_detect": 6.6,
+      "seconds_stretch": 12.89,
+      "seconds_write": 0.38,
+      "seconds_total": 19.88
+    },
+    "noise_clean": {
+      "tool": "noise_clean",
+      "output_file": "C:/Users/Shalom/Music/Tracks/Trance\\corrected\\CYBER SAMURAI - noise_cleaned.wav",
+      "noise_floor_before_db": -20.3,
+      "noise_floor_after_db": -58.8,
+      "noise_floor_reduction_db": 38.5,
+      "confident": false,
+      "seconds_clean": 17.66,
+      "seconds_write": 0.32,
+      "seconds_total": 17.97
+    }
+  },
+  {
+    "input_file": "C:/Users/Shalom/Music/Tracks/Trance/END OF DINO.wav",
+    "status": "ok",
+    "duration_sec": 569.2,
+    "sample_rate": 48000,
+    "channels": 2,
+    "seconds_load": 0.22,
+    "timing_fix": {
+      "tool": "timing_fix",
+      "output_file": "C:/Users/Shalom/Music/Tracks/Trance\\corrected\\END OF DINO - timing_fixed.wav",
+      "tempo_before_bpm": 144.23,
+      "target_bpm": 144,
+      "tempo_after_bpm": 144.23,
+      "bpm_error_before": 0.231,
+      "bpm_error_after": 0.231,
+      "confidence_proxy_before": 0.971,
+      "confidence_proxy_after": 0.96,
+      "beats_detected_before": 1253,
+      "beats_detected_after": 1209,
+      "seconds_detect": 6.46,
+      "seconds_stretch": 21.1,
+      "seconds_write": 0.57,
+      "seconds_total": 28.14
+    },
+    "noise_clean": {
+      "tool": "noise_clean",
+      "output_file": "C:/Users/Shalom/Music/Tracks/Trance\\corrected\\END OF DINO - noise_cleaned.wav",
+      "noise_floor_before_db": -24.6,
+      "noise_floor_after_db": -65.6,
+      "noise_floor_reduction_db": 41.0,
+      "confident": false,
+      "seconds_clean": 31.74,
+      "seconds_write": 0.78,
+      "seconds_total": 32.52
+    }
+  }
+]
